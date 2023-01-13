@@ -33,7 +33,7 @@ type coordinator[T any] struct {
 	requestID string
 	// responses collect all responses of batch job
 	responses []T
-	nodes     []string
+	//nodes     []string
 }
 
 func newCoordinator[T any](r *Replicator, shard, requestID string) *coordinator[T] {
@@ -49,6 +49,8 @@ func newCoordinator[T any](r *Replicator, shard, requestID string) *coordinator[
 		requestID: requestID,
 	}
 }
+
+// TODO add level
 
 // broadcast sends write request to all replicas (first phase of a two-phase commit)
 func (c *coordinator[T]) broadcast(ctx context.Context, replicas []string, op readyOp) error {
@@ -109,18 +111,53 @@ func (c *coordinator[T]) Replicate(ctx context.Context, ask readyOp, com commitO
 	if err == nil {
 		_, err = state.ConsistencyLevel(All)
 	}
-	c.nodes = state.Hosts
 	const msg = "replication with consistency level 'ALL'"
 	if err != nil {
 		return fmt.Errorf("%s: %w : class %q shard %q", msg, err, c.class, c.shard)
 	}
-	if err := c.broadcast(ctx, c.nodes, ask); err != nil {
+	if err := c.broadcast(ctx, state.Hosts, ask); err != nil {
 		return fmt.Errorf("%s: broadcast: %w", msg, err)
 	}
-	if err := c.commitAll(context.Background(), c.nodes, com); err != nil {
+	if err := c.commitAll(context.Background(), state.Hosts, com); err != nil {
 		return fmt.Errorf("%s commit: %w", msg, err)
 	}
 	return nil
+}
+
+// broadcast sends write request to all replicas (first phase of a two-phase commit)
+func (c *coordinator[T]) broadcast2(ctx context.Context, replicas []string, op readyOp, level int) ([]string, error) {
+	errs := make([]error, len(replicas))
+	activeReplicas := make([]string, 0, len(replicas))
+	var g errgroup.Group
+	for i, replica := range replicas {
+		i, replica := i, replica
+		g.Go(func() error {
+			errs[i] = op(ctx, replica, c.requestID)
+			return nil
+		})
+	}
+	g.Wait()
+	var lastErr error
+	for i, err := range errs {
+		if err == nil {
+			activeReplicas = append(activeReplicas, replicas[i])
+		} else {
+			lastErr = err
+		}
+	}
+	if len(activeReplicas) < level {
+		lastErr = fmt.Errorf("no enough active replicas found: %w", lastErr)
+	} else {
+		lastErr = nil
+	}
+
+	if lastErr != nil {
+		for _, node := range replicas {
+			c.Abort(ctx, node, c.class, c.shard, c.requestID)
+		}
+	}
+
+	return activeReplicas, lastErr
 }
 
 // commitAll tells replicas to commit pending updates related to a specific request
@@ -151,13 +188,13 @@ func (c *coordinator[T]) Replicate2(ctx context.Context, cl ConsistencyLevel, as
 	if err == nil {
 		level, err = state.ConsistencyLevel(cl)
 	}
-	c.nodes = state.Hosts
-	const msg = "replication with consistency level 'ALL'"
+	const msg = "replication with consistency level 'ALL'" // TODO maybe move to upper level 
 	if err != nil {
 		return nil, level, fmt.Errorf("%s: %w : class %q shard %q", msg, err, c.class, c.shard)
 	}
-	if err := c.broadcast(ctx, c.nodes, ask); err != nil {
+	nodes, err := c.broadcast2(ctx, state.Hosts, ask, level)
+	if err != nil {
 		return nil, level, fmt.Errorf("%s: broadcast: %w", msg, err)
 	}
-	return c.commitAll2(context.Background(), c.nodes, com), level, nil
+	return c.commitAll2(context.Background(), nodes, com), level, nil
 }
