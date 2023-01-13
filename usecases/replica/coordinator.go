@@ -128,6 +128,7 @@ func (c *coordinator[T]) Replicate(ctx context.Context, ask readyOp, com commitO
 func (c *coordinator[T]) commitAll2(ctx context.Context, replicas []string, op commitOp[T]) <-chan simpleResult[T] {
 	replyCh := make(chan simpleResult[T], len(replicas))
 	go func() {
+		defer close(replyCh)
 		var g errgroup.Group
 		for _, replica := range replicas {
 			replica := replica
@@ -138,26 +139,25 @@ func (c *coordinator[T]) commitAll2(ctx context.Context, replicas []string, op c
 			})
 		}
 		g.Wait()
-		defer close(replyCh)
 	}()
 
 	return replyCh
 }
 
 // Replicate writes on all replicas of specific shard
-func (c *coordinator[T]) Replicate2(ctx context.Context, ask readyOp, com commitOp[T]) (<-chan simpleResult[T], error) {
+func (c *coordinator[T]) Replicate2(ctx context.Context, cl ConsistencyLevel, ask readyOp, com commitOp[T]) (<-chan simpleResult[T], int, error) {
 	state, err := c.resolver.State(c.shard)
 	level := 0
 	if err == nil {
-		level, err = state.ConsistencyLevel(All)
+		level, err = state.ConsistencyLevel(cl)
 	}
 	c.nodes = state.Hosts
 	const msg = "replication with consistency level 'ALL'"
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w : class %q shard %q", msg, err, c.class, c.shard)
+		return nil, level, fmt.Errorf("%s: %w : class %q shard %q", msg, err, c.class, c.shard)
 	}
 	if err := c.broadcast(ctx, c.nodes, ask); err != nil {
-		return nil, fmt.Errorf("%s: broadcast: %w", msg, err)
+		return nil, level, fmt.Errorf("%s: broadcast: %w", msg, err)
 	}
-	return c.commitAll2(context.Background(), c.nodes, com), nil
+	return c.commitAll2(context.Background(), c.nodes, com), level, nil
 }

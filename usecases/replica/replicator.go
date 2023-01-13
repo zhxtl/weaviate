@@ -67,7 +67,7 @@ func NewReplicator(className string,
 }
 
 func (r *Replicator) PutObject(ctx context.Context, shard string,
-	obj *storobj.Object,
+	obj *storobj.Object, cl ConsistencyLevel,
 ) error {
 	coord := newCoordinator[SimpleResponse](r, shard, r.requestID(opPutObject))
 	op := func(ctx context.Context, host, requestID string) error {
@@ -80,7 +80,11 @@ func (r *Replicator) PutObject(ctx context.Context, shard string,
 		}
 		return nil
 	}
-	return coord.Replicate(ctx, op, r.simpleCommit(shard))
+	replych, level, err := coord.Replicate2(ctx, cl, op, r.simpleCommit(shard))
+	if err != nil {
+		return err
+	}
+	return errorsFromSimpleResponses2(1, level, replych)[0]
 }
 
 func (r *Replicator) PutObjects(ctx context.Context, shard string,
@@ -271,9 +275,7 @@ func errorsFromSimpleResponses2(batchSize int, level int, ch <-chan simpleResult
 			if _, ok := x.Err.(*Error); !ok && firstError == nil {
 				firstError = x.Err
 			}
-		} else if len(x.Response.Errors) != batchSize {
-			urs = append(urs, x.Response)
-		} else {
+		} else{
 			level--
 			if level == 0 {
 				return make([]error, batchSize)
@@ -282,3 +284,5 @@ func errorsFromSimpleResponses2(batchSize int, level int, ch <-chan simpleResult
 	}
 	return errorsFromSimpleResponses(batchSize, urs, firstError)
 }
+
+// type doAfter[T any] func (batchSize int, level int, ch <-chan simpleResult[T])

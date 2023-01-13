@@ -31,7 +31,7 @@ var (
 func TestReplicatorReplicaNotFound(t *testing.T) {
 	f := newFakeFactory("C1", "S", []string{})
 	rep := f.newReplicator()
-	err := rep.PutObject(context.Background(), "S", nil)
+	err := rep.PutObject(context.Background(), "S", nil, All)
 	assert.ErrorIs(t, err, errNoReplicaFound)
 }
 
@@ -51,7 +51,7 @@ func TestReplicatorPutObject(t *testing.T) {
 			f.Client.On("PutObject", ctx, n, cls, shard, anyVal, obj).Return(resp, nil)
 			f.Client.On("Commit", ctx, n, "C1", shard, anyVal, anyVal).Return(nil)
 		}
-		err := rep.PutObject(ctx, shard, obj)
+		err := rep.PutObject(ctx, shard, obj, All)
 		assert.Nil(t, err)
 	})
 
@@ -64,7 +64,7 @@ func TestReplicatorPutObject(t *testing.T) {
 		f.Client.On("Abort", ctx, nodes[0], "C1", shard, anyVal).Return(resp, nil)
 		f.Client.On("Abort", ctx, nodes[1], "C1", shard, anyVal).Return(resp, nil)
 
-		err := rep.PutObject(ctx, shard, obj)
+		err := rep.PutObject(ctx, shard, obj, All)
 		assert.ErrorIs(t, err, errAny)
 	})
 
@@ -78,7 +78,7 @@ func TestReplicatorPutObject(t *testing.T) {
 		f.Client.On("Abort", ctx, nodes[0], "C1", shard, anyVal).Return(resp, nil)
 		f.Client.On("Abort", ctx, nodes[1], "C1", shard, anyVal).Return(resp, nil)
 
-		err := rep.PutObject(ctx, shard, obj)
+		err := rep.PutObject(ctx, shard, obj, All)
 		want := &Error{}
 		assert.ErrorAs(t, err, &want)
 		assert.ErrorContains(t, err, errAny.Error())
@@ -94,7 +94,7 @@ func TestReplicatorPutObject(t *testing.T) {
 		f.Client.On("Commit", ctx, nodes[0], "C1", shard, anyVal, anyVal).Return(nil)
 		f.Client.On("Commit", ctx, nodes[1], "C1", shard, anyVal, anyVal).Return(errAny)
 
-		err := rep.PutObject(ctx, shard, obj)
+		err := rep.PutObject(ctx, shard, obj, All)
 		assert.ErrorIs(t, err, errAny)
 	})
 }
