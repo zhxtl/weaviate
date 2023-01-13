@@ -256,3 +256,29 @@ func (r *Replicator) requestID(op opID) string {
 		time.Now().UnixMilli(),
 		r.requestCounter.Add(1))
 }
+
+type simpleResult[T any] struct {
+	Response T
+	Err      error
+}
+
+func errorsFromSimpleResponses2(batchSize int, level int, ch <-chan simpleResult[SimpleResponse]) []error {
+	urs := make([]SimpleResponse, 0, level)
+	var firstError error
+	for x := range ch {
+		if x.Err != nil {
+			urs = append(urs, x.Response)
+			if _, ok := x.Err.(*Error); !ok && firstError == nil {
+				firstError = x.Err
+			}
+		} else if len(x.Response.Errors) != batchSize {
+			urs = append(urs, x.Response)
+		} else {
+			level--
+			if level == 0 {
+				return make([]error, batchSize)
+			}
+		}
+	}
+	return errorsFromSimpleResponses(batchSize, urs, firstError)
+}

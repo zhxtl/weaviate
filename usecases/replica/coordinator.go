@@ -122,3 +122,42 @@ func (c *coordinator[T]) Replicate(ctx context.Context, ask readyOp, com commitO
 	}
 	return nil
 }
+
+// commitAll tells replicas to commit pending updates related to a specific request
+// (second phase of a two-phase commit)
+func (c *coordinator[T]) commitAll2(ctx context.Context, replicas []string, op commitOp[T]) <-chan simpleResult[T] {
+	replyCh := make(chan simpleResult[T], len(replicas))
+	go func() {
+		var g errgroup.Group
+		for _, replica := range replicas {
+			replica := replica
+			g.Go(func() error {
+				resp, err := op(ctx, replica, c.requestID)
+				replyCh <- simpleResult[T]{resp, err}
+				return nil
+			})
+		}
+		g.Wait()
+		defer close(replyCh)
+	}()
+
+	return replyCh
+}
+
+// Replicate writes on all replicas of specific shard
+func (c *coordinator[T]) Replicate2(ctx context.Context, ask readyOp, com commitOp[T]) (<-chan simpleResult[T], error) {
+	state, err := c.resolver.State(c.shard)
+	level := 0
+	if err == nil {
+		level, err = state.ConsistencyLevel(All)
+	}
+	c.nodes = state.Hosts
+	const msg = "replication with consistency level 'ALL'"
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w : class %q shard %q", msg, err, c.class, c.shard)
+	}
+	if err := c.broadcast(ctx, c.nodes, ask); err != nil {
+		return nil, fmt.Errorf("%s: broadcast: %w", msg, err)
+	}
+	return c.commitAll2(context.Background(), c.nodes, com), nil
+}
