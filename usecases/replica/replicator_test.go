@@ -116,7 +116,7 @@ func TestReplicatorMergeObject(t *testing.T) {
 			f.Client.On("MergeObject", ctx, n, cls, shard, anyVal, merge).Return(resp, nil)
 			f.Client.On("Commit", ctx, n, cls, shard, anyVal, anyVal).Return(nil)
 		}
-		err := rep.MergeObject(ctx, shard, merge)
+		err := rep.MergeObject(ctx, shard, merge, All)
 		assert.Nil(t, err)
 	})
 
@@ -129,7 +129,7 @@ func TestReplicatorMergeObject(t *testing.T) {
 		f.Client.On("Abort", ctx, nodes[0], cls, shard, anyVal).Return(resp, nil)
 		f.Client.On("Abort", ctx, nodes[1], cls, shard, anyVal).Return(resp, nil)
 
-		err := rep.MergeObject(ctx, shard, merge)
+		err := rep.MergeObject(ctx, shard, merge, All)
 		assert.ErrorIs(t, err, errAny)
 	})
 
@@ -143,7 +143,7 @@ func TestReplicatorMergeObject(t *testing.T) {
 		f.Client.On("Abort", ctx, nodes[0], cls, shard, anyVal).Return(resp, nil)
 		f.Client.On("Abort", ctx, nodes[1], cls, shard, anyVal).Return(resp, nil)
 
-		err := rep.MergeObject(ctx, shard, merge)
+		err := rep.MergeObject(ctx, shard, merge, All)
 		want := &Error{}
 		assert.ErrorAs(t, err, &want)
 		assert.ErrorContains(t, err, errAny.Error())
@@ -159,7 +159,7 @@ func TestReplicatorMergeObject(t *testing.T) {
 		f.Client.On("Commit", ctx, nodes[0], cls, shard, anyVal, anyVal).Return(nil)
 		f.Client.On("Commit", ctx, nodes[1], cls, shard, anyVal, anyVal).Return(errAny)
 
-		err := rep.MergeObject(ctx, shard, merge)
+		err := rep.MergeObject(ctx, shard, merge, All)
 		assert.ErrorIs(t, err, errAny)
 	})
 }
@@ -180,7 +180,7 @@ func TestReplicatorDeleteObject(t *testing.T) {
 		client.On("DeleteObject", ctx, n, cls, shard, anyVal, uuid).Return(resp, nil)
 		client.On("Commit", ctx, n, "C1", shard, anyVal, anyVal).Return(nil)
 	}
-	err := rep.DeleteObject(ctx, shard, uuid)
+	err := rep.DeleteObject(ctx, shard, uuid, All)
 	assert.Nil(t, err)
 }
 
