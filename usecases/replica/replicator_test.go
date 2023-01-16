@@ -43,7 +43,8 @@ func TestReplicatorPutObject(t *testing.T) {
 		ctx   = context.Background()
 		obj   = &storobj.Object{}
 	)
-	t.Run("Success", func(t *testing.T) {
+	t.Run("SuccessWithConsistencyLevelAll", func(t *testing.T) {
+		nodes := []string{"A", "B", "C"}
 		f := newFakeFactory("C1", shard, nodes)
 		rep := f.newReplicator()
 		resp := SimpleResponse{}
@@ -52,6 +53,40 @@ func TestReplicatorPutObject(t *testing.T) {
 			f.Client.On("Commit", ctx, n, "C1", shard, anyVal, anyVal).Return(nil)
 		}
 		err := rep.PutObject(ctx, shard, obj, All)
+		assert.Nil(t, err)
+	})
+	t.Run("SuccessWithConsistencyLevelOne", func(t *testing.T) {
+		nodes := []string{"A", "B", "C"}
+		f := newFakeFactory("C1", shard, nodes)
+		rep := f.newReplicator()
+		resp := SimpleResponse{}
+
+		f.Client.On("PutObject", ctx, "A", cls, shard, anyVal, obj).Return(resp, errAny)
+		f.Client.On("Abort", ctx, "A", cls, shard, anyVal).Return(resp, nil)
+
+		f.Client.On("PutObject", ctx, "B", cls, shard, anyVal, obj).Return(resp, nil)
+		f.Client.On("Commit", ctx, "B", cls, shard, anyVal, anyVal).Return(errAny)
+
+		f.Client.On("PutObject", ctx, "C", cls, shard, anyVal, obj).Return(resp, nil)
+		f.Client.On("Commit", ctx, "C", cls, shard, anyVal, anyVal).Return(nil)
+		err := rep.PutObject(ctx, shard, obj, One)
+		assert.Nil(t, err)
+	})
+	t.Run("SuccessWithConsistencyLevelQuorum", func(t *testing.T) {
+		nodes := []string{"A", "B", "C"}
+		f := newFakeFactory("C1", shard, nodes)
+		rep := f.newReplicator()
+		resp := SimpleResponse{}
+		for _, n := range nodes[:2] {
+			f.Client.On("PutObject", ctx, n, cls, shard, anyVal, obj).Return(resp, nil)
+			f.Client.On("Commit", ctx, n, "C1", shard, anyVal, anyVal).Return(nil)
+		}
+		f.Client.On("PutObject", ctx, "C", cls, shard, anyVal, obj).Return(resp, nil)
+		f.Client.On("Commit", ctx, "C", cls, shard, anyVal, anyVal).Return(nil).RunFn = func(a mock.Arguments) {
+			resp := a[5].(*SimpleResponse)
+			*resp = SimpleResponse{Errors: []Error{{Msg: "e3"}}}
+		}
+		err := rep.PutObject(ctx, shard, obj, Quorum)
 		assert.Nil(t, err)
 	})
 
