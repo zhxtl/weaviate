@@ -307,3 +307,25 @@ func errorsFromSimpleResponses2(batchSize int, level int, ch <-chan simpleResult
 	}
 	return errorsFromSimpleResponses(batchSize, urs, firstError)
 }
+
+func readDeletionResponses(batchSize int, level int, ch <-chan simpleResult[DeleteBatchResponse]) []objects.BatchSimpleObject {
+	rs := make([]DeleteBatchResponse, 0, level)
+	urs := make([]DeleteBatchResponse, 0, level)
+	var firstError error
+	for x := range ch {
+		if x.Err != nil {
+			urs = append(urs, x.Response)
+			if _, ok := x.Err.(*Error); !ok && firstError == nil {
+				firstError = x.Err
+			}
+		} else {
+			level--
+			rs = append(rs, x.Response)
+			if level == 0 {
+				return resultsFromDeletionResponses(batchSize, rs, nil)
+			}
+		}
+	}
+	urs = append(urs, rs...)
+	return resultsFromDeletionResponses(batchSize, urs, nil)
+}

@@ -14,6 +14,7 @@ package replica
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"golang.org/x/sync/errgroup"
 )
@@ -33,7 +34,7 @@ type coordinator[T any] struct {
 	requestID string
 	// responses collect all responses of batch job
 	responses []T
-	//nodes     []string
+	// nodes     []string
 }
 
 func newCoordinator[T any](r *Replicator, shard, requestID string) *coordinator[T] {
@@ -133,31 +134,28 @@ func (c *coordinator[T]) broadcast2(ctx context.Context, replicas []string, op r
 		i, replica := i, replica
 		g.Go(func() error {
 			errs[i] = op(ctx, replica, c.requestID)
-			return nil
+			return errs[i]
 		})
 	}
-	g.Wait()
-	var lastErr error
+	firstErr := g.Wait()
 	for i, err := range errs {
 		if err == nil {
 			activeReplicas = append(activeReplicas, replicas[i])
-		} else {
-			lastErr = err
 		}
 	}
 	if len(activeReplicas) < level {
-		lastErr = fmt.Errorf("no enough active replicas found: %w", lastErr)
+		firstErr = fmt.Errorf("no enough active replicas found: %w", firstErr)
 	} else {
-		lastErr = nil
+		firstErr = nil
 	}
 
-	if lastErr != nil {
+	if firstErr != nil {
 		for _, node := range replicas {
 			c.Abort(ctx, node, c.class, c.shard, c.requestID)
 		}
 	}
 
-	return activeReplicas, lastErr
+	return activeReplicas, firstErr
 }
 
 // commitAll tells replicas to commit pending updates related to a specific request
@@ -165,17 +163,17 @@ func (c *coordinator[T]) broadcast2(ctx context.Context, replicas []string, op r
 func (c *coordinator[T]) commitAll2(ctx context.Context, replicas []string, op commitOp[T]) <-chan simpleResult[T] {
 	replyCh := make(chan simpleResult[T], len(replicas))
 	go func() {
-		defer close(replyCh)
-		var g errgroup.Group
+		wg := sync.WaitGroup{}
+		wg.Add(len(replicas))
 		for _, replica := range replicas {
-			replica := replica
-			g.Go(func() error {
+			go func(replica string) {
+				defer wg.Done()
 				resp, err := op(ctx, replica, c.requestID)
 				replyCh <- simpleResult[T]{resp, err}
-				return nil
-			})
+			}(replica)
 		}
-		g.Wait()
+		wg.Wait()
+		close(replyCh)
 	}()
 
 	return replyCh
@@ -188,7 +186,7 @@ func (c *coordinator[T]) Replicate2(ctx context.Context, cl ConsistencyLevel, as
 	if err == nil {
 		level, err = state.ConsistencyLevel(cl)
 	}
-	const msg = "replication with consistency level 'ALL'" // TODO maybe move to upper level 
+	const msg = "replication with consistency level 'ALL'" // TODO maybe move to upper level
 	if err != nil {
 		return nil, level, fmt.Errorf("%s: %w : class %q shard %q", msg, err, c.class, c.shard)
 	}
