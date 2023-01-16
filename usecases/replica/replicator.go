@@ -109,7 +109,7 @@ func (r *Replicator) MergeObject(ctx context.Context, shard string,
 }
 
 func (r *Replicator) PutObjects(ctx context.Context, shard string,
-	objs []*storobj.Object,
+	objs []*storobj.Object, cl ConsistencyLevel,
 ) []error {
 	coord := newCoordinator[SimpleResponse](r, shard, r.requestID(opPutObjects))
 	op := func(ctx context.Context, host, requestID string) error {
@@ -122,8 +122,16 @@ func (r *Replicator) PutObjects(ctx context.Context, shard string,
 		}
 		return nil
 	}
-	err := coord.Replicate(ctx, op, r.simpleCommit(shard))
-	return errorsFromSimpleResponses(len(objs), coord.responses, err)
+
+	replyCh, level, err := coord.Replicate2(ctx, cl, op, r.simpleCommit(shard))
+	if err != nil {
+		errs := make([]error, len(objs))
+		for i := 0; i < len(objs); i++ {
+			errs[i] = err
+		}
+		return errs
+	}
+	return errorsFromSimpleResponses2(len(objs), level, replyCh)
 }
 
 func (r *Replicator) DeleteObject(ctx context.Context, shard string,
@@ -193,7 +201,7 @@ func (r *Replicator) DeleteObjects(ctx context.Context, shard string,
 }
 
 func (r *Replicator) AddReferences(ctx context.Context, shard string,
-	refs []objects.BatchReference,
+	refs []objects.BatchReference, cl ConsistencyLevel,
 ) []error {
 	coord := newCoordinator[SimpleResponse](r, shard, r.requestID(opAddReferences))
 	op := func(ctx context.Context, host, requestID string) error {
@@ -206,8 +214,15 @@ func (r *Replicator) AddReferences(ctx context.Context, shard string,
 		}
 		return nil
 	}
-	err := coord.Replicate(ctx, op, r.simpleCommit(shard))
-	return errorsFromSimpleResponses(len(refs), coord.responses, err)
+	replyCh, level, err := coord.Replicate2(ctx, cl, op, r.simpleCommit(shard))
+	if err != nil {
+		errs := make([]error, len(refs))
+		for i := 0; i < len(refs); i++ {
+			errs[i] = err
+		}
+		return errs
+	}
+	return errorsFromSimpleResponses2(len(refs), level, replyCh)
 }
 
 func errorsFromSimpleResponses(batchSize int, rs []SimpleResponse, defaultErr error) []error {
@@ -292,5 +307,3 @@ func errorsFromSimpleResponses2(batchSize int, level int, ch <-chan simpleResult
 	}
 	return errorsFromSimpleResponses(batchSize, urs, firstError)
 }
-
-// type doAfter[T any] func (batchSize int, level int, ch <-chan simpleResult[T])

@@ -241,7 +241,7 @@ func TestReplicatorPutObjects(t *testing.T) {
 			f.Client.On("PutObjects", ctx, n, cls, shard, anyVal, objs).Return(resp, nil)
 			f.Client.On("Commit", ctx, n, cls, shard, anyVal, anyVal).Return(nil)
 		}
-		errs := rep.PutObjects(ctx, shard, objs)
+		errs := rep.PutObjects(ctx, shard, objs, All)
 		assert.Equal(t, []error{nil, nil, nil}, errs)
 	})
 
@@ -254,7 +254,7 @@ func TestReplicatorPutObjects(t *testing.T) {
 		f.Client.On("Abort", ctx, nodes[0], "C1", shard, anyVal).Return(resp, nil)
 		f.Client.On("Abort", ctx, nodes[1], "C1", shard, anyVal).Return(resp, nil)
 
-		errs := rep.PutObjects(ctx, shard, objs)
+		errs := rep.PutObjects(ctx, shard, objs, All)
 		assert.Equal(t, 3, len(errs))
 		assert.ErrorIs(t, errs[0], errAny)
 	})
@@ -269,7 +269,7 @@ func TestReplicatorPutObjects(t *testing.T) {
 		f.Client.On("Abort", ctx, nodes[0], "C1", shard, anyVal).Return(resp, nil)
 		f.Client.On("Abort", ctx, nodes[1], "C1", shard, anyVal).Return(resp, nil)
 
-		errs := rep.PutObjects(ctx, shard, objs)
+		errs := rep.PutObjects(ctx, shard, objs, All)
 		want := &Error{}
 		assert.Equal(t, 3, len(errs))
 		assert.ErrorAs(t, errs[0], &want)
@@ -288,7 +288,7 @@ func TestReplicatorPutObjects(t *testing.T) {
 		}
 		f.Client.On("Commit", ctx, nodes[1], cls, shard, anyVal, anyVal).Return(errAny)
 
-		errs := rep.PutObjects(ctx, shard, objs)
+		errs := rep.PutObjects(ctx, shard, objs, All)
 		assert.Equal(t, len(errs), 3)
 		assert.ErrorIs(t, errs[0], errAny)
 		assert.ErrorIs(t, errs[1], errAny)
@@ -312,7 +312,7 @@ func TestReplicatorPutObjects(t *testing.T) {
 			*resp = SimpleResponse{Errors: node2Errs}
 		}
 
-		errs := rep.PutObjects(ctx, shard, objs)
+		errs := rep.PutObjects(ctx, shard, objs, All)
 		assert.Equal(t, len(errs), len(objs))
 
 		wantError := []error{&node2Errs[0], nil, &node2Errs[2]}
@@ -336,7 +336,7 @@ func TestReplicatorAddReferences(t *testing.T) {
 			f.Client.On("AddReferences", ctx, n, cls, shard, anyVal, refs).Return(resp, nil)
 			f.Client.On("Commit", ctx, n, cls, shard, anyVal, anyVal).Return(nil)
 		}
-		errs := rep.AddReferences(ctx, shard, refs)
+		errs := rep.AddReferences(ctx, shard, refs, All)
 		assert.Equal(t, []error{nil, nil}, errs)
 	})
 
@@ -349,7 +349,7 @@ func TestReplicatorAddReferences(t *testing.T) {
 		f.Client.On("Abort", ctx, nodes[0], "C1", shard, anyVal).Return(resp, nil)
 		f.Client.On("Abort", ctx, nodes[1], "C1", shard, anyVal).Return(resp, nil)
 
-		errs := rep.AddReferences(ctx, shard, refs)
+		errs := rep.AddReferences(ctx, shard, refs, All)
 		assert.Equal(t, 2, len(errs))
 		assert.ErrorIs(t, errs[0], errAny)
 	})
@@ -364,7 +364,7 @@ func TestReplicatorAddReferences(t *testing.T) {
 		f.Client.On("Abort", ctx, nodes[0], "C1", shard, anyVal).Return(resp, nil)
 		f.Client.On("Abort", ctx, nodes[1], "C1", shard, anyVal).Return(resp, nil)
 
-		errs := rep.AddReferences(ctx, shard, refs)
+		errs := rep.AddReferences(ctx, shard, refs, All)
 		want := &Error{}
 		assert.Equal(t, 2, len(errs))
 		assert.ErrorAs(t, errs[0], &want)
@@ -380,7 +380,7 @@ func TestReplicatorAddReferences(t *testing.T) {
 		f.Client.On("Commit", ctx, nodes[0], cls, shard, anyVal, anyVal).Return(nil)
 		f.Client.On("Commit", ctx, nodes[1], cls, shard, anyVal, anyVal).Return(errAny)
 
-		errs := rep.AddReferences(ctx, shard, refs)
+		errs := rep.AddReferences(ctx, shard, refs, All)
 		assert.Equal(t, len(errs), 2)
 		assert.ErrorIs(t, errs[0], errAny)
 		assert.ErrorIs(t, errs[1], errAny)
