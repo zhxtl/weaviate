@@ -144,7 +144,7 @@ func (c *coordinator[T]) broadcast2(ctx context.Context, replicas []string, op r
 		}
 	}
 	if len(activeReplicas) < level {
-		firstErr = fmt.Errorf("no enough active replicas found: %w", firstErr)
+		firstErr = fmt.Errorf("not enough active replicas found: %w", firstErr)
 	} else {
 		firstErr = nil
 	}

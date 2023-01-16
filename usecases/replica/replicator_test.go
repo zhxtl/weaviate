@@ -192,6 +192,22 @@ func TestReplicatorDeleteObjects(t *testing.T) {
 		ctx   = context.Background()
 	)
 
+	t.Run("PhaseOneConnectionError", func(t *testing.T) {
+		factory := newFakeFactory("C1", shard, nodes)
+		client := factory.Client
+		docIDs := []uint64{1, 2}
+		client.On("DeleteObjects", ctx, nodes[0], cls, shard, anyVal, docIDs, false).Return(SimpleResponse{}, nil)
+		client.On("DeleteObjects", ctx, nodes[1], cls, shard, anyVal, docIDs, false).Return(SimpleResponse{}, errAny)
+		for _, n := range nodes {
+			client.On("Abort", ctx, n, "C1", shard, anyVal).Return(SimpleResponse{}, nil)
+		}
+		result := factory.newReplicator().DeleteObjects(ctx, shard, docIDs, false, All)
+		assert.Equal(t, len(result), 2)
+		for _, r := range result {
+			assert.ErrorIs(t, r.Err, errAny)
+		}
+	})
+
 	t.Run("PhaseTwoDecodingError", func(t *testing.T) {
 		factory := newFakeFactory("C1", shard, nodes)
 		client := factory.Client
@@ -200,7 +216,7 @@ func TestReplicatorDeleteObjects(t *testing.T) {
 			client.On("DeleteObjects", ctx, n, cls, shard, anyVal, docIDs, false).Return(SimpleResponse{}, nil)
 			client.On("Commit", ctx, n, cls, shard, anyVal, anyVal).Return(errAny)
 		}
-		result := factory.newReplicator().DeleteObjects(ctx, shard, docIDs, false)
+		result := factory.newReplicator().DeleteObjects(ctx, shard, docIDs, false, All)
 		assert.Equal(t, len(result), 2)
 	})
 	t.Run("PartialSuccess", func(t *testing.T) {
@@ -218,10 +234,30 @@ func TestReplicatorDeleteObjects(t *testing.T) {
 				}
 			}
 		}
-		result := rep.DeleteObjects(ctx, shard, docIDs, false)
+		result := rep.DeleteObjects(ctx, shard, docIDs, false, All)
 		assert.Equal(t, len(result), 2)
 		assert.Equal(t, objects.BatchSimpleObject{UUID: "1", Err: nil}, result[0])
 		assert.Equal(t, objects.BatchSimpleObject{UUID: "2", Err: &Error{Msg: "e1"}}, result[1])
+	})
+	t.Run("Success", func(t *testing.T) {
+		factory := newFakeFactory("C1", shard, nodes)
+		client := factory.Client
+		rep := factory.newReplicator()
+		docIDs := []uint64{1, 2}
+		resp1 := SimpleResponse{}
+		for _, n := range nodes {
+			client.On("DeleteObjects", ctx, n, cls, shard, anyVal, docIDs, false).Return(resp1, nil)
+			client.On("Commit", ctx, n, cls, shard, anyVal, anyVal).Return(nil).RunFn = func(args mock.Arguments) {
+				resp := args[5].(*DeleteBatchResponse)
+				*resp = DeleteBatchResponse{
+					Batch: []UUID2Error{{UUID: "1"}, {UUID: "2"}},
+				}
+			}
+		}
+		result := rep.DeleteObjects(ctx, shard, docIDs, false, All)
+		assert.Equal(t, len(result), 2)
+		assert.Equal(t, objects.BatchSimpleObject{UUID: "1", Err: nil}, result[0])
+		assert.Equal(t, objects.BatchSimpleObject{UUID: "2", Err: nil}, result[1])
 	})
 }
 

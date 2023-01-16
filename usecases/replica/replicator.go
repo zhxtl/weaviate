@@ -84,7 +84,7 @@ func (r *Replicator) PutObject(ctx context.Context, shard string,
 	if err != nil {
 		return err
 	}
-	return errorsFromSimpleResponses2(1, level, replyCh)[0]
+	return readSimpleResponses(1, level, replyCh)[0]
 }
 
 func (r *Replicator) MergeObject(ctx context.Context, shard string,
@@ -105,7 +105,7 @@ func (r *Replicator) MergeObject(ctx context.Context, shard string,
 	if err != nil {
 		return err
 	}
-	return errorsFromSimpleResponses2(1, level, replyCh)[0]
+	return readSimpleResponses(1, level, replyCh)[0]
 }
 
 func (r *Replicator) PutObjects(ctx context.Context, shard string,
@@ -131,7 +131,7 @@ func (r *Replicator) PutObjects(ctx context.Context, shard string,
 		}
 		return errs
 	}
-	return errorsFromSimpleResponses2(len(objs), level, replyCh)
+	return readSimpleResponses(len(objs), level, replyCh)
 }
 
 func (r *Replicator) DeleteObject(ctx context.Context, shard string,
@@ -152,7 +152,7 @@ func (r *Replicator) DeleteObject(ctx context.Context, shard string,
 	if err != nil {
 		return err
 	}
-	return errorsFromSimpleResponses2(1, level, replyCh)[0]
+	return readSimpleResponses(1, level, replyCh)[0]
 }
 
 func (r *Replicator) simpleCommit(shard string) commitOp[SimpleResponse] {
@@ -170,7 +170,7 @@ func (r *Replicator) simpleCommit(shard string) commitOp[SimpleResponse] {
 }
 
 func (r *Replicator) DeleteObjects(ctx context.Context, shard string,
-	docIDs []uint64, dryRun bool,
+	docIDs []uint64, dryRun bool, cl ConsistencyLevel,
 ) []objects.BatchSimpleObject {
 	coord := newCoordinator[DeleteBatchResponse](r, shard, r.requestID(opDeleteObjects))
 	op := func(ctx context.Context, host, requestID string) error {
@@ -196,8 +196,15 @@ func (r *Replicator) DeleteObjects(ctx context.Context, shard string,
 		return resp, err
 	}
 
-	err := coord.Replicate(ctx, op, commit)
-	return resultsFromDeletionResponses(len(docIDs), coord.responses, err)
+	replyCh, level, err := coord.Replicate2(ctx, cl, op, commit)
+	if err != nil {
+		errs := make([]objects.BatchSimpleObject, len(docIDs))
+		for i := 0; i < len(docIDs); i++ {
+			errs[i].Err = err
+		}
+		return errs
+	}
+	return readDeletionResponses(len(docIDs), level, replyCh)
 }
 
 func (r *Replicator) AddReferences(ctx context.Context, shard string,
@@ -222,7 +229,7 @@ func (r *Replicator) AddReferences(ctx context.Context, shard string,
 		}
 		return errs
 	}
-	return errorsFromSimpleResponses2(len(refs), level, replyCh)
+	return readSimpleResponses(len(refs), level, replyCh)
 }
 
 func errorsFromSimpleResponses(batchSize int, rs []SimpleResponse, defaultErr error) []error {
@@ -289,7 +296,7 @@ type simpleResult[T any] struct {
 	Err      error
 }
 
-func errorsFromSimpleResponses2(batchSize int, level int, ch <-chan simpleResult[SimpleResponse]) []error {
+func readSimpleResponses(batchSize int, level int, ch <-chan simpleResult[SimpleResponse]) []error {
 	urs := make([]SimpleResponse, 0, level)
 	var firstError error
 	for x := range ch {
