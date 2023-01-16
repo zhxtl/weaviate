@@ -239,7 +239,7 @@ func TestReplicatorDeleteObjects(t *testing.T) {
 		assert.Equal(t, objects.BatchSimpleObject{UUID: "1", Err: nil}, result[0])
 		assert.Equal(t, objects.BatchSimpleObject{UUID: "2", Err: &Error{Msg: "e1"}}, result[1])
 	})
-	t.Run("Success", func(t *testing.T) {
+	t.Run("SuccessWithConsistencyLevelAll", func(t *testing.T) {
 		factory := newFakeFactory("C1", shard, nodes)
 		client := factory.Client
 		rep := factory.newReplicator()
@@ -258,6 +258,53 @@ func TestReplicatorDeleteObjects(t *testing.T) {
 		assert.Equal(t, len(result), 2)
 		assert.Equal(t, objects.BatchSimpleObject{UUID: "1", Err: nil}, result[0])
 		assert.Equal(t, objects.BatchSimpleObject{UUID: "2", Err: nil}, result[1])
+	})
+
+	t.Run("SuccessWithConsistencyLevelOne", func(t *testing.T) {
+		factory := newFakeFactory("C1", shard, nodes)
+		client := factory.Client
+		rep := factory.newReplicator()
+		docIDs := []uint64{1, 2}
+		resp1 := SimpleResponse{}
+		client.On("DeleteObjects", ctx, nodes[0], cls, shard, anyVal, docIDs, false).Return(resp1, nil)
+		client.On("DeleteObjects", ctx, nodes[1], cls, shard, anyVal, docIDs, false).Return(resp1, errAny)
+		client.On("Commit", ctx, nodes[0], cls, shard, anyVal, anyVal).Return(nil).RunFn = func(args mock.Arguments) {
+			resp := args[5].(*DeleteBatchResponse)
+			*resp = DeleteBatchResponse{
+				Batch: []UUID2Error{{UUID: "1"}, {UUID: "2"}},
+			}
+		}
+		result := rep.DeleteObjects(ctx, shard, docIDs, false, One)
+		assert.Equal(t, len(result), 2)
+		assert.Equal(t, []objects.BatchSimpleObject{{UUID: "1"}, {UUID: "2"}}, result)
+	})
+	t.Run("SuccessWithConsistencyQuorum", func(t *testing.T) {
+		nodes = []string{"A", "B", "C"}
+		factory := newFakeFactory("C1", shard, nodes)
+		client := factory.Client
+		rep := factory.newReplicator()
+		docIDs := []uint64{1, 2}
+		resp1 := SimpleResponse{}
+		for _, n := range nodes {
+			client.On("DeleteObjects", ctx, n, cls, shard, anyVal, docIDs, false).Return(resp1, nil)
+		}
+		for _, n := range nodes[:2] {
+			client.On("Commit", ctx, n, cls, shard, anyVal, anyVal).Return(nil).RunFn = func(args mock.Arguments) {
+				resp := args[5].(*DeleteBatchResponse)
+				*resp = DeleteBatchResponse{
+					Batch: []UUID2Error{{UUID: "1"}, {UUID: "2"}},
+				}
+			}
+		}
+		client.On("Commit", ctx, "C", cls, shard, anyVal, anyVal).Return(nil).RunFn = func(args mock.Arguments) {
+			resp := args[5].(*DeleteBatchResponse)
+			*resp = DeleteBatchResponse{
+				Batch: []UUID2Error{{UUID: "1"}, {UUID: "2", Error: Error{Msg: "e2"}}},
+			}
+		}
+		result := rep.DeleteObjects(ctx, shard, docIDs, false, Quorum)
+		assert.Equal(t, len(result), 2)
+		assert.Equal(t, []objects.BatchSimpleObject{{UUID: "1"}, {UUID: "2"}}, result)
 	})
 }
 
