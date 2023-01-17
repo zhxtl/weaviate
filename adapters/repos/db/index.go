@@ -1291,7 +1291,7 @@ func (i *Index) batchDeleteObjects(ctx context.Context,
 
 			var objs objects.BatchSimpleObjects
 			if i.replicationEnabled() {
-				objs = i.replicator.DeleteObjects(ctx, shardName, docIDs, dryRun)
+				objs = i.replicator.DeleteObjects(ctx, shardName, docIDs, dryRun, replica.All)
 			} else if i.isLocalShard(shardName) {
 				shard := i.Shards[shardName]
 				objs = shard.deleteObjectBatch(ctx, docIDs, dryRun)
