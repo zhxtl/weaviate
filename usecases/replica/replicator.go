@@ -302,7 +302,7 @@ func readSimpleResponses(batchSize int, level int, ch <-chan simpleResult[Simple
 	for x := range ch {
 		if x.Err != nil {
 			urs = append(urs, x.Response)
-			if _, ok := x.Err.(*Error); !ok && firstError == nil {
+			if len(x.Response.Errors) == 0 && firstError == nil {
 				firstError = x.Err
 			}
 		} else {
@@ -322,7 +322,7 @@ func readDeletionResponses(batchSize int, level int, ch <-chan simpleResult[Dele
 	for x := range ch {
 		if x.Err != nil {
 			urs = append(urs, x.Response)
-			if _, ok := x.Err.(*Error); !ok && firstError == nil {
+			if len(x.Response.Batch) == 0 && firstError == nil {
 				firstError = x.Err
 			}
 		} else {

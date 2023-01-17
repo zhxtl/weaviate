@@ -350,8 +350,9 @@ func TestReplicatorPutObjects(t *testing.T) {
 		nodes = []string{"A", "B"}
 		ctx   = context.Background()
 		objs  = []*storobj.Object{{}, {}, {}}
+		resp1 = SimpleResponse{[]Error{{}}}
 	)
-	t.Run("Success", func(t *testing.T) {
+	t.Run("SuccessWithConsistencyLevelAll", func(t *testing.T) {
 		f := newFakeFactory("C1", shard, nodes)
 		rep := f.newReplicator()
 		resp := SimpleResponse{Errors: make([]Error, 3)}
@@ -362,15 +363,53 @@ func TestReplicatorPutObjects(t *testing.T) {
 		errs := rep.PutObjects(ctx, shard, objs, All)
 		assert.Equal(t, []error{nil, nil, nil}, errs)
 	})
+	t.Run("SuccessWithConsistencyLevelOne", func(t *testing.T) {
+		nodes := []string{"A", "B", "C"}
+		f := newFakeFactory("C1", shard, nodes)
+		rep := f.newReplicator()
+		for _, n := range nodes[:2] {
+			f.Client.On("PutObjects", ctx, n, cls, shard, anyVal, objs).Return(resp1, nil)
+			f.Client.On("Commit", ctx, n, cls, shard, anyVal, anyVal).Return(nil).RunFn = func(a mock.Arguments) {
+				resp := a[5].(*SimpleResponse)
+				*resp = SimpleResponse{Errors: []Error{{}, {}, {Msg: "e3"}}}
+			}
+		}
+		f.Client.On("PutObjects", ctx, "C", cls, shard, anyVal, objs).Return(resp1, nil)
+		f.Client.On("Commit", ctx, "C", cls, shard, anyVal, anyVal).Return(nil).RunFn = func(a mock.Arguments) {
+			resp := a[5].(*SimpleResponse)
+			*resp = SimpleResponse{Errors: make([]Error, 3)}
+		}
+		errs := rep.PutObjects(ctx, shard, objs, One)
+		assert.Equal(t, []error{nil, nil, nil}, errs)
+	})
+
+	t.Run("SuccessWithConsistencyLevelQuorum", func(t *testing.T) {
+		nodes := []string{"A", "B", "C"}
+		f := newFakeFactory("C1", shard, nodes)
+		rep := f.newReplicator()
+		for _, n := range nodes[:2] {
+			f.Client.On("PutObjects", ctx, n, cls, shard, anyVal, objs).Return(resp1, nil)
+			f.Client.On("Commit", ctx, n, cls, shard, anyVal, anyVal).Return(nil).RunFn = func(a mock.Arguments) {
+				resp := a[5].(*SimpleResponse)
+				*resp = SimpleResponse{Errors: []Error{{}}}
+			}
+		}
+		f.Client.On("PutObjects", ctx, "C", cls, shard, anyVal, objs).Return(resp1, nil)
+		f.Client.On("Commit", ctx, "C", cls, shard, anyVal, anyVal).Return(nil).RunFn = func(a mock.Arguments) {
+			resp := a[5].(*SimpleResponse)
+			*resp = SimpleResponse{Errors: []Error{{Msg: "e3"}}}
+		}
+		errs := rep.PutObjects(ctx, shard, objs, Quorum)
+		assert.Equal(t, []error{nil, nil, nil}, errs)
+	})
 
 	t.Run("PhaseOneConnectionError", func(t *testing.T) {
 		f := newFakeFactory("C1", shard, nodes)
 		rep := f.newReplicator()
-		resp := SimpleResponse{}
-		f.Client.On("PutObjects", ctx, nodes[0], cls, shard, anyVal, objs).Return(resp, nil)
-		f.Client.On("PutObjects", ctx, nodes[1], cls, shard, anyVal, objs).Return(resp, errAny)
-		f.Client.On("Abort", ctx, nodes[0], "C1", shard, anyVal).Return(resp, nil)
-		f.Client.On("Abort", ctx, nodes[1], "C1", shard, anyVal).Return(resp, nil)
+		f.Client.On("PutObjects", ctx, nodes[0], cls, shard, anyVal, objs).Return(resp1, nil)
+		f.Client.On("PutObjects", ctx, nodes[1], cls, shard, anyVal, objs).Return(resp1, errAny)
+		f.Client.On("Abort", ctx, nodes[0], "C1", shard, anyVal).Return(resp1, nil)
+		f.Client.On("Abort", ctx, nodes[1], "C1", shard, anyVal).Return(resp1, nil)
 
 		errs := rep.PutObjects(ctx, shard, objs, All)
 		assert.Equal(t, 3, len(errs))
@@ -380,12 +419,11 @@ func TestReplicatorPutObjects(t *testing.T) {
 	t.Run("PhaseOneUnsuccessfulResponse", func(t *testing.T) {
 		f := newFakeFactory("C1", shard, nodes)
 		rep := f.newReplicator()
-		resp := SimpleResponse{}
-		f.Client.On("PutObjects", ctx, nodes[0], cls, shard, anyVal, objs).Return(resp, nil)
+		f.Client.On("PutObjects", ctx, nodes[0], cls, shard, anyVal, objs).Return(resp1, nil)
 		resp2 := SimpleResponse{[]Error{{Msg: "E1"}, {Msg: "E2"}}}
 		f.Client.On("PutObjects", ctx, nodes[1], cls, shard, anyVal, objs).Return(resp2, nil)
-		f.Client.On("Abort", ctx, nodes[0], "C1", shard, anyVal).Return(resp, nil)
-		f.Client.On("Abort", ctx, nodes[1], "C1", shard, anyVal).Return(resp, nil)
+		f.Client.On("Abort", ctx, nodes[0], "C1", shard, anyVal).Return(resp1, nil)
+		f.Client.On("Abort", ctx, nodes[1], "C1", shard, anyVal).Return(resp1, nil)
 
 		errs := rep.PutObjects(ctx, shard, objs, All)
 		want := &Error{}
@@ -396,9 +434,8 @@ func TestReplicatorPutObjects(t *testing.T) {
 	t.Run("PhaseTwoDecodingError", func(t *testing.T) {
 		f := newFakeFactory(cls, shard, nodes)
 		rep := f.newReplicator()
-		resp := SimpleResponse{}
 		for _, n := range nodes {
-			f.Client.On("PutObjects", ctx, n, cls, shard, anyVal, objs).Return(resp, nil)
+			f.Client.On("PutObjects", ctx, n, cls, shard, anyVal, objs).Return(resp1, nil)
 		}
 		f.Client.On("Commit", ctx, nodes[0], cls, shard, anyVal, anyVal).Return(nil).RunFn = func(a mock.Arguments) {
 			resp := a[5].(*SimpleResponse)
@@ -416,10 +453,9 @@ func TestReplicatorPutObjects(t *testing.T) {
 	t.Run("PhaseTwoUnsuccessfulResponse", func(t *testing.T) {
 		f := newFakeFactory(cls, shard, nodes)
 		rep := f.newReplicator()
-		resp := SimpleResponse{}
 		node2Errs := []Error{{Msg: "E1"}, {}, {Msg: "E3"}}
 		for _, n := range nodes {
-			f.Client.On("PutObjects", ctx, n, cls, shard, anyVal, objs).Return(resp, nil)
+			f.Client.On("PutObjects", ctx, n, cls, shard, anyVal, objs).Return(resp1, nil)
 		}
 		f.Client.On("Commit", ctx, nodes[0], cls, shard, anyVal, anyVal).Return(nil).RunFn = func(a mock.Arguments) {
 			resp := a[5].(*SimpleResponse)
