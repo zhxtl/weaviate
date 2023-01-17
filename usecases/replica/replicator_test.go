@@ -201,22 +201,97 @@ func TestReplicatorMergeObject(t *testing.T) {
 
 func TestReplicatorDeleteObject(t *testing.T) {
 	var (
-		cls     = "C1"
-		shard   = "SH1"
-		nodes   = []string{"A", "B"}
-		ctx     = context.Background()
-		factory = newFakeFactory("C1", shard, nodes)
-		client  = factory.Client
+		cls   = "C1"
+		shard = "SH1"
+		nodes = []string{"A", "B", "C"}
+		uuid  = strfmt.UUID("1234")
+		ctx   = context.Background()
 	)
-	rep := factory.newReplicator()
-	uuid := strfmt.UUID("1234")
-	resp := SimpleResponse{}
-	for _, n := range nodes {
-		client.On("DeleteObject", ctx, n, cls, shard, anyVal, uuid).Return(resp, nil)
-		client.On("Commit", ctx, n, "C1", shard, anyVal, anyVal).Return(nil)
-	}
-	err := rep.DeleteObject(ctx, shard, uuid, All)
-	assert.Nil(t, err)
+	t.Run("PhaseOneConnectionError", func(t *testing.T) {
+		factory := newFakeFactory("C1", shard, nodes)
+		client := factory.Client
+		rep := factory.newReplicator()
+		resp := SimpleResponse{Errors: make([]Error, 1)}
+		for _, n := range nodes[:2] {
+			client.On("DeleteObject", ctx, n, cls, shard, anyVal, uuid).Return(resp, nil)
+			client.On("Commit", ctx, n, "C1", shard, anyVal, anyVal).Return(nil)
+		}
+		client.On("DeleteObject", ctx, "C", cls, shard, anyVal, uuid).Return(SimpleResponse{}, errAny)
+		for _, n := range nodes {
+			client.On("Abort", ctx, n, "C1", shard, anyVal).Return(resp, nil)
+		}
+
+		err := rep.DeleteObject(ctx, shard, uuid, All)
+		assert.NotNil(t, err)
+		assert.ErrorIs(t, err, errAny)
+	})
+
+	t.Run("SuccessWithConsistencyLevelAll", func(t *testing.T) {
+		factory := newFakeFactory("C1", shard, nodes)
+		client := factory.Client
+		rep := factory.newReplicator()
+		resp := SimpleResponse{Errors: make([]Error, 1)}
+		for _, n := range nodes {
+			client.On("DeleteObject", ctx, n, cls, shard, anyVal, uuid).Return(resp, nil)
+			client.On("Commit", ctx, n, "C1", shard, anyVal, anyVal).Return(nil)
+		}
+		assert.Nil(t, rep.DeleteObject(ctx, shard, uuid, All))
+		assert.Nil(t, rep.DeleteObject(ctx, shard, uuid, Quorum))
+		assert.Nil(t, rep.DeleteObject(ctx, shard, uuid, One))
+	})
+	t.Run("SuccessWithConsistencyQuorum", func(t *testing.T) {
+		factory := newFakeFactory("C1", shard, nodes)
+		client := factory.Client
+		rep := factory.newReplicator()
+		resp := SimpleResponse{Errors: make([]Error, 1)}
+		for _, n := range nodes[:2] {
+			client.On("DeleteObject", ctx, n, cls, shard, anyVal, uuid).Return(resp, nil)
+			client.On("Commit", ctx, n, "C1", shard, anyVal, anyVal).Return(nil).RunFn = func(a mock.Arguments) {
+				resp := a[5].(*SimpleResponse)
+				*resp = SimpleResponse{
+					Errors: []Error{{}},
+				}
+			}
+		}
+		client.On("DeleteObject", ctx, "C", cls, shard, anyVal, uuid).Return(resp, nil)
+		client.On("Commit", ctx, "C", "C1", shard, anyVal, anyVal).Return(nil).RunFn = func(a mock.Arguments) {
+			resp := a[5].(*SimpleResponse)
+			*resp = SimpleResponse{
+				Errors: []Error{{Msg: "e3"}},
+			}
+		}
+
+		assert.NotNil(t, rep.DeleteObject(ctx, shard, uuid, All))
+		assert.Nil(t, rep.DeleteObject(ctx, shard, uuid, Quorum))
+		assert.Nil(t, rep.DeleteObject(ctx, shard, uuid, One))
+	})
+
+	t.Run("SuccessWithConsistencyQuorum", func(t *testing.T) {
+		factory := newFakeFactory("C1", shard, nodes)
+		client := factory.Client
+		rep := factory.newReplicator()
+		resp := SimpleResponse{Errors: make([]Error, 1)}
+		for _, n := range nodes[:2] {
+			client.On("DeleteObject", ctx, n, cls, shard, anyVal, uuid).Return(resp, nil)
+			client.On("Commit", ctx, n, "C1", shard, anyVal, anyVal).Return(nil).RunFn = func(a mock.Arguments) {
+				resp := a[5].(*SimpleResponse)
+				*resp = SimpleResponse{
+					Errors: []Error{{}},
+				}
+			}
+		}
+		client.On("DeleteObject", ctx, "C", cls, shard, anyVal, uuid).Return(resp, nil)
+		client.On("Commit", ctx, "C", "C1", shard, anyVal, anyVal).Return(nil).RunFn = func(a mock.Arguments) {
+			resp := a[5].(*SimpleResponse)
+			*resp = SimpleResponse{
+				Errors: []Error{{Msg: "e3"}},
+			}
+		}
+
+		assert.NotNil(t, rep.DeleteObject(ctx, shard, uuid, All))
+		assert.Nil(t, rep.DeleteObject(ctx, shard, uuid, Quorum))
+		assert.Nil(t, rep.DeleteObject(ctx, shard, uuid, One))
+	})
 }
 
 func TestReplicatorDeleteObjects(t *testing.T) {
