@@ -50,6 +50,7 @@ func NewFinder(className string,
 func (f *Finder) FindOne(ctx context.Context, l ConsistencyLevel, shard string,
 	id strfmt.UUID, props search.SelectProperties, additional additional.Properties,
 ) (*storobj.Object, error) {
+	// c := newCoordinator[*storobj.Object](f.RClient)
 	var level int
 	state, err := f.resolver.State(shard)
 	if err == nil {
