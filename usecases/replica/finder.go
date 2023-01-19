@@ -14,10 +14,8 @@ package replica
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/go-openapi/strfmt"
-	"github.com/pkg/errors"
 	"github.com/semi-technologies/weaviate/entities/additional"
 	"github.com/semi-technologies/weaviate/entities/search"
 	"github.com/semi-technologies/weaviate/entities/storobj"
@@ -58,7 +56,20 @@ func (f *Finder) FindOne(ctx context.Context, l ConsistencyLevel, shard string,
 	if err != nil {
 		return nil, err
 	}
-	return readObject(replyCh, level)
+	return readOne(replyCh, level)
+}
+
+func (f *Finder) Exists(ctx context.Context, l ConsistencyLevel, shard string, id strfmt.UUID) (bool, error) {
+	c := newReadCoordinator[existReply](f, shard)
+	op := func(ctx context.Context, host string) (existReply, error) {
+		obj, err := f.RClient.Exists(ctx, host, f.class, shard, id)
+		return existReply{host, obj}, err
+	}
+	replyCh, level, err := c.Fetch(ctx, l, op)
+	if err != nil {
+		return false, err
+	}
+	return readExistenceFlag(replyCh, level)
 }
 
 // NodeObject gets object from a specific node.
@@ -73,64 +84,18 @@ func (f *Finder) NodeObject(ctx context.Context, nodeName, shard string,
 	return f.RClient.FindObject(ctx, host, f.class, shard, id, props, additional)
 }
 
-func readObject(ch <-chan simpleResult[findOneReply], cl int) (*storobj.Object, error) {
-	counters := make([]tuple, 0, cl*2)
-	N, nnf := 0, 0
-	for r := range ch {
-		N++
-		resp := r.Response
-		if r.Err != nil {
-			counters = append(counters, tuple{resp.sender, nil, 0, r.Err})
-			continue
-		} else if resp.data == nil {
-			nnf++
-			continue
-		}
-		counters = append(counters, tuple{resp.sender, resp.data, 0, nil})
-		lastTime := resp.data.LastUpdateTimeUnix()
-		max := 0
-		for i := range counters {
-			if counters[i].o != nil && counters[i].o.LastUpdateTimeUnix() == lastTime {
-				counters[i].ack++
-			}
-			if max < counters[i].ack {
-				max = counters[i].ack
-			}
-			if max >= cl {
-				return counters[i].o, nil
-			}
-		}
-	}
-	if nnf == N { // object doesn't exist
-		return nil, nil
-	}
-
-	var sb strings.Builder
-	for i, c := range counters {
-		if i != 0 {
-			sb.WriteString(", ")
-		}
-		if c.err != nil {
-			fmt.Fprintf(&sb, "%s: %s", c.sender, c.err.Error())
-		} else if c.o == nil {
-			fmt.Fprintf(&sb, "%s: 0", c.sender)
-		} else {
-			fmt.Fprintf(&sb, "%s: %d", c.sender, c.o.LastUpdateTimeUnix())
-		}
-	}
-	return nil, errors.New(sb.String())
-}
-
-type tuple struct {
-	sender string
-	o      *storobj.Object
-	ack    int
-	err    error
-}
-
 type senderReply[T any] struct {
 	sender string
 	data   T
 }
 
-type findOneReply senderReply[*storobj.Object]
+type (
+	findOneReply senderReply[*storobj.Object]
+	existReply   senderReply[bool]
+)
+
+// type singleItem interface {
+// 	Empty() bool
+// 	Error() Error
+// 	Equal(singleItem) bool
+// }
