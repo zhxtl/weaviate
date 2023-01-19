@@ -21,7 +21,6 @@ import (
 	"github.com/semi-technologies/weaviate/entities/additional"
 	"github.com/semi-technologies/weaviate/entities/search"
 	"github.com/semi-technologies/weaviate/entities/storobj"
-	"golang.org/x/sync/errgroup"
 )
 
 // Finder finds replicated objects
@@ -50,35 +49,44 @@ func NewFinder(className string,
 func (f *Finder) FindOne(ctx context.Context, l ConsistencyLevel, shard string,
 	id strfmt.UUID, props search.SelectProperties, additional additional.Properties,
 ) (*storobj.Object, error) {
-	// c := newCoordinator[*storobj.Object](f.RClient)
-	var level int
-	state, err := f.resolver.State(shard)
-	if err == nil {
-		level, err = state.ConsistencyLevel(l)
+	c := newReadCoordinator[findOneReply](f, shard)
+	op := func(ctx context.Context, host string) (findOneReply, error) {
+		obj, err := f.FindObject(ctx, host, f.class, shard, id, props, additional)
+		return findOneReply{host, obj}, err
 	}
+	replyCh, level, err := c.Fetch(ctx, l, op)
 	if err != nil {
-		return nil, fmt.Errorf("%w : class %q shard %q", err, f.class, shard)
+		return nil, err
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	// var level int
+	// state, err := f.resolver.State(shard)
+	// if err == nil {
+	// 	level, err = state.ConsistencyLevel(l)
+	// }
+	// if err != nil {
+	// 	return nil, fmt.Errorf("%w : class %q shard %q", err, f.class, shard)
+	// }
 
-	writer := func() <-chan tuple {
-		responses := make(chan tuple, len(state.Hosts))
-		var g errgroup.Group
-		for i, host := range state.Hosts {
-			i, host := i, host
-			g.Go(func() error {
-				o, err := f.FindObject(ctx, host, f.class, shard, id, props, additional)
-				responses <- tuple{o, i, err}
-				return nil
-			})
-		}
-		go func() { g.Wait(); close(responses) }()
-		return responses
-	}
+	// ctx, cancel := context.WithCancel(ctx)
+	// defer cancel()
 
-	return readObject(writer(), level, state.Hosts, state.Len())
+	// writer := func() <-chan tuple {
+	// 	responses := make(chan tuple, len(state.Hosts))
+	// 	var g errgroup.Group
+	// 	for i, host := range state.Hosts {
+	// 		i, host := i, host
+	// 		g.Go(func() error {
+	// 			o, err := f.FindObject(ctx, host, f.class, shard, id, props, additional)
+	// 			responses <- tuple{o, i, err}
+	// 			return nil
+	// 		})
+	// 	}
+	// 	go func() { g.Wait(); close(responses) }()
+	// 	return responses
+	// }
+
+	return readObject(replyCh, level)
 }
 
 // NodeObject gets object from a specific node.
@@ -93,25 +101,30 @@ func (f *Finder) NodeObject(ctx context.Context, nodeName, shard string,
 	return f.RClient.FindObject(ctx, host, f.class, shard, id, props, additional)
 }
 
-func readObject(responses <-chan tuple, cl int, hosts []string, N int) (*storobj.Object, error) {
-	counters := make([]tuple, len(hosts))
+func readObject(ch <-chan simpleResult[findOneReply], cl int) (*storobj.Object, error) {
+	counters := make([]tuple, 0, cl*2)
 	nnf := 0
-	for r := range responses {
-		if r.err != nil {
-			counters[r.i] = tuple{nil, 0, r.err}
+	N := 0
+	for r := range ch {
+		N++
+		resp := r.Response
+		if r.Err != nil {
+			counters = append(counters, tuple{resp.sender, nil, 0, r.Err})
 			continue
-		} else if r.o == nil {
+		} else if resp.data == nil {
 			nnf++
 			continue
 		}
-		counters[r.i] = tuple{r.o, 1, nil}
+		// counters[r.sender] = tuple{r.o, 1, nil}
+		counters = append(counters, tuple{resp.sender, resp.data, 0, nil})
+		lastTime := resp.data.LastUpdateTimeUnix()
 		max := 0
 		for i := range counters {
-			if counters[i].o != nil && i != r.i && counters[i].o.LastUpdateTimeUnix() == r.o.LastUpdateTimeUnix() {
-				counters[i].i++
+			if counters[i].o != nil && counters[i].o.LastUpdateTimeUnix() == lastTime {
+				counters[i].ack++
 			}
-			if max < counters[i].i {
-				max = counters[i].i
+			if max < counters[i].ack {
+				max = counters[i].ack
 			}
 			if max >= cl {
 				return counters[i].o, nil
@@ -128,18 +141,26 @@ func readObject(responses <-chan tuple, cl int, hosts []string, N int) (*storobj
 			sb.WriteString(", ")
 		}
 		if c.err != nil {
-			fmt.Fprintf(&sb, "%s: %s", hosts[i], c.err.Error())
+			fmt.Fprintf(&sb, "%s: %s", c.sender, c.err.Error())
 		} else if c.o == nil {
-			fmt.Fprintf(&sb, "%s: 0", hosts[i])
+			fmt.Fprintf(&sb, "%s: 0", c.sender)
 		} else {
-			fmt.Fprintf(&sb, "%s: %d", hosts[i], c.o.LastUpdateTimeUnix())
+			fmt.Fprintf(&sb, "%s: %d", c.sender, c.o.LastUpdateTimeUnix())
 		}
 	}
 	return nil, errors.New(sb.String())
 }
 
 type tuple struct {
-	o   *storobj.Object
-	i   int
-	err error
+	sender string
+	o      *storobj.Object
+	ack    int
+	err    error
 }
+
+type senderReply[T any] struct {
+	sender string
+	data   T
+}
+
+type findOneReply senderReply[*storobj.Object]

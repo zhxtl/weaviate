@@ -51,13 +51,15 @@ func newCoordinator[T any](r *Replicator, shard, requestID string) *coordinator[
 	}
 }
 
-func newReadCoordinator[T any](f *Finder) *coordinator[T] {
+func newReadCoordinator[T any](f *Finder, shard string) *coordinator[T] {
 	return &coordinator[T]{
 		Resolver: &resolver{
+			schema:       f.resolver.schema,
 			nodeResolver: f.resolver,
 			class:        f.class,
 		},
 		Class: f.class,
+		Shard: shard,
 	}
 }
 
