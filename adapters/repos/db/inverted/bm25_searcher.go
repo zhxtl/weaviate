@@ -204,7 +204,7 @@ func mergeScores(termresults []docPointersWithScore) docPointersWithScore {
 				d := resultsHash[doc.id]
 				d.score += doc.score
 				resultsHash[doc.id] = d
-				CopyIntoMap(d.Additional, doc.Additional)
+				// CopyIntoMap(d.Additional, doc.Additional)
 			}
 		}
 	}
@@ -263,23 +263,23 @@ func (b *BM25Searcher) mergeIdss(idLists []docPointersWithScore, objectByIndexID
 
 	total := 0
 
-	for i, list := range idLists {
+	for _, list := range idLists {
 		for _, doc := range list.docIDs {
 			// if id is not in the map, add it
 			if _, ok := docHash[doc.id]; !ok {
-				if doc.Additional == nil {
-					doc.Additional = make(map[string]interface{})
-				}
-				doc.Additional["BM25F_"+propNames[i]+"_frequency"] = fmt.Sprintf("%v", doc.frequency)
-				doc.Additional["BM25F_"+propNames[i]+"_propLength"] = fmt.Sprintf("%v", doc.propLength)
+				// if doc.Additional == nil {
+				// 	doc.Additional = make(map[string]interface{})
+				// }
+				// doc.Additional["BM25F_"+propNames[i]+"_frequency"] = fmt.Sprintf("%v", doc.frequency)
+				// doc.Additional["BM25F_"+propNames[i]+"_propLength"] = fmt.Sprintf("%v", doc.propLength)
 				docHash[doc.id] = doc
 			} else {
 				// if id is in the map, add the frequency
 				existing := docHash[doc.id]
 				existing.frequency += doc.frequency
 				existing.propLength += doc.propLength
-				existing.Additional["BM25F_"+propNames[i]+"_frequency"] = fmt.Sprintf("%v", doc.frequency)
-				existing.Additional["BM25F_"+propNames[i]+"_propLength"] = fmt.Sprintf("%v", doc.propLength)
+				// existing.Additional["BM25F_"+propNames[i]+"_frequency"] = fmt.Sprintf("%v", doc.frequency)
+				// existing.Additional["BM25F_"+propNames[i]+"_propLength"] = fmt.Sprintf("%v", doc.propLength)
 				// TODO: We will have a different propLength for each property, how do we combine them?
 				docHash[doc.id] = existing
 			}
@@ -520,7 +520,7 @@ func (bm *BM25Searcher) rankedObjectsByDocID(found docPointersWithScore,
 		}
 
 		objs[i], scores[i] = unmarshalled, float32(found.docIDs[idx].score)
-		objs[i].Object.Additional = CopyIntoMap(objs[i].Object.Additional, found.docIDs[idx].Additional)
+		// objs[i].Object.Additional = CopyIntoMap(objs[i].Object.Additional, found.docIDs[idx].Additional)
 		i++
 	}
 
