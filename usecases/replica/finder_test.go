@@ -107,7 +107,9 @@ func TestFinderFindOne(t *testing.T) {
 		got, err := finder.FindOne(ctx, All, shard, id, proj, adds)
 		assert.NotNil(t, err)
 		assert.Nil(t, got)
-		assert.Contains(t, err.Error(), "A: 3, B: 3, C: 1")
+		assert.Contains(t, err.Error(), "A: 3")
+		assert.Contains(t, err.Error(), "B: 3")
+		assert.Contains(t, err.Error(), "C: 1")
 	})
 	t.Run("AllButFirstOne", func(t *testing.T) {
 		f := newFakeFactory("C1", shard, nodes)
@@ -119,7 +121,9 @@ func TestFinderFindOne(t *testing.T) {
 		got, err := finder.FindOne(ctx, All, shard, id, proj, adds)
 		assert.NotNil(t, err)
 		assert.Nil(t, got)
-		assert.Contains(t, err.Error(), "A: 1, B: 3, C: 3")
+		assert.Contains(t, err.Error(), "A: 1")
+		assert.Contains(t, err.Error(), "B: 3")
+		assert.Contains(t, err.Error(), "C: 3")
 	})
 	t.Run("Quorum", func(t *testing.T) {
 		f := newFakeFactory("C1", shard, nodes)
@@ -143,7 +147,9 @@ func TestFinderFindOne(t *testing.T) {
 		f.Client.On("FindObject", anyVal, nodes[0], cls, shard, id, proj, adds).Return(object(id, 1), nil)
 		got, err := finder.FindOne(ctx, Quorum, shard, id, proj, adds)
 		assert.Nil(t, got)
-		assert.Contains(t, err.Error(), "A: 1, B: 2, C: 3")
+		assert.Contains(t, err.Error(), "A: 1")
+		assert.Contains(t, err.Error(), "B: 2")
+		assert.Contains(t, err.Error(), "C: 3")
 	})
 	t.Run("FirstOne", func(t *testing.T) {
 		f := newFakeFactory("C1", shard, nodes)
@@ -194,6 +200,8 @@ func TestFinderFindOne(t *testing.T) {
 		assert.NotNil(t, err)
 		assert.Nil(t, got)
 		m := errAny.Error()
-		assert.Contains(t, err.Error(), fmt.Sprintf("A: %s, B: %s, C: %s", m, m, m))
+		assert.Contains(t, err.Error(), fmt.Sprintf("A: %s", m))
+		assert.Contains(t, err.Error(), fmt.Sprintf("B: %s", m))
+		assert.Contains(t, err.Error(), fmt.Sprintf("C: %s", m))
 	})
 }

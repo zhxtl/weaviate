@@ -58,34 +58,6 @@ func (f *Finder) FindOne(ctx context.Context, l ConsistencyLevel, shard string,
 	if err != nil {
 		return nil, err
 	}
-
-	// var level int
-	// state, err := f.resolver.State(shard)
-	// if err == nil {
-	// 	level, err = state.ConsistencyLevel(l)
-	// }
-	// if err != nil {
-	// 	return nil, fmt.Errorf("%w : class %q shard %q", err, f.class, shard)
-	// }
-
-	// ctx, cancel := context.WithCancel(ctx)
-	// defer cancel()
-
-	// writer := func() <-chan tuple {
-	// 	responses := make(chan tuple, len(state.Hosts))
-	// 	var g errgroup.Group
-	// 	for i, host := range state.Hosts {
-	// 		i, host := i, host
-	// 		g.Go(func() error {
-	// 			o, err := f.FindObject(ctx, host, f.class, shard, id, props, additional)
-	// 			responses <- tuple{o, i, err}
-	// 			return nil
-	// 		})
-	// 	}
-	// 	go func() { g.Wait(); close(responses) }()
-	// 	return responses
-	// }
-
 	return readObject(replyCh, level)
 }
 
@@ -103,8 +75,7 @@ func (f *Finder) NodeObject(ctx context.Context, nodeName, shard string,
 
 func readObject(ch <-chan simpleResult[findOneReply], cl int) (*storobj.Object, error) {
 	counters := make([]tuple, 0, cl*2)
-	nnf := 0
-	N := 0
+	N, nnf := 0, 0
 	for r := range ch {
 		N++
 		resp := r.Response
@@ -115,7 +86,6 @@ func readObject(ch <-chan simpleResult[findOneReply], cl int) (*storobj.Object, 
 			nnf++
 			continue
 		}
-		// counters[r.sender] = tuple{r.o, 1, nil}
 		counters = append(counters, tuple{resp.sender, resp.data, 0, nil})
 		lastTime := resp.data.LastUpdateTimeUnix()
 		max := 0
