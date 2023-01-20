@@ -163,3 +163,13 @@ type RClient interface {
 
 	Exists(_ context.Context, host, index, shard string, id strfmt.UUID) (bool, error)
 }
+
+type senderReply[T any] struct {
+	sender string
+	data   T
+}
+
+type (
+	findOneReply senderReply[*storobj.Object]
+	existReply   senderReply[bool]
+)

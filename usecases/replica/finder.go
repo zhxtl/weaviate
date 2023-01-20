@@ -83,19 +83,3 @@ func (f *Finder) NodeObject(ctx context.Context, nodeName, shard string,
 	}
 	return f.RClient.FindObject(ctx, host, f.class, shard, id, props, additional)
 }
-
-type senderReply[T any] struct {
-	sender string
-	data   T
-}
-
-type (
-	findOneReply senderReply[*storobj.Object]
-	existReply   senderReply[bool]
-)
-
-// type singleItem interface {
-// 	Empty() bool
-// 	Error() Error
-// 	Equal(singleItem) bool
-// }

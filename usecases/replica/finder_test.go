@@ -33,6 +33,9 @@ func TestFinderReplicaNotFound(t *testing.T) {
 	)
 	_, err := f.FindOne(ctx, "ONE", "S", "id", nil, additional.Properties{})
 	assert.ErrorIs(t, err, errNoReplicaFound)
+
+	_, err = f.Exists(ctx, "ONE", "S", "id")
+	assert.ErrorIs(t, err, errNoReplicaFound)
 }
 
 func TestFinderNodeObject(t *testing.T) {
@@ -203,5 +206,68 @@ func TestFinderFindOne(t *testing.T) {
 		assert.Contains(t, err.Error(), fmt.Sprintf("A: %s", m))
 		assert.Contains(t, err.Error(), fmt.Sprintf("B: %s", m))
 		assert.Contains(t, err.Error(), fmt.Sprintf("C: %s", m))
+	})
+}
+
+func TestFinderExists(t *testing.T) {
+	var (
+		id    = strfmt.UUID("123")
+		cls   = "C1"
+		shard = "SH1"
+		nodes = []string{"A", "B", "C"}
+		ctx   = context.Background()
+	)
+
+	t.Run("All", func(t *testing.T) {
+		f := newFakeFactory("C1", shard, nodes)
+		finder := f.newFinder()
+		for _, n := range nodes {
+			f.RClient.On("Exists", anyVal, n, cls, shard, id).Return(true, nil)
+		}
+		got, err := finder.Exists(ctx, All, shard, id)
+		assert.Nil(t, err)
+		assert.Equal(t, true, got)
+	})
+
+	t.Run("AllButLastOne", func(t *testing.T) {
+		f := newFakeFactory("C1", shard, nodes)
+		finder := f.newFinder()
+		for _, n := range nodes[:len(nodes)-1] {
+			f.RClient.On("Exists", anyVal, n, cls, shard, id).Return(true, nil)
+		}
+		f.RClient.On("Exists", anyVal, nodes[len(nodes)-1], cls, shard, id).Return(false, nil)
+		got, err := finder.Exists(ctx, All, shard, id)
+		assert.NotNil(t, err)
+		assert.Equal(t, false, got)
+		assert.Contains(t, err.Error(), "A: true")
+		assert.Contains(t, err.Error(), "B: true")
+		assert.Contains(t, err.Error(), "C: false")
+	})
+
+	t.Run("AllButFirstOne", func(t *testing.T) {
+		f := newFakeFactory("C1", shard, nodes)
+		finder := f.newFinder()
+		f.RClient.On("Exists", anyVal, nodes[0], cls, shard, id).Return(false, nil)
+		for _, n := range nodes[1:] {
+			f.RClient.On("Exists", anyVal, n, cls, shard, id).Return(true, nil)
+		}
+		got, err := finder.Exists(ctx, All, shard, id)
+		assert.NotNil(t, err)
+		assert.Equal(t, false, got)
+		assert.Contains(t, err.Error(), "A: false")
+		assert.Contains(t, err.Error(), "B: true")
+		assert.Contains(t, err.Error(), "C: true")
+	})
+
+	t.Run("Quorum", func(t *testing.T) {
+		f := newFakeFactory("C1", shard, nodes)
+		finder := f.newFinder()
+		for _, n := range nodes[1:] {
+			f.RClient.On("Exists", anyVal, n, cls, shard, id).Return(false, nil)
+		}
+		f.RClient.On("Exists", anyVal, nodes[0], cls, shard, id).Return(true, nil)
+		got, err := finder.Exists(ctx, Quorum, shard, id)
+		assert.Nil(t, err)
+		assert.Equal(t, false, got)
 	})
 }
