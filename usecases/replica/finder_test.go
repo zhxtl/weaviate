@@ -270,4 +270,57 @@ func TestFinderExists(t *testing.T) {
 		assert.Nil(t, err)
 		assert.Equal(t, false, got)
 	})
+
+	t.Run("NoQuorum", func(t *testing.T) {
+		f := newFakeFactory("C1", shard, nodes[:2])
+		finder := f.newFinder()
+		f.RClient.On("Exists", anyVal, nodes[0], cls, shard, id).Return(true, nil)
+		f.RClient.On("Exists", anyVal, nodes[1], cls, shard, id).Return(false, nil)
+		f.RClient.On("Exists", anyVal, nodes[0], cls, shard, id).Return(object(id, 1), nil)
+		got, err := finder.Exists(ctx, Quorum, shard, id)
+		assert.Equal(t, false, got)
+		assert.Contains(t, err.Error(), "A: true")
+		assert.Contains(t, err.Error(), "B: false")
+	})
+
+	t.Run("FirstOne", func(t *testing.T) {
+		f := newFakeFactory("C1", shard, nodes)
+		finder := f.newFinder()
+		obj := object(id, 1)
+		f.RClient.On("Exists", anyVal, nodes[0], cls, shard, id).Return(true, nil)
+		for _, n := range nodes {
+			f.RClient.On("Exists", anyVal, n, cls, shard, id).Return(obj, nil).After(time.Second)
+		}
+		got, err := finder.Exists(ctx, One, shard, id)
+		assert.Nil(t, err)
+		assert.Equal(t, true, got)
+	})
+
+	t.Run("LastOne", func(t *testing.T) {
+		f := newFakeFactory("C1", shard, nodes)
+		finder := f.newFinder()
+		for _, n := range nodes[:len(nodes)-1] {
+			f.RClient.On("Exists", anyVal, n, cls, shard, id).Return(true, errAny).After(20 * time.Second)
+		}
+		f.RClient.On("Exists", anyVal, nodes[len(nodes)-1], cls, shard, id).Return(false, nil)
+		got, err := finder.Exists(ctx, One, shard, id)
+		assert.Nil(t, err)
+		assert.Equal(t, false, got)
+	})
+
+	t.Run("Failure", func(t *testing.T) {
+		f := newFakeFactory("C1", shard, nodes)
+		finder := f.newFinder()
+		for _, n := range nodes {
+			f.RClient.On("Exists", anyVal, n, cls, shard, id).Return(false, errAny)
+		}
+		got, err := finder.Exists(ctx, One, shard, id)
+		assert.NotNil(t, err)
+		assert.Equal(t, false, got)
+		m := errAny.Error()
+		assert.Contains(t, err.Error(), fmt.Sprintf("A: %s", m))
+		assert.Contains(t, err.Error(), fmt.Sprintf("B: %s", m))
+		assert.Contains(t, err.Error(), fmt.Sprintf("C: %s", m))
+	})
+
 }

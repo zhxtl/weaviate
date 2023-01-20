@@ -21,6 +21,16 @@ import (
 	"github.com/semi-technologies/weaviate/entities/storobj"
 )
 
+type (
+	// senderReply represent the data received from a sender
+	senderReply[T any] struct {
+		sender string // hostname of the sender
+		data   T      // the data sent by the sender
+	}
+	findOneReply senderReply[*storobj.Object]
+	existReply   senderReply[bool]
+)
+
 // Finder finds replicated objects
 type Finder struct {
 	RClient            // needed to commit and abort operation
@@ -28,6 +38,7 @@ type Finder struct {
 	class    string
 }
 
+// NewFinder constructs a new finder instance
 func NewFinder(className string,
 	stateGetter shardingState, nodeResolver nodeResolver,
 	client RClient,
@@ -59,6 +70,7 @@ func (f *Finder) FindOne(ctx context.Context, l ConsistencyLevel, shard string,
 	return readOne(replyCh, level)
 }
 
+// Exists checks if an object exists which satisfies the giving consistency
 func (f *Finder) Exists(ctx context.Context, l ConsistencyLevel, shard string, id strfmt.UUID) (bool, error) {
 	c := newReadCoordinator[existReply](f, shard)
 	op := func(ctx context.Context, host string) (existReply, error) {
@@ -69,7 +81,7 @@ func (f *Finder) Exists(ctx context.Context, l ConsistencyLevel, shard string, i
 	if err != nil {
 		return false, err
 	}
-	return readExistenceFlag(replyCh, level)
+	return readOneExists(replyCh, level)
 }
 
 // NodeObject gets object from a specific node.

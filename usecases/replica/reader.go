@@ -78,7 +78,7 @@ func readOne(ch <-chan simpleResult[findOneReply], cl int) (*storobj.Object, err
 
 type boolTuple tuple[bool]
 
-func readExistenceFlag(ch <-chan simpleResult[existReply], cl int) (bool, error) {
+func readOneExists(ch <-chan simpleResult[existReply], cl int) (bool, error) {
 	counters := make([]boolTuple, 0, cl*2)
 	for r := range ch {
 		resp := r.Response
