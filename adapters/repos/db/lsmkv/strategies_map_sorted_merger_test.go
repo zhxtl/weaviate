@@ -12,7 +12,10 @@
 package lsmkv
 
 import (
+	"encoding/binary"
+	"math/rand"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -368,4 +371,109 @@ func Test_SortedMapMerger_KeepTombstones(t *testing.T) {
 			assert.Equal(t, expected, actual)
 		})
 	})
+}
+
+func BenchmarkMapMerger_SingleList(b *testing.B) {
+	rand.Seed(time.Now().UnixNano())
+	segs := [][]MapPair{
+		constructMapPairs(mapPairsCfg{0, 3_000_000, 0.8}),
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		newSortedMapMerger().do(segs)
+	}
+}
+
+func BenchmarkMapMerger_NoOverlapFewBigLists(b *testing.B) {
+	rand.Seed(time.Now().UnixNano())
+	segs := [][]MapPair{
+		constructMapPairs(mapPairsCfg{0, 3_000_000, 0.8}),
+		constructMapPairs(mapPairsCfg{3_000_000, 6_000_000, 0.8}),
+		constructMapPairs(mapPairsCfg{6_000_000, 9_000_000, 0.8}),
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		newSortedMapMerger().do(segs)
+	}
+}
+
+func BenchmarkMapMerger_NoOverlapManySmallLists(b *testing.B) {
+	rand.Seed(time.Now().UnixNano())
+	segs := [][]MapPair{}
+
+	for i := uint64(0); i < 9_000_000; i += 100_000 {
+		segs = append(segs, constructMapPairs(mapPairsCfg{i, i + 100_000, 0.8}))
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		newSortedMapMerger().do(segs)
+	}
+}
+
+func BenchmarkMapMerger_LittleOverlap(b *testing.B) {
+	rand.Seed(time.Now().UnixNano())
+	segs := [][]MapPair{
+		constructMapPairs(mapPairsCfg{0, 2_800_000, 0.8}),
+		constructMapPairs(mapPairsCfg{3_000_000, 5_800_000, 0.8}),
+		constructMapPairs(mapPairsCfg{6_000_000, 9_000_000, 0.8}),
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		newSortedMapMerger().do(segs)
+	}
+}
+
+func BenchmarkMapMerger_SimilarLists(b *testing.B) {
+	rand.Seed(time.Now().UnixNano())
+	segs := [][]MapPair{
+		constructMapPairs(mapPairsCfg{0, 4_000_000, 0.8}),
+		constructMapPairs(mapPairsCfg{0, 4_000_000, 0.8}),
+		constructMapPairs(mapPairsCfg{0, 4_000_000, 0.8}),
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		newSortedMapMerger().do(segs)
+	}
+}
+
+func BenchmarkMapMerger_SimilarRangeDifferentDensity(b *testing.B) {
+	rand.Seed(time.Now().UnixNano())
+	segs := [][]MapPair{
+		constructMapPairs(mapPairsCfg{0, 6_000_000, 0.8}),
+		constructMapPairs(mapPairsCfg{0, 6_000_000, 0.1}),
+		constructMapPairs(mapPairsCfg{0, 6_000_000, 0.01}),
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		newSortedMapMerger().do(segs)
+	}
+}
+
+type mapPairsCfg struct {
+	minID           uint64
+	maxID           uint64
+	chanceContained float64
+}
+
+func constructMapPairs(cfg mapPairsCfg) []MapPair {
+	out := []MapPair{}
+
+	for i := cfg.minID; i < cfg.maxID; i++ {
+		if rand.Float64() < cfg.chanceContained {
+			pair := MapPair{
+				Key:   make([]byte, 8),
+				Value: make([]byte, 12),
+			}
+			binary.BigEndian.PutUint64(pair.Key, i)
+			out = append(out, pair)
+		}
+	}
+
+	return out
 }
