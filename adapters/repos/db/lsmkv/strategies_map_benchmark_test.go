@@ -19,24 +19,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func BenchmarkMapDecoderDoPartial_SingleKey(b *testing.B) {
-	before := []MapPair{{
-		Key:   []byte("my-key-1"),
-		Value: []byte("my-value-1"),
-	}}
-
-	encoded, err := newMapEncoder().DoMulti(before)
-	require.Nil(b, err)
-
-	md := newMapDecoder()
-
-	b.ReportAllocs()
-
-	for i := 0; i < b.N; i++ {
-		md.DoPartial(encoded)
-	}
-}
-
 func BenchmarkMapPairFromBytes(b *testing.B) {
 	before := MapPair{
 		Key:   []byte("my-key-1"),
