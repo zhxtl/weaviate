@@ -85,8 +85,8 @@ func (f *Finder) Exists(ctx context.Context, l ConsistencyLevel, shard string, i
 	return readOneExists(replyCh, level)
 }
 
-// FindOne finds one object which satisfies the giving consistency
-func (f *Finder) FindAll(ctx context.Context, l ConsistencyLevel, shard string,
+// GetAll gets all objects which satisfy the giving consistency
+func (f *Finder) GetAll(ctx context.Context, l ConsistencyLevel, shard string,
 	ids []strfmt.UUID,
 ) ([]*storobj.Object, error) {
 	c := newReadCoordinator[getObjectsReply](f, shard)
@@ -98,7 +98,7 @@ func (f *Finder) FindAll(ctx context.Context, l ConsistencyLevel, shard string,
 	if err != nil {
 		return nil, err
 	}
-	return readAll(replyCh, level)
+	return readAll(replyCh, level, len(ids))
 }
 
 // NodeObject gets object from a specific node.

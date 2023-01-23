@@ -115,8 +115,52 @@ func readOneExists(ch <-chan simpleResult[existReply], cl int) (bool, error) {
 	return false, errors.New(sb.String())
 }
 
-type objsTuple tuple[*storobj.Object]
+type osTuple struct {
+	sender string
+	data   []*storobj.Object
+	acks   []int
+	err    error
+}
 
-func readAll(ch <-chan simpleResult[getObjectsReply], cl int) ([]*storobj.Object, error) {
-	return nil, nil
+func readAll(ch <-chan simpleResult[getObjectsReply], cl, N int) ([]*storobj.Object, error) {
+	ret := make([]*storobj.Object, N)
+	counters := make([]osTuple, 0, cl*2)
+
+	for r := range ch {
+		resp := r.Response
+		if r.Err != nil {
+			counters = append(counters, osTuple{resp.sender, nil, nil, r.Err})
+			continue
+		} else if len(resp.data) != N { // todo: is this possible
+			continue
+		}
+		counters = append(counters, osTuple{resp.sender, resp.data, make([]int, N), nil})
+		M := 0
+		for i, x := range resp.data {
+			var lastTime int64
+			if x != nil {
+				lastTime = resp.data[i].LastUpdateTimeUnix()
+			}
+			max := 0
+			for j := range counters {
+				o := counters[j].data[i]
+				if o == nil && o.LastUpdateTimeUnix() == lastTime {
+					counters[j].acks[i]++
+				}
+				if max < counters[j].acks[i] {
+					max = counters[j].acks[i]
+				}
+				if max >= cl {
+					ret[i] = o
+					M++
+				}
+			}
+		}
+		if M == N {
+			return ret, nil
+		}
+
+	}
+
+	return nil, fmt.Errorf("cannot reach specified consistency level")
 }
