@@ -162,4 +162,7 @@ type RClient interface {
 		additional additional.Properties) (*storobj.Object, error)
 
 	Exists(_ context.Context, host, index, shard string, id strfmt.UUID) (bool, error)
+
+	MultiGetObjects(_ context.Context, host, index, shard string,
+		ids []strfmt.UUID) ([]*storobj.Object, error)
 }

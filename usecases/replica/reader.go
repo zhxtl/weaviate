@@ -114,3 +114,9 @@ func readOneExists(ch <-chan simpleResult[existReply], cl int) (bool, error) {
 	}
 	return false, errors.New(sb.String())
 }
+
+type objsTuple tuple[*storobj.Object]
+
+func readAll(ch <-chan simpleResult[getObjectsReply], cl int) ([]*storobj.Object, error) {
+	return nil, nil
+}

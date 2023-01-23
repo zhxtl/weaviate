@@ -27,8 +27,9 @@ type (
 		sender string // hostname of the sender
 		data   T      // the data sent by the sender
 	}
-	findOneReply senderReply[*storobj.Object]
-	existReply   senderReply[bool]
+	findOneReply    senderReply[*storobj.Object]
+	existReply      senderReply[bool]
+	getObjectsReply senderReply[[]*storobj.Object]
 )
 
 // Finder finds replicated objects
@@ -82,6 +83,22 @@ func (f *Finder) Exists(ctx context.Context, l ConsistencyLevel, shard string, i
 		return false, err
 	}
 	return readOneExists(replyCh, level)
+}
+
+// FindOne finds one object which satisfies the giving consistency
+func (f *Finder) FindAll(ctx context.Context, l ConsistencyLevel, shard string,
+	ids []strfmt.UUID,
+) ([]*storobj.Object, error) {
+	c := newReadCoordinator[getObjectsReply](f, shard)
+	op := func(ctx context.Context, host string) (getObjectsReply, error) {
+		objs, err := f.RClient.MultiGetObjects(ctx, host, f.class, shard, ids)
+		return getObjectsReply{host, objs}, err
+	}
+	replyCh, level, err := c.Fetch(ctx, l, op)
+	if err != nil {
+		return nil, err
+	}
+	return readAll(replyCh, level)
 }
 
 // NodeObject gets object from a specific node.
