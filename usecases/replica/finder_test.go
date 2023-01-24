@@ -323,3 +323,25 @@ func TestFinderExists(t *testing.T) {
 		assert.Contains(t, err.Error(), fmt.Sprintf("C: %s", m))
 	})
 }
+
+func TestFinderGetAll(t *testing.T) {
+	var (
+		id    = []strfmt.UUID{"10", "20", "30"}
+		cls   = "C1"
+		shard = "SH1"
+		nodes = []string{"A", "B", "C"}
+		ctx   = context.Background()
+	)
+
+	t.Run("All", func(t *testing.T) {
+		obj := []*storobj.Object{object(id[0], 3), object(id[1], 3), object(id[2], 3)}
+		f := newFakeFactory("C1", shard, nodes)
+		finder := f.newFinder()
+		for _, n := range nodes {
+			f.RClient.On("MultiGetObjects", anyVal, n, cls, shard, id).Return(obj, nil)
+		}
+		got, err := finder.GetAll(ctx, All, shard, id)
+		assert.Nil(t, err)
+		assert.Equal(t, obj, got)
+	})
+}

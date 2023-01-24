@@ -132,7 +132,7 @@ func readAll(ch <-chan simpleResult[getObjectsReply], cl, N int) ([]*storobj.Obj
 			counters = append(counters, osTuple{resp.sender, nil, nil, r.Err})
 			continue
 		} else if len(resp.data) != N { // todo: is this possible
-			continue
+			continue // might we should return an error here
 		}
 		counters = append(counters, osTuple{resp.sender, resp.data, make([]int, N), nil})
 		M := 0
@@ -144,7 +144,7 @@ func readAll(ch <-chan simpleResult[getObjectsReply], cl, N int) ([]*storobj.Obj
 			max := 0
 			for j := range counters {
 				o := counters[j].data[i]
-				if o == nil && o.LastUpdateTimeUnix() == lastTime {
+				if o == nil || o.LastUpdateTimeUnix() == lastTime {
 					counters[j].acks[i]++
 				}
 				if max < counters[j].acks[i] {
@@ -152,8 +152,10 @@ func readAll(ch <-chan simpleResult[getObjectsReply], cl, N int) ([]*storobj.Obj
 				}
 				if max >= cl {
 					ret[i] = o
-					M++
 				}
+			}
+			if max >= cl {
+				M++
 			}
 		}
 		if M == N {
