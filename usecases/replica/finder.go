@@ -102,11 +102,7 @@ func (f *Finder) GetAll(ctx context.Context, l ConsistencyLevel, shard string,
 	if err != nil {
 		return nil, err
 	}
-	xs, err := readAll(replyCh, level, len(ids))
-	if err != nil && errors.Is(err, ErrConsistencyLevel) {
-		err = fmt.Errorf("%w %q", err, l)
-	}
-	return xs, err
+	return readAll(replyCh, level, len(ids), l)
 }
 
 // NodeObject gets object from a specific node.
