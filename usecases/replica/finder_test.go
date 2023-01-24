@@ -326,13 +326,13 @@ func TestFinderExists(t *testing.T) {
 
 func TestFinderGetAll(t *testing.T) {
 	var (
-		id    = []strfmt.UUID{"10", "20", "30"}
-		cls   = "C1"
-		shard = "SH1"
-		nodes = []string{"A", "B", "C"}
-		ctx   = context.Background()
-		obj   = []*storobj.Object{object(id[0], 1), object(id[1], 2), object(id[2], 3)}
-		// nilResult = []*storobj.Object(nil)
+		id        = []strfmt.UUID{"10", "20", "30"}
+		cls       = "C1"
+		shard     = "SH1"
+		nodes     = []string{"A", "B", "C"}
+		ctx       = context.Background()
+		obj       = []*storobj.Object{object(id[0], 1), object(id[1], 2), object(id[2], 3)}
+		nilResult = []*storobj.Object(nil)
 	)
 
 	t.Run("All", func(t *testing.T) {
@@ -384,6 +384,19 @@ func TestFinderGetAll(t *testing.T) {
 		assert.Nil(t, got)
 	})
 
+	//
+	t.Run("AllButFirstOne", func(t *testing.T) {
+		f := newFakeFactory("C1", shard, nodes)
+		finder := f.newFinder()
+		for _, n := range nodes[1:] {
+			f.RClient.On("MultiGetObjects", anyVal, n, cls, shard, id).Return(obj, nil)
+		}
+		f.RClient.On("MultiGetObjects", anyVal, nodes[0], cls, shard, id).Return(make([]*storobj.Object, 3), nil)
+		got, err := finder.GetAll(ctx, All, shard, id)
+		assert.NotNil(t, err)
+		assert.ErrorIs(t, err, ErrConsistencyLevel)
+		assert.Nil(t, got)
+	})
 	t.Run("Quorum", func(t *testing.T) {
 		f := newFakeFactory("C1", shard, nodes)
 		finder := f.newFinder()
@@ -410,6 +423,31 @@ func TestFinderGetAll(t *testing.T) {
 		assert.ErrorIs(t, err, ErrConsistencyLevel)
 		assert.Nil(t, got)
 	})
+	t.Run("FirstOne", func(t *testing.T) {
+		f := newFakeFactory("C1", shard, nodes)
+		finder := f.newFinder()
+		f.RClient.On("MultiGetObjects", anyVal, nodes[0], cls, shard, id).Return(obj, nil)
+		objs2 := make([]*storobj.Object, 3)
+		for _, n := range nodes {
+			f.RClient.On("MultiGetObjects", anyVal, n, cls, shard, id).Return(objs2, nil).After(time.Second)
+		}
+		got, err := finder.GetAll(ctx, One, shard, id)
+		assert.Nil(t, err)
+		assert.Equal(t, obj, got)
+	})
+
+	t.Run("LastOne", func(t *testing.T) {
+		f := newFakeFactory("C1", shard, nodes)
+		finder := f.newFinder()
+		for _, n := range nodes[:len(nodes)-1] {
+			f.RClient.On("MultiGetObjects", anyVal, n, cls, shard, id).Return(nilResult, errAny).After(time.Second)
+		}
+		f.RClient.On("MultiGetObjects", anyVal, nodes[len(nodes)-1], cls, shard, id).Return(obj, nil)
+		got, err := finder.GetAll(ctx, One, shard, id)
+		assert.Nil(t, err)
+		assert.Equal(t, obj, got)
+	})
+
 	// t.Run("Failure", func(t *testing.T) {
 	// 	f := newFakeFactory("C1", shard, nodes)
 	// 	finder := f.newFinder()
