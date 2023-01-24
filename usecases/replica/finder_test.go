@@ -334,7 +334,30 @@ func TestFinderGetAll(t *testing.T) {
 	)
 
 	t.Run("All", func(t *testing.T) {
+		obj := []*storobj.Object{object(id[0], 1), object(id[1], 2), object(id[2], 3)}
+		f := newFakeFactory("C1", shard, nodes)
+		finder := f.newFinder()
+		for _, n := range nodes {
+			f.RClient.On("MultiGetObjects", anyVal, n, cls, shard, id).Return(obj, nil)
+		}
+		got, err := finder.GetAll(ctx, All, shard, id)
+		assert.Nil(t, err)
+		assert.Equal(t, obj, got)
+	})
+
+	t.Run("AllSameID", func(t *testing.T) {
 		obj := []*storobj.Object{object(id[0], 3), object(id[1], 3), object(id[2], 3)}
+		f := newFakeFactory("C1", shard, nodes)
+		finder := f.newFinder()
+		for _, n := range nodes {
+			f.RClient.On("MultiGetObjects", anyVal, n, cls, shard, id).Return(obj, nil)
+		}
+		got, err := finder.GetAll(ctx, All, shard, id)
+		assert.Nil(t, err)
+		assert.Equal(t, obj, got)
+	})
+	t.Run("AllWithNotFound", func(t *testing.T) {
+		obj := []*storobj.Object{nil, object(id[1], 1), nil}
 		f := newFakeFactory("C1", shard, nodes)
 		finder := f.newFinder()
 		for _, n := range nodes {
