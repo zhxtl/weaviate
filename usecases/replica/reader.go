@@ -163,7 +163,6 @@ func readAll(ch <-chan simpleResult[getObjectsReply], level, N int, cl Consisten
 		if M == N {
 			return ret, nil
 		}
-
 	}
 
 	return nil, fmt.Errorf("%w %q %s", ErrConsistencyLevel, cl, sb.String())
