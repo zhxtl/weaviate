@@ -122,9 +122,9 @@ type osTuple struct {
 	err    error
 }
 
-func readAll(ch <-chan simpleResult[getObjectsReply], cl, N int) ([]*storobj.Object, error) {
+func readAll(ch <-chan simpleResult[getObjectsReply], level, N int) ([]*storobj.Object, error) {
 	ret := make([]*storobj.Object, N)
-	counters := make([]osTuple, 0, cl*2)
+	counters := make([]osTuple, 0, level*2)
 
 	for r := range ch {
 		resp := r.Response
@@ -150,11 +150,11 @@ func readAll(ch <-chan simpleResult[getObjectsReply], cl, N int) ([]*storobj.Obj
 				if max < counters[j].acks[i] {
 					max = counters[j].acks[i]
 				}
-				if max >= cl {
+				if max >= level {
 					ret[i] = o
 				}
 			}
-			if max >= cl {
+			if max >= level {
 				M++
 			}
 		}
@@ -164,5 +164,5 @@ func readAll(ch <-chan simpleResult[getObjectsReply], cl, N int) ([]*storobj.Obj
 
 	}
 
-	return nil, fmt.Errorf("cannot reach specified consistency level")
+	return nil, ErrConsistencyLevel
 }

@@ -13,6 +13,7 @@ package replica
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/go-openapi/strfmt"
@@ -20,6 +21,9 @@ import (
 	"github.com/weaviate/weaviate/entities/search"
 	"github.com/weaviate/weaviate/entities/storobj"
 )
+
+// ErrConsistencyLevel consistency level cannot be achieved
+var ErrConsistencyLevel = errors.New("cannot achieve consistency level")
 
 type (
 	// senderReply represent the data received from a sender
@@ -98,7 +102,11 @@ func (f *Finder) GetAll(ctx context.Context, l ConsistencyLevel, shard string,
 	if err != nil {
 		return nil, err
 	}
-	return readAll(replyCh, level, len(ids))
+	xs, err := readAll(replyCh, level, len(ids))
+	if err != nil && errors.Is(err, ErrConsistencyLevel) {
+		err = fmt.Errorf("%w %q", err, l)
+	}
+	return xs, err
 }
 
 // NodeObject gets object from a specific node.
