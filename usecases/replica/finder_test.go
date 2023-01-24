@@ -31,7 +31,7 @@ func TestFinderReplicaNotFound(t *testing.T) {
 		ctx     = context.Background()
 		f       = factory.newFinder()
 	)
-	_, err := f.FindOne(ctx, "ONE", "S", "id", nil, additional.Properties{})
+	_, err := f.GetOne(ctx, "ONE", "S", "id", nil, additional.Properties{})
 	assert.ErrorIs(t, err, errNoReplicaFound)
 
 	_, err = f.Exists(ctx, "ONE", "S", "id")
@@ -96,7 +96,7 @@ func TestFinderFindOne(t *testing.T) {
 		for _, n := range nodes {
 			f.RClient.On("FindObject", anyVal, n, cls, shard, id, proj, adds).Return(obj, nil)
 		}
-		got, err := finder.FindOne(ctx, All, shard, id, proj, adds)
+		got, err := finder.GetOne(ctx, All, shard, id, proj, adds)
 		assert.Nil(t, err)
 		assert.Equal(t, obj, got)
 	})
@@ -107,7 +107,7 @@ func TestFinderFindOne(t *testing.T) {
 			f.RClient.On("FindObject", anyVal, n, cls, shard, id, proj, adds).Return(obj, nil)
 		}
 		f.RClient.On("FindObject", anyVal, nodes[len(nodes)-1], cls, shard, id, proj, adds).Return(object(id, 1), nil)
-		got, err := finder.FindOne(ctx, All, shard, id, proj, adds)
+		got, err := finder.GetOne(ctx, All, shard, id, proj, adds)
 		assert.NotNil(t, err)
 		assert.Nil(t, got)
 		assert.Contains(t, err.Error(), "A: 3")
@@ -121,7 +121,7 @@ func TestFinderFindOne(t *testing.T) {
 			f.RClient.On("FindObject", anyVal, n, cls, shard, id, proj, adds).Return(obj, nil)
 		}
 		f.RClient.On("FindObject", anyVal, nodes[0], cls, shard, id, proj, adds).Return(object(id, 1), nil)
-		got, err := finder.FindOne(ctx, All, shard, id, proj, adds)
+		got, err := finder.GetOne(ctx, All, shard, id, proj, adds)
 		assert.NotNil(t, err)
 		assert.Nil(t, got)
 		assert.Contains(t, err.Error(), "A: 1")
@@ -136,7 +136,7 @@ func TestFinderFindOne(t *testing.T) {
 			f.RClient.On("FindObject", anyVal, n, cls, shard, id, proj, adds).Return(obj, nil)
 		}
 		f.RClient.On("FindObject", anyVal, nodes[0], cls, shard, id, proj, adds).Return(object(id, 1), nil)
-		got, err := finder.FindOne(ctx, Quorum, shard, id, proj, adds)
+		got, err := finder.GetOne(ctx, Quorum, shard, id, proj, adds)
 		assert.Nil(t, err)
 		assert.Equal(t, obj, got)
 	})
@@ -148,7 +148,7 @@ func TestFinderFindOne(t *testing.T) {
 			f.RClient.On("FindObject", anyVal, n, cls, shard, id, proj, adds).Return(obj, nil)
 		}
 		f.RClient.On("FindObject", anyVal, nodes[0], cls, shard, id, proj, adds).Return(object(id, 1), nil)
-		got, err := finder.FindOne(ctx, Quorum, shard, id, proj, adds)
+		got, err := finder.GetOne(ctx, Quorum, shard, id, proj, adds)
 		assert.Nil(t, got)
 		assert.Contains(t, err.Error(), "A: 1")
 		assert.Contains(t, err.Error(), "B: 2")
@@ -163,7 +163,7 @@ func TestFinderFindOne(t *testing.T) {
 			obj := object(id, int64(i+1))
 			f.RClient.On("FindObject", anyVal, n, cls, shard, id, proj, adds).Return(obj, nil).After(time.Second)
 		}
-		got, err := finder.FindOne(ctx, One, shard, id, proj, adds)
+		got, err := finder.GetOne(ctx, One, shard, id, proj, adds)
 		assert.Nil(t, err)
 		assert.Equal(t, obj, got)
 	})
@@ -176,7 +176,7 @@ func TestFinderFindOne(t *testing.T) {
 			f.RClient.On("FindObject", anyVal, n, cls, shard, id, proj, adds).Return(obj, errAny).After(time.Second)
 		}
 		f.RClient.On("FindObject", anyVal, nodes[len(nodes)-1], cls, shard, id, proj, adds).Return(obj, nil)
-		got, err := finder.FindOne(ctx, One, shard, id, proj, adds)
+		got, err := finder.GetOne(ctx, One, shard, id, proj, adds)
 		assert.Nil(t, err)
 		assert.Equal(t, obj, got)
 	})
@@ -188,7 +188,7 @@ func TestFinderFindOne(t *testing.T) {
 		for _, n := range nodes {
 			f.RClient.On("FindObject", anyVal, n, cls, shard, id, proj, adds).Return(obj, nil)
 		}
-		got, err := finder.FindOne(ctx, One, shard, id, proj, adds)
+		got, err := finder.GetOne(ctx, One, shard, id, proj, adds)
 		assert.Nil(t, err)
 		assert.Nil(t, got)
 	})
@@ -199,7 +199,7 @@ func TestFinderFindOne(t *testing.T) {
 		for _, n := range nodes {
 			f.RClient.On("FindObject", anyVal, n, cls, shard, id, proj, adds).Return(obj, errAny)
 		}
-		got, err := finder.FindOne(ctx, One, shard, id, proj, adds)
+		got, err := finder.GetOne(ctx, One, shard, id, proj, adds)
 		assert.NotNil(t, err)
 		assert.Nil(t, got)
 		m := errAny.Error()
@@ -332,6 +332,7 @@ func TestFinderGetAll(t *testing.T) {
 		nodes = []string{"A", "B", "C"}
 		ctx   = context.Background()
 		obj   = []*storobj.Object{object(id[0], 1), object(id[1], 2), object(id[2], 3)}
+		// nilResult = []*storobj.Object(nil)
 	)
 
 	t.Run("All", func(t *testing.T) {
@@ -382,4 +383,43 @@ func TestFinderGetAll(t *testing.T) {
 		assert.ErrorIs(t, err, ErrConsistencyLevel)
 		assert.Nil(t, got)
 	})
+
+	t.Run("Quorum", func(t *testing.T) {
+		f := newFakeFactory("C1", shard, nodes)
+		finder := f.newFinder()
+		for _, n := range nodes[1:] {
+			f.RClient.On("MultiGetObjects", anyVal, n, cls, shard, id).Return(obj, nil)
+		}
+		objs2 := []*storobj.Object{object(id[0], 2), object(id[1], 2), object(id[2], 3)}
+		f.RClient.On("MultiGetObjects", anyVal, nodes[0], cls, shard, id).Return(objs2, nil)
+		got, err := finder.GetAll(ctx, Quorum, shard, id)
+		assert.Nil(t, err)
+		assert.Equal(t, obj, got)
+	})
+	t.Run("NoQuorum", func(t *testing.T) {
+		f := newFakeFactory("C1", shard, nodes)
+		finder := f.newFinder()
+		obj = []*storobj.Object{object(id[0], 1), object(id[1], 2), object(id[2], 3)}
+		objs2 := []*storobj.Object{object(id[0], 2), object(id[1], 3), object(id[2], 3)}
+		objs3 := []*storobj.Object{object(id[0], 2), nil, object(id[2], 3)}
+		f.RClient.On("MultiGetObjects", anyVal, nodes[0], cls, shard, id).Return(obj, nil)
+		f.RClient.On("MultiGetObjects", anyVal, nodes[1], cls, shard, id).Return(objs2, nil)
+		f.RClient.On("MultiGetObjects", anyVal, nodes[2], cls, shard, id).Return(objs3, nil)
+		got, err := finder.GetAll(ctx, Quorum, shard, id)
+		assert.NotNil(t, err)
+		assert.ErrorIs(t, err, ErrConsistencyLevel)
+		assert.Nil(t, got)
+	})
+	// t.Run("Failure", func(t *testing.T) {
+	// 	f := newFakeFactory("C1", shard, nodes)
+	// 	finder := f.newFinder()
+	//
+	// 	for _, n := range nodes {
+	// 		f.RClient.On("MultiGetObjects", anyVal, n, cls, shard, id).Return(nilResult, errAny)
+	// 	}
+	// 	got, err := finder.GetAll(ctx, One, shard, id)
+	// 	assert.NotNil(t, err)
+	// 	assert.Nil(t, got)
+	// 	assert.ErrorIs(t, err, errAny)
+	// })
 }

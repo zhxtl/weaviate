@@ -59,8 +59,8 @@ func NewFinder(className string,
 	}
 }
 
-// FindOne finds one object which satisfies the giving consistency
-func (f *Finder) FindOne(ctx context.Context, l ConsistencyLevel, shard string,
+// GetOne gets object which satisfies the giving consistency
+func (f *Finder) GetOne(ctx context.Context, l ConsistencyLevel, shard string,
 	id strfmt.UUID, props search.SelectProperties, additional additional.Properties,
 ) (*storobj.Object, error) {
 	c := newReadCoordinator[findOneReply](f, shard)
