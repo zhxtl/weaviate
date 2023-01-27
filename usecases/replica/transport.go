@@ -167,4 +167,11 @@ type RClient interface {
 		ids []strfmt.UUID) ([]*storobj.Object, error)
 }
 
+type RepairResponse struct {
+	ID         string // object id
+	Version    int64  // sender current version of the object
+	UpdateTime int64  // sender current update time
+	Err        string
+}
+
 // Ticket: Extend adapter/client with retry strategy for exists() and getobjects()

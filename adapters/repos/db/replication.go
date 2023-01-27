@@ -321,30 +321,87 @@ func (s *Shard) reinit(ctx context.Context) error {
 	return nil
 }
 
+// OverwriteObjects overwrite objects if their state didn't change in the meantime
+// It returns nil if all object have been successfully overwritten and otherwise a list of the failed operations.
 func (i *Index) OverwriteObjects(ctx context.Context,
-	shard string, vobjects []*objects.VObject,
+	shard string, list []*objects.VObject,
 ) ([]*objects.VObject, error) {
-	result := make([]*objects.VObject, len(vobjects))
-	shd := i.Shards[shard]
-	if shd == nil {
+	result := make([]*objects.VObject, 0, len(list)/2)
+	s := i.Shards[shard]
+	if s == nil {
 		return nil, fmt.Errorf("shard %q not found locally", shard)
 	}
-	for j, vobj := range vobjects {
-		found, err := shd.objectByID(ctx, vobj.LatestObject.ID, nil, additional.Properties{})
-		if err != nil {
-			return nil, err
+	for j, update := range list {
+		found, err := s.objectByID(ctx, update.LatestObject.ID, nil, additional.Properties{})
+		if err != nil || found == nil {
+			result = append(result, update)
+			continue
 		}
 		// the stored object is not the most recent version. in
 		// this case, we overwrite it with the more recent one.
-		if found.LastUpdateTimeUnix() == vobj.StaleUpdateTime {
-			err := shd.putObject(ctx, storobj.FromObject(vobj.LatestObject, vobj.LatestObject.Vector))
+		if found.LastUpdateTimeUnix() == update.StaleUpdateTime {
+			err := s.putObject(ctx, storobj.FromObject(update.LatestObject, update.LatestObject.Vector))
 			if err != nil {
-				return nil, fmt.Errorf("overwrite stale object: %w", err)
+				result = append(result, list[j])
+				continue
 			}
-			result[j] = vobj
 		} else {
-			result[j] = nil
+			// todo set version once implemented
+			list[j].LatestObject = &found.Object
+			result = append(result, list[j])
 		}
+	}
+	if len(result) == 0 {
+		return nil, nil
+	}
+	return result, nil
+}
+
+// OverwriteObjects overwrite objects if their state didn't change in the meantime
+// It returns nil if all object have been successfully overwritten and otherwise a list of failed operations.
+func (i *Index) OverwriteObjects2(ctx context.Context,
+	shard string, list []*objects.VObject,
+) ([]replica.RepairResponse, error) {
+	result := make([]replica.RepairResponse, 0, len(list)/2)
+	s := i.Shards[shard]
+	if s == nil {
+		return nil, fmt.Errorf("shard %q not found locally", shard)
+	}
+	for _, update := range list {
+		id := update.LatestObject.ID
+		found, err := s.objectByID(ctx, id, nil, additional.Properties{})
+		if err != nil || found == nil {
+			result = append(result, replica.RepairResponse{
+				ID:  id.String(),
+				Err: "not found",
+			})
+			continue
+		}
+		// the stored object is not the most recent version. in
+		// this case, we overwrite it with the more recent one.
+		if found.LastUpdateTimeUnix() == update.StaleUpdateTime {
+			err := s.putObject(ctx, storobj.FromObject(update.LatestObject, update.LatestObject.Vector))
+			if err != nil {
+				result = append(result, replica.RepairResponse{
+					ID:         id.String(),
+					UpdateTime: found.LastUpdateTimeUnix(),
+					// Version: , todo
+					Err: fmt.Sprintf("overwrite stale object: %v", err),
+				})
+				continue
+			}
+		} else {
+			// todo set version once implemented
+			result = append(result, replica.RepairResponse{
+				ID:         id.String(),
+				UpdateTime: found.LastUpdateTimeUnix(),
+				// Version: , todo
+				Err: "conflict",
+			})
+		}
+	}
+	if len(result) == 0 {
+		return nil, nil
 	}
 	return result, nil
 }
