@@ -225,21 +225,8 @@ func (e *Explorer) getClassVectorSearch(ctx context.Context,
 	return e.searchResultsToGetResponse(ctx, res, searchVector, params)
 }
 
-func (e *Explorer) Hybrid(ctx context.Context, params dto.GetParams) ([]search.Result, error) {
-	sparseSearch := func() ([]*storobj.Object, []float32, error) {
-		params.KeywordRanking = &searchparams.KeywordRanking{
-			Query: params.HybridSearch.Query,
-			Type:  "bm25",
-		}
-
-		res, dists, err := e.search.ClassObjectSearch(ctx, params)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		return res, dists, nil
-	}
-
+<<<<<<< Updated upstream
+func (e *Explorer) Hybrid(ctx context.Context, params *dto.GetParams,classSearch func (ctx context.Context, params *dto.GetParams)([]*storobj.Object, []float32, error),) ([]search.Result, error) {
 	denseSearch := func(vec []float32) ([]*storobj.Object, []float32, error) {
 		hybridSearchLimit := params.Pagination.Limit
 		if hybridSearchLimit == 0 {
@@ -267,10 +254,9 @@ func (e *Explorer) Hybrid(ctx context.Context, params dto.GetParams) ([]search.R
 		HybridSearch: params.HybridSearch,
 		Keyword:      params.KeywordRanking,
 		Class:        params.ClassName,
-	}, e.logger, sparseSearch, denseSearch,
-		postProcess, e.modulesProvider)
+	}, e.logger, nil, denseSearch, postProcess, e.modulesProvider)
 
-	res, err := h.Search(ctx)
+	res, err := h.Search(ctx, params, classSearch)
 	if err != nil {
 		return nil, err
 	}

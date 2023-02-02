@@ -45,24 +45,7 @@ func (fa *filteredAggregator) Do(ctx context.Context) (*aggregation.Result, erro
 }
 
 func (fa *filteredAggregator) hybrid(ctx context.Context) (*aggregation.Result, error) {
-	sparseSearch := func() ([]*storobj.Object, []float32, error) {
-		kw, err := fa.buildHybridKeywordRanking()
-		if err != nil {
-			return nil, nil, fmt.Errorf("build hybrid keyword ranking: %w", err)
-		}
 
-		if fa.params.ObjectLimit == nil {
-			limit := hybrid.DefaultLimit
-			fa.params.ObjectLimit = &limit
-		}
-
-		sparse, dists, err := fa.bm25Objects(ctx, kw)
-		if err != nil {
-			return nil, nil, fmt.Errorf("aggregate sparse search: %w", err)
-		}
-
-		return sparse, dists, nil
-	}
 
 	denseSearch := func(vec []float32) ([]*storobj.Object, []float32, error) {
 		allowList, err := fa.buildAllowList(ctx)
@@ -81,9 +64,9 @@ func (fa *filteredAggregator) hybrid(ctx context.Context) (*aggregation.Result, 
 	h := hybrid.NewSearcher(&hybrid.Params{
 		HybridSearch: fa.params.Hybrid,
 		Class:        fa.params.ClassName.String(),
-	}, fa.logger, sparseSearch, denseSearch, nil, nil)
+	}, fa.logger, nil, denseSearch, nil, nil)
 
-	res, err := h.Search(ctx)
+	res, err := h.Search(ctx, params,classSearch)
 	if err != nil {
 		return nil, err
 	}

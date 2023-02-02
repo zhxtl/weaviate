@@ -54,6 +54,7 @@ func makeUpdateSchemaCall(logger logrus.FieldLogger, appState *state.State, trav
 		if err != nil && err != utils.ErrEmptySchema {
 			logger.WithField("action", "graphql_rebuild").
 				WithError(err).Error("could not (re)build graphql provider")
+				panic(err)
 		}
 		appState.GraphQL = gql
 	}

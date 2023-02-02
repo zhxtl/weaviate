@@ -20,6 +20,7 @@ import (
 	"github.com/weaviate/weaviate/entities/search"
 	"github.com/weaviate/weaviate/entities/searchparams"
 	"github.com/weaviate/weaviate/entities/storobj"
+	"github.com/weaviate/weaviate/usecases/traverser"
 )
 
 const DefaultLimit = 100
@@ -95,8 +96,10 @@ func NewSearcher(params *Params, logger logrus.FieldLogger,
 	}
 }
 
-// Search executes sparse and dense searches and combines the result sets using Reciprocal Rank Fusion
-func (s *Searcher) Search(ctx context.Context) (Results, error) {
+func (s *Searcher) Search(ctx context.Context,
+	params *traverser.GetParams, 
+	classSearch func (ctx context.Context, params dto.GetParams)([]*storobj.Object, []float32, error),
+) (Results, error) {
 	var (
 		found   [][]*Result
 		weights []float64
@@ -106,7 +109,7 @@ func (s *Searcher) Search(ctx context.Context) (Results, error) {
 		alpha := s.params.Alpha
 
 		if alpha < 1 {
-			res, err := s.sparseSearch()
+			res, err := sparseSearch(ctx, params, classSearch)
 			if err != nil {
 				return nil, err
 			}
@@ -127,7 +130,7 @@ func (s *Searcher) Search(ctx context.Context) (Results, error) {
 	} else {
 		ss := s.params.SubSearches
 		for _, subsearch := range ss.([]searchparams.WeightedSearchResult) {
-			res, weight, err := s.handleSubSearch(ctx, &subsearch)
+			res, weight, err := s.handleSubSearch(ctx, &subsearch, params, clasSearch)
 			if err != nil {
 				return nil, err
 			}
@@ -163,8 +166,18 @@ func (s *Searcher) Search(ctx context.Context) (Results, error) {
 	return fused, nil
 }
 
+<<<<<<< Updated upstream
 func (s *Searcher) sparseSearch() ([]*Result, error) {
 	res, dists, err := s.sparseSearchFunc()
+=======
+func sparseSearch(ctx context.Context, params *traverser.GetParams, classSearch func (ctx context.Context, params *traverser.GetParams)([]*storobj.Object, []float32, error)) ([]*Result, error) {
+	params.KeywordRanking = &searchparams.KeywordRanking{
+		Query: params.HybridSearch.Query,
+		Type:  "bm25",
+	}
+
+	res, dists, err := classSearch(ctx, params)
+>>>>>>> Stashed changes
 	if err != nil {
 		return nil, fmt.Errorf("sparse search: %w", err)
 	}
@@ -204,12 +217,18 @@ func (s *Searcher) denseSearch(ctx context.Context) ([]*Result, error) {
 
 func (s *Searcher) handleSubSearch(ctx context.Context,
 	subsearch *searchparams.WeightedSearchResult,
+	params *traverser.GetParams, 
+	classSearch func (ctx context.Context, params *traverser.GetParams)([]*storobj.Object, []float32, error),
 ) ([]*Result, float64, error) {
 	switch subsearch.Type {
 	case "bm25":
 		fallthrough
 	case "sparseSearch":
-		return s.sparseSubSearch(subsearch)
+		res, err := sparseSearch(ctx, params, classSearch)
+		if err != nil {
+			return nil, 0, err
+		}
+		return res, subsearch.Weight, nil
 	case "nearText":
 		return s.nearTextSubSearch(ctx, subsearch)
 	case "nearVector":
@@ -219,12 +238,8 @@ func (s *Searcher) handleSubSearch(ctx context.Context,
 	}
 }
 
-func (s *Searcher) sparseSubSearch(
-	subsearch *searchparams.WeightedSearchResult,
-) ([]*Result, float64, error) {
-	sp := subsearch.SearchParams.(searchparams.KeywordRanking)
-	s.params.Keyword = &sp
 
+<<<<<<< Updated upstream
 	res, dists, err := s.sparseSearchFunc()
 	if err != nil {
 		return nil, 0, fmt.Errorf("sparse subsearch: %w", err)
@@ -239,6 +254,8 @@ func (s *Searcher) sparseSubSearch(
 
 	return out, subsearch.Weight, nil
 }
+=======
+>>>>>>> Stashed changes
 
 func (s *Searcher) nearTextSubSearch(ctx context.Context,
 	subsearch *searchparams.WeightedSearchResult,

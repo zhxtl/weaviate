@@ -37,10 +37,7 @@ func hybridArgument(classObject *graphql.Object,
 func hybridOperands(classObject *graphql.Object,
 	class *models.Class, modulesProvider ModulesProvider,
 ) graphql.InputObjectConfigFieldMap {
-	ss := graphql.NewInputObject(graphql.InputObjectConfig{
-		Name:   class.Class + "SubSearch",
-		Fields: hybridSubSearch(classObject, class, modulesProvider),
-	})
+
 	fieldMap := graphql.InputObjectConfigFieldMap{
 		"query": &graphql.InputObjectFieldConfig{
 			Description: "Query string",
@@ -56,7 +53,11 @@ func hybridOperands(classObject *graphql.Object,
 		},
 	}
 
-	if os.Getenv("ENABLE_EXPERIMENTAL_HYBRID_OPERANDS") != "" {
+	if os.Getenv("ENABLE_EXPERIMENTAL_HYBRID_OPERANDS") == "true" {
+		ss := graphql.NewInputObject(graphql.InputObjectConfig{
+			Name:   class.Class + "HybridSubSearch",
+			Fields: hybridSubSearch(classObject, class, modulesProvider),
+		})
 		fieldMap["operands"] = &graphql.InputObjectFieldConfig{
 			Description: "Subsearch list",
 			Type:        graphql.NewList(ss),
@@ -69,7 +70,7 @@ func hybridOperands(classObject *graphql.Object,
 func hybridSubSearch(classObject *graphql.Object,
 	class *models.Class, modulesProvider ModulesProvider,
 ) graphql.InputObjectConfigFieldMap {
-	prefixName := class.Class + "SubSearch"
+	prefixName := class.Class + "AggregateHybridSubSearch"
 
 	return graphql.InputObjectConfigFieldMap{
 		"weight": &graphql.InputObjectFieldConfig{
