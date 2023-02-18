@@ -26,6 +26,7 @@ type AllowList interface {
 	Size() uint64
 	Iterator() AllowListIterator
 	LimitedIterator(limit int) AllowListIterator
+	Expose() *sroar.Bitmap
 }
 
 type AllowListIterator interface {
@@ -47,6 +48,10 @@ func NewAllowListFromBitmapDeepCopy(bm *sroar.Bitmap) AllowList {
 
 type bitmapAllowList struct {
 	bm *sroar.Bitmap
+}
+
+func (al *bitmapAllowList) Expose() *sroar.Bitmap {
+	return al.bm
 }
 
 func (al *bitmapAllowList) Insert(ids ...uint64) {
