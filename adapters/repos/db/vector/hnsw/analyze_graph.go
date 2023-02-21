@@ -12,7 +12,7 @@ func (h *hnsw) analyzeGraph(allowList helpers.AllowList) error {
 
 	maxClusters := 0
 	for allow.GetCardinality() > 0 {
-		if maxClusters > 9 {
+		if maxClusters > 100 {
 			break
 		}
 		entryPoint, err := allow.Select(0)
@@ -50,6 +50,11 @@ func (h *hnsw) analyzeLocalCluster(allow *sroar.Bitmap, entryPoint uint64) (*sro
 		n := h.nodes[current]
 		if n == nil {
 			continue
+		}
+
+		if candidatePointer == 1 {
+			fmt.Printf("root node %d has %d/%d total edges\n", current, len(n.connections[0]), h.maximumConnectionsLayerZero)
+			fmt.Printf("edges: %v\n", n.connections[0])
 		}
 
 		for _, conn := range n.connections[0] {
