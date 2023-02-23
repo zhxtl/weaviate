@@ -11,6 +11,8 @@
 
 package clients
 
+import "regexp"
+
 import (
 	"bytes"
 	"context"
@@ -19,7 +21,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"regexp"
 	"strings"
 	"time"
 
@@ -60,7 +61,7 @@ func (v *openai) GenerateSingleResult(ctx context.Context, textProperties map[st
 	return v.Generate(ctx, cfg, forPrompt)
 }
 
-func (v *openai) GenerateAllResults(ctx context.Context, textProperties []map[string]string, task string, cfg moduletools.ClassConfig) (*ent.GenerateResult, error) {
+func (v *openai) GenerateAllResults(ctx context.Context, textProperties []map[string]string, task string, combineDocs string, mapTask string, cfg moduletools.ClassConfig) (*ent.GenerateResult, error) {
 	forTask, err := v.generatePromptForTask(textProperties, task)
 	if err != nil {
 		return nil, err

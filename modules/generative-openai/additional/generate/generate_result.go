@@ -13,6 +13,7 @@ package generate
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 	"sync"
 
@@ -30,10 +31,15 @@ func (p *GenerateProvider) generateResult(ctx context.Context, in []search.Resul
 	}
 	prompt := params.Prompt
 	task := params.Task
+	//combineDocs := "combineDocs"
+	//mapTask := "map task"
+	combineDocs := params.combineDocs
+	mapTask := params.mapTask
 	var err error
 
 	if task != nil {
-		_, err = p.generateForAllSearchResults(ctx, in, *task, cfg)
+		//_, err = p.generateForAllSearchResults(ctx, in, *task, *combineDocs, *mapTask, cfg)
+		_, err = p.generateForAllSearchResults(ctx, in, *task, *combineDocs, *mapTask, cfg)
 	}
 	if prompt != nil {
 		prompt, err = validatePrompt(prompt)
@@ -76,12 +82,34 @@ func (p *GenerateProvider) generatePerSearchResult(ctx context.Context, in []sea
 	return in, nil
 }
 
-func (p *GenerateProvider) generateForAllSearchResults(ctx context.Context, in []search.Result, task string, cfg moduletools.ClassConfig) ([]search.Result, error) {
+func (p *GenerateProvider) generateForAllSearchResults(ctx context.Context, in []search.Result, task string, combineDocs string, mapTask string, cfg moduletools.ClassConfig) ([]search.Result, error) {
 	var propertiesForAllDocs []map[string]string
 	for _, res := range in {
 		propertiesForAllDocs = append(propertiesForAllDocs, p.getTextProperties(res))
 	}
-	generateResult, err := p.client.GenerateAllResults(ctx, propertiesForAllDocs, task, cfg)
+	var mapResults []map[string]string
+	// refactor this into separate function calls
+	if combineDocs == "mapReduce" {
+		var wg sync.WaitGroup
+		sem := make(chan struct{}, p.maximumNumberOfGoroutines)
+		// could specify exactly how long this is with the in length?
+		for i, result := range in {
+			wg.Add(1)
+			textProperties := p.getTextProperties(result)
+			go func(result search.Result, textProperties map[string]string, i int) {
+				sem <- struct{}{}
+				defer wg.Done()
+				defer func() { <-sem }()
+				generateResult, _ := p.client.GenerateSingleResult(ctx, textProperties, mapTask, cfg) // took out err
+				key := fmt.Sprintf("result-%d", i)
+				resultMap := map[string]string{key: *generateResult.Result}
+				mapResults = append(mapResults, resultMap)
+				//p.setIndividualResult(in, i, generateResult, err)
+			}(result, textProperties, i)
+		}
+		wg.Wait()
+	}
+	generateResult, err := p.client.GenerateAllResults(ctx, mapResults, task, "foo", "bar", cfg)
 	p.setCombinedResult(in, 0, generateResult, err)
 	return in, nil
 }
