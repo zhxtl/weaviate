@@ -26,7 +26,7 @@ const maximumNumberOfGoroutines = 10
 
 type openAIClient interface {
 	GenerateSingleResult(ctx context.Context, textProperties map[string]string, prompt string, cfg moduletools.ClassConfig) (*ent.GenerateResult, error)
-	GenerateAllResults(ctx context.Context, textProperties []map[string]string, task string, cfg moduletools.ClassConfig) (*ent.GenerateResult, error)
+	GenerateAllResults(ctx context.Context, textProperties []map[string]string, task string, combineDocs string, mapTask string, cfg moduletools.ClassConfig) (*ent.GenerateResult, error)
 	Generate(ctx context.Context, cfg moduletools.ClassConfig, prompt string) (*ent.GenerateResult, error)
 }
 

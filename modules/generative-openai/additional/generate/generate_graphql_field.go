@@ -42,6 +42,14 @@ func (p *GenerateProvider) additionalGenerateField(classname string) *graphql.Fi
 							Description: "task",
 							Type:        graphql.String,
 						},
+						"combineDocs": &graphql.InputObjectFieldConfig{
+							Description: "combineDocs",
+							Type:        graphql.String,
+						},
+						"mapTask": &graphql.InputObjectFieldConfig{
+							Description: "mapTask",
+							Type:        graphql.String,
+						},
 					},
 				}),
 				DefaultValue: nil,
