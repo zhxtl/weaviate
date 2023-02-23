@@ -277,7 +277,7 @@ func TestRFJourney(t *testing.T) {
 		RootPath:                  dirName,
 		QueryMaximumResults:       10000,
 		MaxImportGoroutinesFactor: 1,
-		QueryLimit: 20,
+		QueryLimit:                20,
 	}, &fakeRemoteClient{}, &fakeNodeResolver{}, &fakeRemoteNodeClient{}, nil, nil)
 	repo.SetSchemaGetter(schemaGetter)
 	err := repo.WaitForStartup(context.TODO())
@@ -491,9 +491,6 @@ func TestRFJourney(t *testing.T) {
 	})
 }
 
-
-
-
 func TestRFJourneyWithFilters(t *testing.T) {
 	rand.Seed(time.Now().UnixNano())
 	dirName := t.TempDir()
@@ -504,7 +501,7 @@ func TestRFJourneyWithFilters(t *testing.T) {
 		RootPath:                  dirName,
 		QueryMaximumResults:       10000,
 		MaxImportGoroutinesFactor: 1,
-		QueryLimit: 20,
+		QueryLimit:                20,
 	}, &fakeRemoteClient{}, &fakeNodeResolver{}, &fakeRemoteNodeClient{}, nil, nil)
 	repo.SetSchemaGetter(schemaGetter)
 	err := repo.WaitForStartup(context.TODO())
@@ -514,9 +511,6 @@ func TestRFJourneyWithFilters(t *testing.T) {
 	class := SetupFusionClass(t, repo, schemaGetter, logger, 1.2, 0.75)
 	idx := repo.GetIndex("MyClass")
 	require.NotNil(t, idx)
-
-	
-
 
 	filter := &filters.LocalFilter{
 		Root: &filters.Clause{
@@ -578,8 +572,6 @@ func TestRFJourneyWithFilters(t *testing.T) {
 		},
 	}
 
-	
-
 	t.Run("Hybrid", func(t *testing.T) {
 		params := dto.GetParams{
 			ClassName: "MyClass",
@@ -605,7 +597,6 @@ func TestRFJourneyWithFilters(t *testing.T) {
 		hybridResults, err := explorer.Hybrid(context.TODO(), params)
 		require.Nil(t, err)
 		require.Equal(t, 0, len(hybridResults))
-		
 	})
 
 	t.Run("Hybrid with filter", func(t *testing.T) {
@@ -621,7 +612,7 @@ func TestRFJourneyWithFilters(t *testing.T) {
 				Offset: 0,
 				Limit:  -1,
 			},
-			//Filters: filter,
+			// Filters: filter,
 		}
 
 		prov := modules.NewProvider()
@@ -680,7 +671,6 @@ func TestRFJourneyWithFilters(t *testing.T) {
 		require.Equal(t, strfmt.UUID("00000000-0000-0000-0000-000000000002"), hybridResults[0].ID)
 	})
 }
-
 
 // "journey"
 func journeyVector() []float32 {
