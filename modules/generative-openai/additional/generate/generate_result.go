@@ -83,13 +83,15 @@ func (p *GenerateProvider) generatePerSearchResult(ctx context.Context, in []sea
 }
 
 func (p *GenerateProvider) generateForAllSearchResults(ctx context.Context, in []search.Result, task string, combineDocs string, mapTask string, cfg moduletools.ClassConfig) ([]search.Result, error) {
-	var propertiesForAllDocs []map[string]string
-	for _, res := range in {
-		propertiesForAllDocs = append(propertiesForAllDocs, p.getTextProperties(res))
+	// Question - how do I set default values such that you don't need to pass in the arguments to Weaviate?
+	if combineDocs == "" {
+		combineDocs = "stuff"
 	}
-	var mapResults []map[string]string
-	// refactor this into separate function calls
+	if mapTask == "" {
+		mapTask = "foobar"
+	}
 	if combineDocs == "mapReduce" {
+		var mapResults []map[string]string
 		var wg sync.WaitGroup
 		sem := make(chan struct{}, p.maximumNumberOfGoroutines)
 		// could specify exactly how long this is with the in length?
@@ -108,10 +110,30 @@ func (p *GenerateProvider) generateForAllSearchResults(ctx context.Context, in [
 			}(result, textProperties, i)
 		}
 		wg.Wait()
+		generateResult, err := p.client.GenerateAllResults(ctx, mapResults, task, combineDocs, mapTask, cfg)
+		p.setCombinedResult(in, 0, generateResult, err)
+		return in, nil
+	} else if combineDocs == "refine" {
+		var nextSummary string = "Nothing yet."
+		var err error
+		for _, result := range in {
+			textProperties := p.getTextProperties(result)
+			textProperties["refineKey"] = nextSummary
+			output, _ := p.client.GenerateSingleResult(ctx, textProperties, task, cfg)
+			nextSummary = *output.Result
+		}
+		refinedResult := &ent.GenerateResult{Result: &nextSummary}
+		p.setCombinedResult(in, 0, refinedResult, err)
+		return in, nil
+	} else {
+		var propertiesForAllDocs []map[string]string
+		for _, res := range in {
+			propertiesForAllDocs = append(propertiesForAllDocs, p.getTextProperties(res))
+		}
+		generateResult, err := p.client.GenerateAllResults(ctx, propertiesForAllDocs, task, combineDocs, mapTask, cfg)
+		p.setCombinedResult(in, 0, generateResult, err)
+		return in, nil
 	}
-	generateResult, err := p.client.GenerateAllResults(ctx, mapResults, task, "foo", "bar", cfg)
-	p.setCombinedResult(in, 0, generateResult, err)
-	return in, nil
 }
 
 func (p *GenerateProvider) getTextProperties(result search.Result) map[string]string {
