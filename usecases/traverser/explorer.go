@@ -31,6 +31,7 @@ import (
 	uc "github.com/weaviate/weaviate/usecases/schema"
 	"github.com/weaviate/weaviate/usecases/traverser/grouper"
 	"github.com/weaviate/weaviate/usecases/traverser/hybrid"
+	"github.com/hashicorp/go-multierror"
 )
 
 // Explorer is a helper construct to perform vector-based searches. It does not
@@ -289,16 +290,18 @@ func (e *Explorer) getClassList(ctx context.Context,
 	// to compute the distance with a `nil` vector, resulting in NaN.
 	// this was the cause of [github issue 1958]
 	// (https://github.com/weaviate/weaviate/issues/1958)
+
+	var outError error
 	if params.Group != nil && (params.Filters != nil || params.Sort != nil) {
 		params.AdditionalProperties.Vector = true
 	}
+
+
 	var res []search.Result
 	var err error
 	if params.HybridSearch != nil {
 		res, err = e.Hybrid(ctx, params)
-		if err != nil {
-			return nil, err
-		}
+		outError = err
 	} else {
 		res, err = e.search.ClassSearch(ctx, params)
 		if err != nil {
@@ -309,7 +312,7 @@ func (e *Explorer) getClassList(ctx context.Context,
 	if params.Group != nil {
 		grouped, err := grouper.New(e.logger).Group(res, params.Group.Strategy, params.Group.Force)
 		if err != nil {
-			return nil, errors.Errorf("grouper: %v", err)
+			return nil, multierror.Append(outError,  errors.Errorf("grouper: %v", err))
 		}
 
 		res = grouped
@@ -319,7 +322,7 @@ func (e *Explorer) getClassList(ctx context.Context,
 		res, err = e.modulesProvider.ListExploreAdditionalExtend(ctx, res,
 			params.AdditionalProperties.ModuleParams, params.ModuleParams)
 		if err != nil {
-			return nil, errors.Errorf("explorer: list class: extend: %v", err)
+			return nil, multierror.Append(  errors.Errorf("explorer: list class: extend: %v", err))
 		}
 	}
 
@@ -327,7 +330,12 @@ func (e *Explorer) getClassList(ctx context.Context,
 		e.trackUsageGetExplicitVector(res, params)
 	}
 
-	return e.searchResultsToGetResponse(ctx, res, nil, params)
+	out, err :=  e.searchResultsToGetResponse(ctx, res, nil, params)
+	if err != nil {
+		outError = multierror.Append(outError, err)
+	}
+
+	return out, outError
 }
 
 func (e *Explorer) searchResultsToGetResponse(ctx context.Context,
