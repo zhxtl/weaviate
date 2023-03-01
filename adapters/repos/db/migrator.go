@@ -175,7 +175,7 @@ func (m *Migrator) UpdateShardStatus(ctx context.Context, className, shardName, 
 		return errors.Errorf("cannot update shard status to a non-existing index for %s", className)
 	}
 
-	return idx.updateShardStatus(ctx, shardName, targetStatus)
+	return idx.updateShardStatus(ctx, shardName, targetStatus, "TODO")
 }
 
 func NewMigrator(db *DB, logger logrus.FieldLogger) *Migrator {

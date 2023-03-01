@@ -36,16 +36,17 @@ func (s *Shard) isReadOnly() bool {
 	return s.getStatus() == storagestate.StatusReadOnly
 }
 
-func (s *Shard) updateStatus(in string) error {
+func (s *Shard) updateStatusWithReason(status, reason string) error {
 	s.statusLock.Lock()
 	defer s.statusLock.Unlock()
 
-	targetStatus, err := storagestate.ValidateStatus(strings.ToUpper(in))
+	targetStatus, err := storagestate.ValidateStatus(strings.ToUpper(status))
 	if err != nil {
-		return errors.Wrap(err, in)
+		return errors.Wrap(err, status)
 	}
 
 	s.status = targetStatus
+	s.statusReason = reason
 	s.updateStoreStatus(targetStatus)
 
 	return nil

@@ -69,6 +69,7 @@ type Shard struct {
 	maxNumberGoroutines int
 
 	status              storagestate.Status
+	statusReason        string
 	statusLock          sync.Mutex
 	propertyIndicesLock sync.RWMutex
 	stopMetrics         chan struct{}

@@ -61,7 +61,8 @@ func TestShard_UpdateStatus(t *testing.T) {
 	})
 
 	t.Run("mark shard readonly and fail to insert", func(t *testing.T) {
-		err := shd.updateStatus(storagestate.StatusReadOnly.String())
+		err := shd.updateStatusWithReason(storagestate.StatusReadOnly.String(),
+			"my-reason")
 		require.Nil(t, err)
 
 		err = shd.putObject(ctx, testObject(className))
@@ -69,7 +70,7 @@ func TestShard_UpdateStatus(t *testing.T) {
 	})
 
 	t.Run("mark shard ready and insert successfully", func(t *testing.T) {
-		err := shd.updateStatus(storagestate.StatusReady.String())
+		err := shd.updateStatusWithReason(storagestate.StatusReady.String(), "")
 		require.Nil(t, err)
 
 		err = shd.putObject(ctx, testObject(className))
@@ -127,7 +128,8 @@ func TestShard_ReadOnly_HaltCompaction(t *testing.T) {
 	})
 
 	t.Run("halt compaction with readonly status", func(t *testing.T) {
-		err := shd.updateStatus(storagestate.StatusReadOnly.String())
+		err := shd.updateStatusWithReason(storagestate.StatusReadOnly.String(),
+			"i have a good reason")
 		require.Nil(t, err)
 
 		// give the status time to propagate
@@ -156,7 +158,7 @@ func TestShard_ReadOnly_HaltCompaction(t *testing.T) {
 	})
 
 	t.Run("update shard status to ready", func(t *testing.T) {
-		err := shd.updateStatus(storagestate.StatusReady.String())
+		err := shd.updateStatusWithReason(storagestate.StatusReady.String(), "")
 		require.Nil(t, err)
 
 		time.Sleep(time.Second)

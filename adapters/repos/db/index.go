@@ -1193,7 +1193,9 @@ func (i *Index) IncomingGetShardStatus(ctx context.Context, shardName string) (s
 	return shard.getStatus().String(), nil
 }
 
-func (i *Index) updateShardStatus(ctx context.Context, shardName, targetStatus string) error {
+func (i *Index) updateShardStatus(
+	ctx context.Context, shardName, targetStatus, reason string,
+) error {
 	shardState := i.getSchema.ShardingState(i.Config.ClassName.String())
 
 	var err error
@@ -1205,7 +1207,7 @@ func (i *Index) updateShardStatus(ctx context.Context, shardName, targetStatus s
 		if !ok {
 			err = errors.Errorf("shard %s does not exist", shardName)
 		} else {
-			err = shard.updateStatus(targetStatus)
+			err = shard.updateStatusWithReason(targetStatus, reason)
 		}
 	}
 	if err != nil {
@@ -1220,7 +1222,7 @@ func (i *Index) IncomingUpdateShardStatus(ctx context.Context, shardName, target
 	if !ok {
 		return errors.Errorf("shard %s does not exist", shardName)
 	}
-	return shard.updateStatus(targetStatus)
+	return shard.updateStatusWithReason(targetStatus, "TODO")
 }
 
 func (i *Index) notifyReady() {

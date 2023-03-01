@@ -120,7 +120,8 @@ func (s *Shard) diskUseReadonly(du diskUse) {
 	diskROPercent := s.index.Config.ResourceUsage.DiskUse.ReadOnlyPercentage
 	if diskROPercent > 0 {
 		if pu := du.percentUsed(); pu > float64(diskROPercent) {
-			err := s.updateStatus(storagestate.StatusReadOnly.String())
+			err := s.updateStatusWithReason(storagestate.StatusReadOnly.String(),
+				"disk is full")
 			if err != nil {
 				s.index.logger.WithField("action", "set_shard_read_only").
 					WithField("shard", s.name).
@@ -141,7 +142,8 @@ func (s *Shard) memUseReadonly(mon *memwatch.Monitor) {
 	memROPercent := s.index.Config.ResourceUsage.MemUse.ReadOnlyPercentage
 	if memROPercent > 0 {
 		if pu := mon.Ratio() * 100; pu > float64(memROPercent) {
-			err := s.updateStatus(storagestate.StatusReadOnly.String())
+			err := s.updateStatusWithReason(storagestate.StatusReadOnly.String(),
+				"out of memory")
 			if err != nil {
 				s.index.logger.WithField("action", "set_shard_read_only").
 					WithField("shard", s.name).
