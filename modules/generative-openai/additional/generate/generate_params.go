@@ -14,8 +14,9 @@ package generate
 type Params struct {
 	Prompt      *string
 	Task        *string
-	combineDocs *string
-	mapTask     *string
+	CombineDocs *string
+	MapTask     *string
+	Properties []string
 }
 
 func (n Params) GetPrompt() string {
@@ -27,9 +28,13 @@ func (n Params) GetTask() string {
 }
 
 func (n Params) GetCombineDocs() string {
-	return *n.combineDocs
+	return *n.CombineDocs
 }
 
 func (n Params) GetMapTask() string {
-	return *n.mapTask
+	return *n.MapTask
+}
+
+func (n Params) GetProperties() []string {
+	return n.Properties
 }

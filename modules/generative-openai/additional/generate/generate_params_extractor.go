@@ -28,8 +28,8 @@ func (p *GenerateProvider) parseGenerateArguments(args []*ast.Argument) *Params 
 		case "groupedResult":
 			obj := arg.Value.(*ast.ObjectValue).Fields
 			out.Task = nil
-			out.combineDocs = nil
-			out.mapTask = nil
+			out.CombineDocs = nil
+			out.MapTask = nil
 
 			// Extract the additional fields "Task", "combineDocs" and "mapTask"
 			for _, field := range obj {
@@ -37,15 +37,18 @@ func (p *GenerateProvider) parseGenerateArguments(args []*ast.Argument) *Params 
 				case "task":
 					out.Task = &field.Value.(*ast.StringValue).Value
 				case "combineDocs":
-					out.combineDocs = &field.Value.(*ast.StringValue).Value
+					out.CombineDocs = &field.Value.(*ast.StringValue).Value
 				case "mapTask":
-					out.mapTask = &field.Value.(*ast.StringValue).Value
-				default:
-					// ignore what we don't recognize
-					log.Printf("Igonore not recognized value: %v", field.Name.Value)
+					out.MapTask = &field.Value.(*ast.StringValue).Value
+				case "properties":
+					inp := field.Value.GetValue().([]ast.Value)
+					out.Properties = make([]string, len(inp))
+
+					for i, value := range inp {
+						out.Properties[i] = value.(*ast.StringValue).Value
+					}
 				}
 			}
-
 		default:
 			// ignore what we don't recognize
 			log.Printf("Igonore not recognized value: %v", arg.Name.Value)

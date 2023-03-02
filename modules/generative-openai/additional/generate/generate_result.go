@@ -31,15 +31,13 @@ func (p *GenerateProvider) generateResult(ctx context.Context, in []search.Resul
 	}
 	prompt := params.Prompt
 	task := params.Task
-	//combineDocs := "combineDocs"
-	//mapTask := "map task"
-	combineDocs := params.combineDocs
-	mapTask := params.mapTask
+	properties := params.Properties
+	combineDocs := params.CombineDocs
+	mapTask := params.MapTask
 	var err error
 
 	if task != nil {
-		//_, err = p.generateForAllSearchResults(ctx, in, *task, *combineDocs, *mapTask, cfg)
-		_, err = p.generateForAllSearchResults(ctx, in, *task, *combineDocs, *mapTask, cfg)
+		_, err = p.generateForAllSearchResults(ctx, in, *task, *combineDocs, *mapTask, properties, cfg)
 	}
 	if prompt != nil {
 		prompt, err = validatePrompt(prompt)
@@ -69,7 +67,7 @@ func (p *GenerateProvider) generatePerSearchResult(ctx context.Context, in []sea
 	sem := make(chan struct{}, p.maximumNumberOfGoroutines)
 	for i, result := range in {
 		wg.Add(1)
-		textProperties := p.getTextProperties(result)
+		textProperties := p.getTextProperties(result, nil)
 		go func(result search.Result, textProperties map[string]string, i int) {
 			sem <- struct{}{}
 			defer wg.Done()
@@ -82,7 +80,7 @@ func (p *GenerateProvider) generatePerSearchResult(ctx context.Context, in []sea
 	return in, nil
 }
 
-func (p *GenerateProvider) generateForAllSearchResults(ctx context.Context, in []search.Result, task string, combineDocs string, mapTask string, cfg moduletools.ClassConfig) ([]search.Result, error) {
+func (p *GenerateProvider) generateForAllSearchResults(ctx context.Context, in []search.Result, task string, combineDocs string, mapTask string, properties []string, cfg moduletools.ClassConfig) ([]search.Result, error) {
 	// Question - how do I set default values such that you don't need to pass in the arguments to Weaviate?
 	if combineDocs == "" {
 		combineDocs = "stuff"
@@ -97,7 +95,7 @@ func (p *GenerateProvider) generateForAllSearchResults(ctx context.Context, in [
 		// could specify exactly how long this is with the in length?
 		for i, result := range in {
 			wg.Add(1)
-			textProperties := p.getTextProperties(result)
+			textProperties := p.getTextProperties(result, properties)
 			go func(result search.Result, textProperties map[string]string, i int) {
 				sem <- struct{}{}
 				defer wg.Done()
@@ -117,7 +115,7 @@ func (p *GenerateProvider) generateForAllSearchResults(ctx context.Context, in [
 		var nextSummary string = "Nothing yet."
 		var err error
 		for _, result := range in {
-			textProperties := p.getTextProperties(result)
+			textProperties := p.getTextProperties(result, properties)
 			textProperties["refineKey"] = nextSummary
 			output, _ := p.client.GenerateSingleResult(ctx, textProperties, task, cfg)
 			nextSummary = *output.Result
@@ -128,7 +126,7 @@ func (p *GenerateProvider) generateForAllSearchResults(ctx context.Context, in [
 	} else {
 		var propertiesForAllDocs []map[string]string
 		for _, res := range in {
-			propertiesForAllDocs = append(propertiesForAllDocs, p.getTextProperties(res))
+			propertiesForAllDocs = append(propertiesForAllDocs, p.getTextProperties(res, properties))
 		}
 		generateResult, err := p.client.GenerateAllResults(ctx, propertiesForAllDocs, task, combineDocs, mapTask, cfg)
 		p.setCombinedResult(in, 0, generateResult, err)
@@ -136,12 +134,20 @@ func (p *GenerateProvider) generateForAllSearchResults(ctx context.Context, in [
 	}
 }
 
-func (p *GenerateProvider) getTextProperties(result search.Result) map[string]string {
+func (p *GenerateProvider) getTextProperties(result search.Result, properties []string) map[string]string {
 	textProperties := map[string]string{}
 	schema := result.Object().Properties.(map[string]interface{})
 	for property, value := range schema {
-		if valueString, ok := value.(string); ok {
-			textProperties[property] = valueString
+		if properties != nil {
+			if p.containsProperty(property, properties) {
+				if valueString, ok := value.(string); ok {
+					textProperties[property] = valueString
+				}
+			}
+		} else {
+			if valueString, ok := value.(string); ok {
+				textProperties[property] = valueString
+			}
 		}
 	}
 	return textProperties
@@ -191,4 +197,16 @@ func (p *GenerateProvider) setIndividualResult(in []search.Result, i int, genera
 	}
 
 	in[i].AdditionalProperties = ap
+}
+
+func (p *GenerateProvider) containsProperty(property string, properties []string) bool {
+	if len(properties) == 0 {
+		return true
+	}
+	for i := range properties {
+		if properties[i] == property {
+			return true
+		}
+	}
+	return false
 }

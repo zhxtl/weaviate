@@ -50,6 +50,11 @@ func (p *GenerateProvider) additionalGenerateField(classname string) *graphql.Fi
 							Description: "mapTask",
 							Type:        graphql.String,
 						},
+						"properties": &graphql.InputObjectFieldConfig{
+							Description:  "Properties used for the generation",
+							Type:         graphql.NewList(graphql.String),
+							DefaultValue: nil,
+						},
 					},
 				}),
 				DefaultValue: nil,
