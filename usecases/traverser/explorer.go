@@ -266,11 +266,8 @@ func (e *Explorer) Hybrid(ctx context.Context, params dto.GetParams) ([]search.R
 		postProcess, e.modulesProvider)
 
 	res, err := h.Search(ctx)
-	if err != nil {
-		return nil, err
-	}
 
-	return res.SearchResults(), nil
+	return res.SearchResults(), err
 }
 
 func (e *Explorer) getClassList(ctx context.Context,
