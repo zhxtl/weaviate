@@ -87,6 +87,51 @@ func (h *hnsw) Compress(segments int, centroids int, useBitsEncoding bool, encod
 	return nil
 }
 
+func (h *hnsw) CompressWithCodeBook(codeBook [][][]float32) error {
+	err := h.initCompressedStore()
+	if err != nil {
+		return errors.Wrap(err, "Initializing compressed vector store")
+	}
+
+	dimensions := len(codeBook) * len(codeBook[0][0])
+	segments := len(codeBook)
+	encoders := make([]ssdhelpers.PQEncoder, 0, segments)
+	for segment := range codeBook {
+		encoders = append(encoders, ssdhelpers.NewKMeansWithCenters(len(codeBook[segment]), dimensions/segments, segment, codeBook[segment]))
+
+	}
+	h.pq, err = ssdhelpers.NewProductQuantizerWithEncoders(segments, len(codeBook[0]), false, h.distancerProvider, len(codeBook)*len(codeBook[0][0]), ssdhelpers.UseKMeansEncoder, encoders)
+	if err != nil {
+		return errors.Wrap(err, "Compressing vectors.")
+	}
+
+	data := h.cache.all()
+	cleanData := make([][]float32, 0, len(data))
+	for _, point := range data {
+		if point == nil {
+			continue
+		}
+		cleanData = append(cleanData, point)
+	}
+	h.compressedVectorsCache.grow(uint64(len(data)))
+
+	h.compressActionLock.Lock()
+	defer h.compressActionLock.Unlock()
+	ssdhelpers.Concurrently(uint64(len(cleanData)),
+		func(index uint64) {
+			encoded := h.pq.Encode(cleanData[index])
+			h.storeCompressedVector(index, encoded)
+			h.compressedVectorsCache.preload(index, encoded)
+		})
+	if err := h.commitLog.AddPQ(h.pq.ExposeFields()); err != nil {
+		return errors.Wrap(err, "Adding PQ to the commit logger")
+	}
+
+	h.compressed.Store(true)
+	h.cache.drop()
+	return nil
+}
+
 //nolint:unused
 func (h *hnsw) encodedVector(id uint64) ([]byte, error) {
 	return h.compressedVectorsCache.get(context.Background(), id)
