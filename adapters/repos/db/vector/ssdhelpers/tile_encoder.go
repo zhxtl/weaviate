@@ -202,3 +202,7 @@ func (te *TileEncoder) Centroid(b uint64) []float32 {
 	te.centroids[b].Calculated.Store(true)
 	return te.centroids[b].Center
 }
+
+func (te *TileEncoder) Centers() [][]float32 {
+	return nil
+}

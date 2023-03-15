@@ -16,6 +16,7 @@ package hnsw_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"math"
@@ -83,7 +84,7 @@ func TestRecall(t *testing.T) {
 		}, uc,
 	)
 	init := time.Now()
-	ssdhelpers.Concurrently(uint64(switch_at), func(_, id uint64, _ *sync.Mutex) {
+	ssdhelpers.Concurrently(uint64(switch_at), func(id uint64) {
 		index.Add(uint64(id), vectors[id])
 		if id%1000 == 0 {
 			fmt.Println(id, time.Since(before))
@@ -94,7 +95,7 @@ func TestRecall(t *testing.T) {
 	index.UpdateUserConfig(uc, func() {}) /*should have configuration.pr.enabled = true*/
 	fmt.Printf("Time to compress: %s", time.Since(before))
 	fmt.Println()
-	ssdhelpers.Concurrently(uint64(vectors_size-switch_at), func(_, id uint64, _ *sync.Mutex) {
+	ssdhelpers.Concurrently(uint64(vectors_size-switch_at), func(id uint64) {
 		idx := switch_at + int(id)
 		index.Add(uint64(idx), vectors[idx])
 		if id%1000 == 0 {
@@ -135,11 +136,12 @@ func TestHnswPqGist(t *testing.T) {
 			fmt.Println(err)
 		}
 	}(rootPath)
+	segments := []int{1}
+	centroids := []int{256}
 	params := [][]int{
-		//{64, 64, 32},
+		{64, 64, 32},
 		{128, 128, 64},
 		{256, 256, 128},
-		{512, 512, 256},
 	}
 	dimensions := 960
 	vectors_size := 1000000
@@ -150,88 +152,107 @@ func TestHnswPqGist(t *testing.T) {
 	vectors, queries := testinghelpers.ReadVecs(vectors_size, queries_size, dimensions, "gist", "../diskAnn/testdata")
 	testinghelpers.Normalize(vectors)
 	testinghelpers.Normalize(queries)
-	for i, v := range vectors {
-		for j, x := range v {
-			if math.IsNaN(float64(x)) {
-				fmt.Println(i, j, v, x)
-			}
-		}
-	}
 	k := 100
 	distancer := distancer.NewCosineDistanceProvider()
 	truths := testinghelpers.BuildTruths(queries_size, vectors_size, queries, vectors, k, distanceWrapper(distancer), "../diskAnn/testdata/gist/cosine")
 	fmt.Printf("generating data took %s\n", time.Since(before))
-	for segmentRate := 3; segmentRate < 4; segmentRate++ {
-		fmt.Println(segmentRate)
-		fmt.Println()
-		for i := 0; i < len(params); i++ {
-			efConstruction := params[i][0]
-			ef := params[i][1]
-			maxNeighbors := params[i][2]
+	for _, segment := range segments {
+		fmt.Println("Dimensions per segment: ", segment)
+		for _, centroid := range centroids {
+			fmt.Println("Centroids: ", centroid)
+			for _, param := range params {
+				efConstruction := param[0]
+				ef := param[1]
+				maxNeighbors := param[2]
 
-			uc := ent.UserConfig{
-				MaxConnections:        maxNeighbors,
-				EFConstruction:        efConstruction,
-				EF:                    ef,
-				VectorCacheMaxObjects: 10e12,
-				PQ: ent.PQConfig{
-					Enabled:  false,
-					Segments: dimensions / int(math.Pow(2, float64(segmentRate))),
-					Encoder: ent.PQEncoder{
-						Type:         "kmeans",
-						Distribution: "log-normal",
+				uc := ent.UserConfig{
+					MaxConnections: maxNeighbors,
+					EFConstruction: efConstruction,
+					EF:             ef,
+					PQ: ent.PQConfig{
+						Enabled: false,
 					},
-				},
-			}
-			index, _ := hnsw.New(
-				hnsw.Config{
-					RootPath:              rootPath,
-					ID:                    "recallbenchmark",
-					MakeCommitLoggerThunk: hnsw.MakeNoopCommitLogger,
-					DistanceProvider:      distancer,
-					VectorForIDThunk: func(ctx context.Context, id uint64) ([]float32, error) {
-						return vectors[int(id)], nil
-					},
-				}, uc,
-			)
-			init := time.Now()
-			total := 200000
-			ssdhelpers.Concurrently(uint64(switch_at), func(_, id uint64, _ *sync.Mutex) {
-				total++
-				if total%100000 == 0 {
-					fmt.Println(total)
+					VectorCacheMaxObjects: 10e12,
 				}
-				index.Add(uint64(id), vectors[id])
-			})
-			before = time.Now()
-			uc.PQ.Enabled = true
-			index.UpdateUserConfig(uc, func() {})
-			fmt.Printf("Time to compress: %s", time.Since(before))
-			fmt.Println()
-			ssdhelpers.Concurrently(uint64(vectors_size-switch_at), func(_, id uint64, _ *sync.Mutex) {
-				idx := switch_at + int(id)
-				index.Add(uint64(idx), vectors[idx])
-			})
-			fmt.Printf("Building the index took %s\n", time.Since(init))
-			var relevant uint64
-			var retrieved int
-
-			var querying time.Duration = 0
-			ssdhelpers.Concurrently(uint64(len(queries)), func(_, i uint64, _ *sync.Mutex) {
+				index, _ := hnsw.New(
+					hnsw.Config{
+						RootPath:              rootPath,
+						ID:                    "recallbenchmark",
+						MakeCommitLoggerThunk: hnsw.MakeNoopCommitLogger,
+						DistanceProvider:      distancer,
+						VectorForIDThunk: func(ctx context.Context, id uint64) ([]float32, error) {
+							return vectors[int(id)], nil
+						},
+					}, uc,
+				)
+				init := time.Now()
+				ssdhelpers.Concurrently(uint64(switch_at), func(id uint64) {
+					index.Add(uint64(id), vectors[id])
+				})
 				before = time.Now()
-				results, _, _ := index.SearchByVector(queries[i], k, nil)
-				querying += time.Since(before)
-				retrieved += k
-				relevant += testinghelpers.MatchesInLists(truths[i], results)
-			})
+				fmt.Println("Start compressing...")
+				index.Compress(dimensions, centroid, false, int(ssdhelpers.UseKMeansEncoder), int(ssdhelpers.LogNormalEncoderDistribution))
+				fmt.Printf("Time to compress: %s", time.Since(before))
+				fmt.Println()
+				ssdhelpers.Concurrently(uint64(vectors_size-switch_at), func(id uint64) {
+					idx := switch_at + int(id)
+					index.Add(uint64(idx), vectors[idx])
+				})
+				fmt.Printf("Building the index took %s\n", time.Since(init))
 
-			recall := float32(relevant) / float32(retrieved)
-			latency := float32(querying.Microseconds()) / float32(queries_size)
-			fmt.Println(recall, latency)
-			assert.True(t, recall > 0.9)
-			assert.True(t, latency < 100000)
+				var relevant uint64
+				var retrieved int
+
+				var querying time.Duration = 0
+				ssdhelpers.Concurrently(uint64(len(queries)), func(i uint64) {
+					before = time.Now()
+					results, _, _ := index.SearchByVector(queries[i], k, nil)
+					querying += time.Since(before)
+					retrieved += k
+					relevant += testinghelpers.MatchesInLists(truths[i], results)
+				})
+
+				recall := float32(relevant) / float32(retrieved)
+				latency := float32(querying.Microseconds()) / float32(queries_size)
+				fmt.Println("{", latency, ",", recall, "}")
+				assert.True(t, recall > 0.9)
+				assert.True(t, latency < 100000)
+			}
 		}
 	}
+}
+
+func TestFlatPQGist(t *testing.T) {
+	dimensions := 960
+	vectors_size := 1000000
+	queries_size := 1000
+	switch_at := 100000
+	k := 10
+
+	before := time.Now()
+	vectors, queries := testinghelpers.ReadVecs(vectors_size, queries_size, dimensions, "gist", "../diskAnn/testdata")
+	testinghelpers.Normalize(vectors)
+	testinghelpers.Normalize(queries)
+	distancer := distancer.NewL2SquaredProvider()
+	//truths := testinghelpers.BuildTruths(queries_size, vectors_size, queries, vectors, k, distanceWrapper(distancer), "../diskAnn/testdata/gist/cosine")
+	fmt.Printf("generating data took %s\n", time.Since(before))
+	before = time.Now()
+	pq, _ := ssdhelpers.NewProductQuantizer(48, 256, false, distancer, dimensions, ssdhelpers.UseKMeansEncoder, ssdhelpers.LogNormalEncoderDistribution)
+	pq.Fit(vectors[:switch_at])
+	fmt.Printf("fitting data took %s\n", time.Since(before))
+	before = time.Now()
+	encoded := make([][]byte, vectors_size)
+	ssdhelpers.Concurrently(uint64(len(vectors)),
+		func(index uint64) {
+			encoded[index] = pq.Encode(vectors[index])
+		})
+	fmt.Printf("encoding data took %s\n", time.Since(before))
+	before = time.Now()
+	indices, top := pq.BruteForce(queries[333], encoded, k)
+	querying := time.Since(before)
+
+	fmt.Println(querying.Milliseconds())
+	fmt.Println(top, indices)
 }
 
 /*
@@ -273,6 +294,32 @@ Time to compress: 3h59m39.032524584s
 Building the index took 5h54m55.046038916s
 0.91295 4786.8
 
+16segments
+generating data took 2.106836792s
+0
+Start compressing...
+Time to compress: 1m28.511116084s
+Building the index took 5m28.275279s
+0.6082182 248.729
+1
+Start compressing...
+Time to compress: 2m57.711298667s
+Building the index took 7m50.791583375s
+0.65414 276.401
+2
+Start compressing...
+Time to compress: 5m54.960433084s
+Building the index took 12m18.311579s
+0.69072 463.016
+
+{64, 64, 32, 256, 3},
+{64, 64, 32, 512, 3},
+{64, 64, 32, 1024, 3},
+{64, 64, 32, 2048, 3},
+{64, 64, 32, 4096, 3},
+{64, 64, 32, 65536, 3},
+
+8segments
 generating data took 2.119674416s
 0
 Start compressing...
@@ -307,96 +354,120 @@ func TestHnswPqSift(t *testing.T) {
 			fmt.Println(err)
 		}
 	}(rootPath)
+	segments := []int{1}
+	centroids := []int{256}
 	params := [][]int{
-		{64, 64, 32, 256, 3},
-		{64, 64, 32, 512, 3},
-		{64, 64, 32, 1024, 3},
-		{64, 64, 32, 2048, 3},
-		{64, 64, 32, 4096, 3},
-		{64, 64, 32, 65536, 3},
+		{64, 64, 32, 256},
+		{128, 128, 64, 256},
+		{256, 256, 128, 256},
 	}
 	dimensions := 128
 	vectors_size := 1000000
 	queries_size := 1000
 	switch_at := 200000
 	fmt.Println("Sift1M PQ")
+
 	before := time.Now()
 	vectors, queries := testinghelpers.ReadVecs(vectors_size, queries_size, dimensions, "sift", "../diskAnn/testdata")
 	k := 100
 	distancer := distancer.NewL2SquaredProvider()
 	truths := testinghelpers.BuildTruths(queries_size, vectors_size, queries, vectors, k, distanceWrapper(distancer), "../diskAnn/testdata")
 	fmt.Printf("generating data took %s\n", time.Since(before))
-	for i := 0; i < len(params); i++ {
-		fmt.Println(i)
-		efConstruction := params[i][0]
-		ef := params[i][1]
-		maxNeighbors := params[i][2]
-		centroids := params[i][3]
-		segmentRate := params[i][4]
-		if centroids > switch_at {
-			fmt.Println("Increasing switch at...")
-			switch_at = 650000
-		}
-
-		uc := ent.UserConfig{
-			MaxConnections: maxNeighbors,
-			EFConstruction: efConstruction,
-			EF:             ef,
-			PQ: ent.PQConfig{
-				Enabled:  false,
-				Segments: dimensions / int(math.Pow(2, float64(segmentRate))),
-				Encoder: ent.PQEncoder{
-					Type:         "tile",
-					Distribution: "log-normal",
-				},
-			},
-			VectorCacheMaxObjects: 10e12,
-		}
-		index, _ := hnsw.New(
-			hnsw.Config{
-				RootPath:              rootPath,
-				ID:                    "recallbenchmark",
-				MakeCommitLoggerThunk: hnsw.MakeNoopCommitLogger,
-				DistanceProvider:      distancer,
-				VectorForIDThunk: func(ctx context.Context, id uint64) ([]float32, error) {
-					return vectors[int(id)], nil
-				},
-			}, uc,
-		)
-		init := time.Now()
-		ssdhelpers.Concurrently(uint64(switch_at), func(_, id uint64, _ *sync.Mutex) {
-			index.Add(uint64(id), vectors[id])
-		})
-		before = time.Now()
-		fmt.Println("Start compressing...")
-		index.Compress(dimensions/int(math.Pow(2, float64(segmentRate))), centroids, false, int(ssdhelpers.UseKMeansEncoder), int(ssdhelpers.LogNormalEncoderDistribution)) /*should have configuration.compressed = true*/
-		fmt.Printf("Time to compress: %s", time.Since(before))
-		fmt.Println()
-		ssdhelpers.Concurrently(uint64(vectors_size-switch_at), func(_, id uint64, _ *sync.Mutex) {
-			idx := switch_at + int(id)
-
-			index.Add(uint64(idx), vectors[idx])
-		})
-		fmt.Printf("Building the index took %s\n", time.Since(init))
-
-		var relevant uint64
-		var retrieved int
-
-		var querying time.Duration = 0
-		ssdhelpers.Concurrently(uint64(len(queries)), func(_, i uint64, _ *sync.Mutex) {
+	for _, segment := range segments {
+		fmt.Println("Dimensions per segment: ", segment)
+		for _, centroid := range centroids {
+			fmt.Println("Centroids: ", centroid)
 			before = time.Now()
-			results, _, _ := index.SearchByVector(queries[i], k, nil)
-			querying += time.Since(before)
-			retrieved += k
-			relevant += testinghelpers.MatchesInLists(truths[i], results)
-		})
+			for _, param := range params {
+				efConstruction := param[0]
+				ef := param[1]
+				maxNeighbors := param[2]
 
-		recall := float32(relevant) / float32(retrieved)
-		latency := float32(querying.Microseconds()) / float32(queries_size)
-		fmt.Println(recall, latency)
-		assert.True(t, recall > 0.9)
-		assert.True(t, latency < 100000)
+				uc := ent.UserConfig{
+					MaxConnections: maxNeighbors,
+					EFConstruction: efConstruction,
+					EF:             ef,
+					PQ: ent.PQConfig{
+						Enabled: false,
+					},
+					VectorCacheMaxObjects: 10e12,
+				}
+				index, _ := hnsw.New(
+					hnsw.Config{
+						RootPath:              rootPath,
+						ID:                    "recallbenchmark",
+						MakeCommitLoggerThunk: hnsw.MakeNoopCommitLogger,
+						DistanceProvider:      distancer,
+						VectorForIDThunk: func(ctx context.Context, id uint64) ([]float32, error) {
+							return vectors[int(id)], nil
+						},
+					}, uc,
+				)
+				init := time.Now()
+				ssdhelpers.Concurrently(uint64(switch_at), func(id uint64) {
+					index.Add(uint64(id), vectors[id])
+				})
+				before = time.Now()
+				fmt.Println("Start compressing...")
+				index.Compress(dimensions, centroid, false, int(ssdhelpers.UseKMeansEncoder), int(ssdhelpers.LogNormalEncoderDistribution))
+				fmt.Printf("Time to compress: %s", time.Since(before))
+				fmt.Println()
+				ssdhelpers.Concurrently(uint64(vectors_size-switch_at), func(id uint64) {
+					idx := switch_at + int(id)
+					index.Add(uint64(idx), vectors[idx])
+				})
+				fmt.Printf("Building the index took %s\n", time.Since(init))
+
+				var relevant uint64
+				var retrieved int
+
+				var querying time.Duration = 0
+				ssdhelpers.Concurrently(uint64(len(queries)), func(i uint64) {
+					before = time.Now()
+					results, _, _ := index.SearchByVector(queries[i], k, nil)
+					querying += time.Since(before)
+					retrieved += k
+					relevant += testinghelpers.MatchesInLists(truths[i], results)
+				})
+
+				recall := float32(relevant) / float32(retrieved)
+				latency := float32(querying.Microseconds()) / float32(queries_size)
+				fmt.Println("{", latency, ",", recall, "}")
+				assert.True(t, recall > 0.9)
+				assert.True(t, latency < 100000)
+			}
+		}
 	}
+}
+
+func TestFlatPQSift(t *testing.T) {
+	dimensions := 128
+	vectors_size := 1000000
+	queries_size := 1000
+	switch_at := 200000
+	k := 10
+
+	before := time.Now()
+	vectors, queries := testinghelpers.ReadVecs(vectors_size, queries_size, dimensions, "sift", "../diskAnn/testdata")
+	distancer := distancer.NewL2SquaredProvider()
+	fmt.Printf("generating data took %s\n", time.Since(before))
+	before = time.Now()
+	pq, _ := ssdhelpers.NewProductQuantizer(128, 256, false, distancer, dimensions, ssdhelpers.UseTileEncoder, ssdhelpers.LogNormalEncoderDistribution)
+	pq.Fit(vectors[:switch_at])
+	fmt.Printf("fitting data took %s\n", time.Since(before))
+	before = time.Now()
+	encoded := make([][]byte, vectors_size)
+	ssdhelpers.Concurrently(uint64(len(vectors)),
+		func(index uint64) {
+			encoded[index] = pq.Encode(vectors[index])
+		})
+	fmt.Printf("encoding data took %s\n", time.Since(before))
+	before = time.Now()
+	indices, top := pq.BruteForce(queries[333], encoded, k)
+	querying := time.Since(before)
+
+	fmt.Println(querying.Milliseconds())
+	fmt.Println(top, indices)
 }
 
 func TestHnswPqSiftDeletes(t *testing.T) {
@@ -454,7 +525,7 @@ func TestHnswPqSiftDeletes(t *testing.T) {
 				}, uc,
 			)
 			init := time.Now()
-			ssdhelpers.Concurrently(uint64(switch_at), func(_, id uint64, _ *sync.Mutex) {
+			ssdhelpers.Concurrently(uint64(switch_at), func(id uint64) {
 				index.Add(uint64(id), vectors[id])
 			})
 			before = time.Now()
@@ -462,7 +533,7 @@ func TestHnswPqSiftDeletes(t *testing.T) {
 			index.UpdateUserConfig(uc, func() {}) /*should have configuration.compressed = true*/
 			fmt.Printf("Time to compress: %s", time.Since(before))
 			fmt.Println()
-			ssdhelpers.Concurrently(uint64(vectors_size-switch_at), func(_, id uint64, _ *sync.Mutex) {
+			ssdhelpers.Concurrently(uint64(vectors_size-switch_at), func(id uint64) {
 				idx := switch_at + int(id)
 				index.Add(uint64(idx), vectors[idx])
 			})
@@ -471,7 +542,7 @@ func TestHnswPqSiftDeletes(t *testing.T) {
 			var retrieved int
 
 			var querying time.Duration = 0
-			ssdhelpers.Concurrently(uint64(len(queries)), func(_, i uint64, _ *sync.Mutex) {
+			ssdhelpers.Concurrently(uint64(len(queries)), func(i uint64) {
 				before = time.Now()
 				results, _, _ := index.SearchByVector(queries[i], k, nil)
 				querying += time.Since(before)
@@ -505,9 +576,8 @@ func TestHnswPqDeepImage(t *testing.T) {
 		{64, 64, 32},
 		{128, 128, 64},
 		{256, 256, 128},
-		{512, 512, 256},
 	}
-	switch_at := 1000000
+	switch_at := 200000
 
 	fmt.Println("Sift1MPQKMeans 10K/10K")
 	before := time.Now()
@@ -515,72 +585,242 @@ func TestHnswPqDeepImage(t *testing.T) {
 	distancer := distancer.NewL2SquaredProvider()
 	truths := testinghelpers.BuildTruths(queries_size, vectors_size, queries, vectors, k, distanceWrapper(distancer), "../diskAnn/testdata/deep-image")
 	fmt.Printf("generating data took %s\n", time.Since(before))
-	for segmentRate := 1; segmentRate < 4; segmentRate++ {
-		fmt.Println(segmentRate)
-		fmt.Println()
-		for i := 0; i < len(params); i++ {
-			efConstruction := params[i][0]
-			ef := params[i][1]
-			maxNeighbors := params[i][2]
 
-			uc := ent.UserConfig{
-				MaxConnections: maxNeighbors,
-				EFConstruction: efConstruction,
-				EF:             ef,
-				PQ: ent.PQConfig{
-					Enabled:  false,
-					Segments: dimensions / int(math.Pow(2, float64(segmentRate))),
-					Encoder: ent.PQEncoder{
-						Type:         "kmeans",
-						Distribution: "normal",
-					},
+	for i := 0; i < len(params); i++ {
+		efConstruction := params[i][0]
+		ef := params[i][1]
+		maxNeighbors := params[i][2]
+
+		uc := ent.UserConfig{
+			MaxConnections: maxNeighbors,
+			EFConstruction: efConstruction,
+			EF:             ef,
+			PQ: ent.PQConfig{
+				Enabled:  false,
+				Segments: dimensions,
+				Encoder: ent.PQEncoder{
+					Type:         "kmeans",
+					Distribution: "normal",
 				},
-				VectorCacheMaxObjects: 10e12,
-			}
-			index, _ := hnsw.New(
-				hnsw.Config{
-					RootPath:              rootPath,
-					ID:                    "recallbenchmark",
-					MakeCommitLoggerThunk: hnsw.MakeNoopCommitLogger,
-					DistanceProvider:      distancer,
-					VectorForIDThunk: func(ctx context.Context, id uint64) ([]float32, error) {
-						return vectors[int(id)], nil
-					},
-				}, uc,
-			)
-			init := time.Now()
-			ssdhelpers.Concurrently(uint64(switch_at), func(_, id uint64, _ *sync.Mutex) {
-				index.Add(uint64(id), vectors[id])
-			})
-			before = time.Now()
-			uc.PQ.Enabled = true
-			index.UpdateUserConfig(uc, func() {})
-			fmt.Printf("Time to compress: %s", time.Since(before))
-			fmt.Println()
-			ssdhelpers.Concurrently(uint64(vectors_size-switch_at), func(_, id uint64, _ *sync.Mutex) {
-				idx := switch_at + int(id)
-				index.Add(uint64(idx), vectors[idx])
-			})
-			fmt.Printf("Building the index took %s\n", time.Since(init))
-			var relevant uint64
-			var retrieved int
-
-			var querying time.Duration = 0
-			ssdhelpers.Concurrently(uint64(len(queries)), func(_, i uint64, _ *sync.Mutex) {
-				before = time.Now()
-				results, _, _ := index.SearchByVector(queries[i], k, nil)
-				querying += time.Since(before)
-				retrieved += k
-				relevant += testinghelpers.MatchesInLists(truths[i], results)
-			})
-
-			recall := float32(relevant) / float32(retrieved)
-			latency := float32(querying.Microseconds()) / float32(queries_size)
-			fmt.Println(recall, latency)
-			assert.True(t, recall > 0.9)
-			assert.True(t, latency < 100000)
+			},
+			VectorCacheMaxObjects: 10e12,
 		}
+		index, _ := hnsw.New(
+			hnsw.Config{
+				RootPath:              rootPath,
+				ID:                    "recallbenchmark",
+				MakeCommitLoggerThunk: hnsw.MakeNoopCommitLogger,
+				DistanceProvider:      distancer,
+				VectorForIDThunk: func(ctx context.Context, id uint64) ([]float32, error) {
+					return vectors[int(id)], nil
+				},
+			}, uc,
+		)
+		init := time.Now()
+		ssdhelpers.Concurrently(uint64(switch_at), func(id uint64) {
+			index.Add(uint64(id), vectors[id])
+		})
+		before = time.Now()
+		index.Compress(dimensions, 256, false, int(ssdhelpers.UseTileEncoder), int(ssdhelpers.NormalEncoderDistribution))
+		fmt.Printf("Time to compress: %s", time.Since(before))
+		fmt.Println()
+		ssdhelpers.Concurrently(uint64(vectors_size-switch_at), func(id uint64) {
+			idx := switch_at + int(id)
+			index.Add(uint64(idx), vectors[idx])
+		})
+		fmt.Printf("Building the index took %s\n", time.Since(init))
+		var relevant uint64
+		var retrieved int
+
+		var querying time.Duration = 0
+		ssdhelpers.Concurrently(uint64(len(queries)), func(i uint64) {
+			before = time.Now()
+			results, _, _ := index.SearchByVector(queries[i], k, nil)
+			querying += time.Since(before)
+			retrieved += k
+			relevant += testinghelpers.MatchesInLists(truths[i], results)
+		})
+
+		recall := float32(relevant) / float32(retrieved)
+		latency := float32(querying.Microseconds()) / float32(queries_size)
+		fmt.Println(recall, latency)
+		assert.True(t, recall > 0.9)
+		assert.True(t, latency < 100000)
 	}
+}
+
+func TestFlatPQDeepImage(t *testing.T) {
+	dimensions := 96
+	vectors_size := 9990000
+	queries_size := 1000
+	switch_at := 100000
+	k := 10
+
+	before := time.Now()
+	vectors := parseFromTxt("../diskAnn/testdata/deep-image/train.txt", vectors_size)
+	queries := parseFromTxt("../diskAnn/testdata/deep-image/test.txt", queries_size)
+	distancer := distancer.NewL2SquaredProvider()
+	fmt.Printf("generating data took %s\n", time.Since(before))
+	before = time.Now()
+	pq, _ := ssdhelpers.NewProductQuantizer(8, 256, false, distancer, dimensions, ssdhelpers.UseKMeansEncoder, ssdhelpers.LogNormalEncoderDistribution)
+	pq.Fit(vectors[:switch_at])
+	fmt.Printf("fitting data took %s\n", time.Since(before))
+	before = time.Now()
+	encoded := make([][]byte, vectors_size)
+	ssdhelpers.Concurrently(uint64(len(vectors)),
+		func(index uint64) {
+			encoded[index] = pq.Encode(vectors[index])
+		})
+	fmt.Printf("encoding data took %s\n", time.Since(before))
+	before = time.Now()
+	indices, top := pq.BruteForce(queries[333], encoded, k)
+	querying := time.Since(before)
+
+	fmt.Println(querying.Milliseconds())
+	fmt.Println(top, indices)
+}
+
+func TestCohere(t *testing.T) {
+	vectors_size := 884182
+	queries_size := 1000
+	k := 10
+	// Let's first read the file
+	content, err := ioutil.ReadFile("../diskAnn/testdata/cohere/data/codebook.json")
+	if err != nil {
+		panic(err)
+	}
+
+	// Now let's unmarshall the data into a var
+	var codebook [][][]float32
+	err = json.Unmarshal(content, &codebook)
+	if err != nil {
+		panic(err)
+	}
+
+	dimensions := len(codebook) * len(codebook[0][0])
+	segments := len(codebook)
+	encoders := make([]ssdhelpers.PQEncoder, 0, segments)
+	for segment := range codebook {
+		encoders = append(encoders, ssdhelpers.NewKMeansWithCenters(len(codebook[segment]), dimensions/segments, segment, codebook[segment]))
+	}
+	efConstruction := 64
+	ef := 64
+	maxNeighbors := 32
+	distancer := distancer.NewL2SquaredProvider()
+
+	pq, err := ssdhelpers.NewProductQuantizerWithEncoders(segments, len(codebook[0]), false, distancer, len(codebook)*len(codebook[0][0]), ssdhelpers.UseKMeansEncoder, encoders)
+
+	codes := parseFromCsv("../diskAnn/testdata/cohere/data/doc_embeddings.csv", vectors_size)
+
+	vectors := make([][]float32, len(codes))
+	ssdhelpers.Concurrently(uint64(len(codes)), func(taskIndex uint64) {
+		vectors[taskIndex] = pq.Decode(codes[taskIndex])
+	})
+	queries := parseFloatsFromCsv("../diskAnn/testdata/cohere/data/queries_embeddings.csv", queries_size)
+
+	uc := ent.UserConfig{
+		MaxConnections:        maxNeighbors,
+		EFConstruction:        efConstruction,
+		EF:                    ef,
+		VectorCacheMaxObjects: 10e12,
+	}
+	before := time.Now()
+	lut := pq.CenterAt(queries[333])
+	querying := time.Since(before)
+	ssdhelpers.Concurrently(uint64(vectors_size), func(i uint64) {
+		before := time.Now()
+		lut.LookUp(codes[i])
+		querying += time.Since(before)
+	})
+
+	fmt.Println(querying.Milliseconds())
+	fmt.Println("indexing...")
+
+	index, _ := hnsw.New(
+		hnsw.Config{
+			RootPath:              rootPath,
+			ID:                    "recallbenchmark",
+			MakeCommitLoggerThunk: hnsw.MakeNoopCommitLogger,
+			DistanceProvider:      distancer,
+			VectorForIDThunk: func(ctx context.Context, id uint64) ([]float32, error) {
+				return vectors[int(id)], nil
+			},
+		}, uc,
+	)
+	err = index.CompressWithCodeBook(codebook)
+	if err != nil {
+		panic(err)
+	}
+
+	before = time.Now()
+	total := 0
+	ssdhelpers.Concurrently(uint64(len(vectors)), func(id uint64) {
+		index.Add(uint64(id), vectors[id])
+		total++
+		if total%(vectors_size/100) == 0 {
+			fmt.Print("%")
+		}
+	})
+	fmt.Printf("Building the index took %s\n", time.Since(before))
+	var relevant uint64
+	var retrieved int
+
+	ssdhelpers.Concurrently(uint64(len(queries)), func(i uint64) {
+		before = time.Now()
+		index.SearchByVector(queries[i], k, nil)
+		querying += time.Since(before)
+	})
+
+	recall := float32(relevant) / float32(retrieved)
+	latency := float32(querying.Microseconds()) / float32(len(queries))
+	fmt.Println(recall, latency)
+	assert.True(t, recall > 0.9)
+	assert.True(t, latency < 100000)
+}
+
+func TestCohereFlatPQ(t *testing.T) {
+	vectors_size := 8841820
+	queries_size := 10
+	// Let's first read the file
+	content, err := ioutil.ReadFile("../diskAnn/testdata/cohere/data/codebook.json")
+	if err != nil {
+		panic(err)
+	}
+
+	// Now let's unmarshall the data into a var
+	var codebook [][][]float32
+	err = json.Unmarshal(content, &codebook)
+	if err != nil {
+		panic(err)
+	}
+
+	dimensions := len(codebook) * len(codebook[0][0])
+	segments := len(codebook)
+	encoders := make([]ssdhelpers.PQEncoder, 0, segments)
+	for segment := range codebook {
+		encoders = append(encoders, ssdhelpers.NewKMeansWithCenters(len(codebook[segment]), dimensions/segments, segment, codebook[segment]))
+
+	}
+	distancer := distancer.NewL2SquaredProvider()
+	pq, err := ssdhelpers.NewProductQuantizerWithEncoders(segments, len(codebook[0]), false, distancer, len(codebook)*len(codebook[0][0]), ssdhelpers.UseKMeansEncoder, encoders)
+
+	codes := parseFromCsv("../diskAnn/testdata/cohere/data/doc_embeddings.csv", vectors_size)
+	queries := parseFloatsFromCsv("../diskAnn/testdata/cohere/data/queries_embeddings.csv", queries_size)
+
+	mutex := &sync.Mutex{}
+	ellapsed := time.Duration(0)
+	ssdhelpers.Concurrently(uint64(len(queries)), func(id uint64) {
+		before := time.Now()
+		lut := pq.CenterAt(queries[id])
+		for _, code := range codes {
+			lut.LookUp(code)
+		}
+		since := time.Since(before)
+		mutex.Lock()
+		ellapsed += since
+		mutex.Unlock()
+	})
+	fmt.Println(ellapsed.Microseconds() / int64(len(queries)))
 }
 
 func parseFromTxt(file string, size int) [][]float32 {
@@ -597,4 +837,74 @@ func parseFromTxt(file string, size int) [][]float32 {
 		}
 	}
 	return test
+}
+
+func parseFromCsv(file string, size int) [][]byte {
+	content, _ := ioutil.ReadFile(file)
+	strContent := string(content)
+	testArray := strings.Split(strContent, "\n")
+	test := make([][]byte, size)
+	ssdhelpers.Concurrently(uint64(size), func(j uint64) {
+		elementArray := strings.Split(testArray[j], ",")
+		test[j] = make([]byte, len(elementArray))
+		for i := range elementArray {
+			f, _ := strconv.ParseInt(elementArray[i][1:len(elementArray[i])-1], 10, 8)
+			test[j][i] = byte(f)
+		}
+	})
+	return test
+}
+
+func parseFloatsFromCsv(file string, size int) [][]float32 {
+	content, _ := ioutil.ReadFile(file)
+	strContent := string(content)
+	testArray := strings.Split(strContent, "\n")
+	test := make([][]float32, size)
+	ssdhelpers.Concurrently(uint64(size), func(j uint64) {
+		elementArray := strings.Split(testArray[j], ",")
+		test[j] = make([]float32, len(elementArray))
+		for i := range elementArray {
+			f, _ := strconv.ParseFloat(elementArray[i][1:len(elementArray[i])-1], 16)
+			test[j][i] = float32(f)
+		}
+	})
+	return test
+}
+
+func TestCoherePerf(t *testing.T) {
+	vectors_size := 884182
+	queries_size := 350
+	// Let's first read the file
+	content, err := ioutil.ReadFile("../diskAnn/testdata/cohere/data/codebook.json")
+	if err != nil {
+		panic(err)
+	}
+
+	// Now let's unmarshall the data into a var
+	var codebook [][][]float32
+	err = json.Unmarshal(content, &codebook)
+	if err != nil {
+		panic(err)
+	}
+
+	dimensions := len(codebook) * len(codebook[0][0])
+	segments := len(codebook)
+	encoders := make([]ssdhelpers.PQEncoder, 0, segments)
+	for segment := range codebook {
+		encoders = append(encoders, ssdhelpers.NewKMeansWithCenters(len(codebook[segment]), dimensions/segments, segment, codebook[segment]))
+	}
+	distancer := distancer.NewL2SquaredProvider()
+
+	pq, err := ssdhelpers.NewProductQuantizerWithEncoders(segments, len(codebook[0]), false, distancer, len(codebook)*len(codebook[0][0]), ssdhelpers.UseKMeansEncoder, encoders)
+
+	codes := parseFromCsv("../diskAnn/testdata/cohere/data/doc_embeddings.csv", vectors_size)
+
+	queries := parseFloatsFromCsv("../diskAnn/testdata/cohere/data/queries_embeddings.csv", queries_size)
+
+	before := time.Now()
+	indices, top := pq.BruteForce(queries[333], codes, 10)
+	querying := time.Since(before)
+
+	fmt.Println(querying.Milliseconds())
+	fmt.Println(top, indices)
 }

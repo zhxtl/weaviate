@@ -27,51 +27,85 @@ const (
 	UseKMeansEncoder Encoder = 1
 )
 
+type LookUpTable interface {
+	LookUp(encoded []byte) float32
+}
 type DistanceLookUpTable struct {
 	calculated [][]atomic.Bool
 	distances  [][]float32
 	center     [][]float32
+	pq         *ProductQuantizer
 }
 
-func NewDistanceLookUpTable(segments int, centroids int, center []float32) *DistanceLookUpTable {
-	distances := make([][]float32, segments)
-	calculated := make([][]atomic.Bool, segments)
-	for m := 0; m < segments; m++ {
-		distances[m] = make([]float32, centroids)
-		calculated[m] = make([]atomic.Bool, centroids)
-	}
-	parsedCenter := make([][]float32, segments)
-	ds := len(center) / segments
-	for c := 0; c < segments; c++ {
-		parsedCenter[c] = center[c*ds : (c+1)*ds]
+func NewDistanceLookUpTable(center []float32, pq *ProductQuantizer) *DistanceLookUpTable {
+	calculated := make([][]atomic.Bool, pq.m)
+	distances := make([][]float32, pq.m)
+	parsedCenter := make([][]float32, pq.m)
+	for m := 0; m < pq.m; m++ {
+		distances[m] = make([]float32, pq.ks)
+		calculated[m] = make([]atomic.Bool, pq.ks)
+		parsedCenter[m] = center[m*pq.ds : (m+1)*pq.ds]
 	}
 
 	return &DistanceLookUpTable{
 		distances:  distances,
 		calculated: calculated,
 		center:     parsedCenter,
+		pq:         pq,
 	}
 }
 
-func (lut *DistanceLookUpTable) LookUp(
-	encoded []byte,
-	pq *ProductQuantizer,
-) float32 {
+func (lut *DistanceLookUpTable) LookUp(encoded []byte) float32 {
 	var sum float32
 
-	for i := range pq.kms {
-		c := pq.ExtractCode(encoded, i)
+	for i := range lut.pq.kms {
+		c := lut.pq.ExtractCode(encoded, i)
 		if lut.calculated[i][c].Load() {
 			sum += lut.distances[i][c]
 		} else {
-			centroid := pq.kms[i].Centroid(c)
-			dist := pq.distance.Step(lut.center[i], centroid)
+			centroid := lut.pq.kms[i].Centroid(c)
+			dist := lut.pq.distance.Step(lut.center[i], centroid)
 			lut.distances[i][c] = dist
 			lut.calculated[i][c].Store(true)
 			sum += dist
 		}
 	}
-	return pq.distance.Wrap(sum)
+	return lut.pq.distance.Wrap(sum)
+}
+
+type BruteForceLookUpTable struct {
+	distances [][]float32
+	center    [][]float32
+	pq        *ProductQuantizer
+}
+
+func NewBruteForceLookUpTable(center []float32, pq *ProductQuantizer) *BruteForceLookUpTable {
+	distances := make([][]float32, pq.m)
+	parsedCenter := make([][]float32, pq.m)
+	for m := 0; m < pq.m; m++ {
+		distances[m] = make([]float32, pq.ks)
+		parsedCenter[m] = center[m*pq.ds : (m+1)*pq.ds]
+		for c := uint64(0); c < uint64(pq.ks); c++ {
+			centroid := pq.kms[m].Centroid(c)
+			distances[m][c] = pq.distance.Step(parsedCenter[m], centroid)
+		}
+	}
+
+	return &BruteForceLookUpTable{
+		distances: distances,
+		center:    parsedCenter,
+		pq:        pq,
+	}
+}
+
+func (lut *BruteForceLookUpTable) LookUp(encoded []byte) float32 {
+	var sum float32
+
+	for i := range lut.pq.kms {
+		c := lut.pq.ExtractCode(encoded, i)
+		sum += lut.distances[i][c]
+	}
+	return lut.pq.distance.Wrap(sum)
 }
 
 type ProductQuantizer struct {
@@ -110,6 +144,7 @@ type PQEncoder interface {
 	Add(x []float32)
 	Fit(data [][]float32) error
 	ExposeDataForRestore() []byte
+	Centers() [][]float32
 }
 
 // ToDo: Add a settings struct. Already necessary!!
@@ -186,6 +221,14 @@ func NewProductQuantizerWithEncoders(segments int, centroids int, useBitsEncodin
 
 	pq.kms = encoders
 	return pq, nil
+}
+
+func (pq *ProductQuantizer) CodeBook() [][][]float32 {
+	codeBook := make([][][]float32, 0, pq.m)
+	for _, encoder := range pq.kms {
+		codeBook = append(codeBook, encoder.Centers())
+	}
+	return codeBook
 }
 
 func extractCode8(encoded []byte, index int) uint64 {
@@ -293,7 +336,7 @@ func (pq *ProductQuantizer) DistanceBetweenCompressedAndUncompressedVectors(x []
 type PQDistancer struct {
 	x   []float32
 	pq  *ProductQuantizer
-	lut *DistanceLookUpTable
+	lut LookUpTable
 }
 
 func (pq *ProductQuantizer) NewDistancer(a []float32) *PQDistancer {
@@ -361,10 +404,33 @@ func (pq *ProductQuantizer) Decode(code []byte) []float32 {
 	return vec
 }
 
-func (pq *ProductQuantizer) CenterAt(vec []float32) *DistanceLookUpTable {
-	return NewDistanceLookUpTable(int(pq.m), int(pq.ks), vec)
+func (pq *ProductQuantizer) CenterAt(vec []float32) LookUpTable {
+	return NewDistanceLookUpTable(vec, pq)
 }
 
-func (pq *ProductQuantizer) Distance(encoded []byte, lut *DistanceLookUpTable) float32 {
-	return lut.LookUp(encoded, pq)
+func (pq *ProductQuantizer) Distance(encoded []byte, lut LookUpTable) float32 {
+	return lut.LookUp(encoded)
+}
+
+func (pq *ProductQuantizer) BruteForce(query []float32, codes [][]byte, k int) ([]uint64, []float32) {
+	top := make([]float32, k)
+	for i := 0; i < k; i++ {
+		top[i] = math.MaxFloat32
+	}
+	indices := make([]uint64, k)
+	lut := NewBruteForceLookUpTable(query, pq)
+	for i := range codes {
+		dist := lut.LookUp(codes[i])
+		j := k - 1
+		for j >= 0 && dist < top[j] {
+			j--
+		}
+		if j < (k - 1) {
+			copy(top[j+2:], top[j+1:])
+			top[j+1] = dist
+			copy(indices[j+2:], indices[j+1:])
+			indices[j+1] = uint64(i)
+		}
+	}
+	return indices, top
 }
