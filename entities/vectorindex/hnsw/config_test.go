@@ -496,7 +496,7 @@ func Test_PQCodebook(t *testing.T) {
 		}
 	}
 
-	tmpfile, err := ioutil.TempFile("", "codebook.json")
+	tmpfile, err := ioutil.TempFile("", "*.json")
 	assert.Nil(t, err)
 	defer os.Remove(tmpfile.Name())
 
