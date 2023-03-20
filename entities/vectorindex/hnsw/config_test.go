@@ -13,7 +13,10 @@ package hnsw
 
 import (
 	"encoding/json"
+	"fmt"
+	"io/ioutil"
 	"math"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -308,6 +311,7 @@ func Test_UserConfig(t *testing.T) {
 					"bitCompression": false,
 					"segments":       float64(64),
 					"centroids":      float64(DefaultPQCentroids),
+					"codebookUrl":    "file:///tmp/codebook.json",
 					"encoder": map[string]interface{}{
 						"type": "kmeans",
 					},
@@ -325,15 +329,40 @@ func Test_UserConfig(t *testing.T) {
 				DynamicEFFactor:        19,
 				Distance:               DefaultDistanceMetric,
 				PQ: PQConfig{
-					Enabled:   true,
-					Segments:  64,
-					Centroids: DefaultPQCentroids,
+					Enabled:     true,
+					Segments:    64,
+					Centroids:   DefaultPQCentroids,
+					CodebookUrl: "file:///tmp/codebook.json",
 					Encoder: PQEncoder{
 						Type:         "kmeans",
 						Distribution: DefaultPQEncoderDistribution,
 					},
 				},
 			},
+		},
+
+		{
+			name: "with invalid codebook url",
+			input: map[string]interface{}{
+				"pq": map[string]interface{}{
+					"enabled":     true,
+					"codebookUrl": "s3://bucket/key.json",
+				},
+			},
+			expectErr:    true,
+			expectErrMsg: "invalid codebook url scheme: s3",
+		},
+
+		{
+			name: "with invalid codebook suffix",
+			input: map[string]interface{}{
+				"pq": map[string]interface{}{
+					"enabled":     true,
+					"codebookUrl": "https://bucket/key.npy",
+				},
+			},
+			expectErr:    true,
+			expectErrMsg: "only json codebook urls supported",
 		},
 
 		{
@@ -452,4 +481,62 @@ func Test_UserConfig(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_PQCodebook(t *testing.T) {
+
+	pqData := make([][][]float32, 8)
+	for i := range pqData {
+		pqData[i] = make([][]float32, 16)
+		for j := range pqData[i] {
+			pqData[i][j] = make([]float32, 32)
+			for k := range pqData[i][j] {
+				pqData[i][j][k] = float32((i*16*32 + j*32 + k) + 1)
+			}
+		}
+	}
+
+	tmpfile, err := ioutil.TempFile("", "codebook.json")
+	assert.Nil(t, err)
+	defer os.Remove(tmpfile.Name())
+
+	enc := json.NewEncoder(tmpfile)
+	err = enc.Encode(pqData)
+	assert.Nil(t, err)
+
+	tmpfile.Name()
+
+	codebookUrl := fmt.Sprintf("file://%s", tmpfile.Name())
+
+	codebook, err := RetrieveCodebookFromUrl(codebookUrl)
+	assert.Nil(t, err)
+
+	assert.Equal(t, len(codebook), 8)
+	assert.Equal(t, len(codebook[0]), 16)
+	assert.Equal(t, len(codebook[0][0]), 32)
+	assert.Equal(t, codebook[5][6][7], float32(2760))
+
+}
+
+func Test_UrlPQCodebook(t *testing.T) {
+
+	codebookUrl := "https://storage.googleapis.com/semi-random-dev-codebook-test/json/codebook.json"
+
+	codebook, err := RetrieveCodebookFromUrl(codebookUrl)
+	assert.Nil(t, err)
+
+	assert.Equal(t, len(codebook), 48)
+	assert.Equal(t, len(codebook[0]), 256)
+	assert.Equal(t, len(codebook[0][0]), 16)
+	assert.Equal(t, codebook[0][0][1], float32(0.3027593195438385))
+
+}
+
+func Test_BadUrlPQCodebook(t *testing.T) {
+
+	codebookUrl := "https://storage.googleapis.com/semi-random-dev-codebook-test/json/codebook-invalid.json"
+
+	_, err := RetrieveCodebookFromUrl(codebookUrl)
+	assert.ErrorContains(t, err, "could not download codebook: 404 Not Found")
+
 }
