@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/memberlist"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -152,4 +153,36 @@ func TestDelegateCleanUp(t *testing.T) {
 	hanlder.NotifyLeave(&memberlist.Node{Name: "N1"})
 	hanlder.NotifyLeave(&memberlist.Node{Name: "N2"})
 	assert.Empty(t, st.delegate.Cache)
+}
+
+func TestDelegateLocalState(t *testing.T) {
+	now := time.Now().UnixMilli() - 1
+	errAny := errors.New("any error")
+	d := delegate{
+		Name:      "N0",
+		dataPath:  ".",
+		Cache:     map[string]NodeInfo{},
+		diskUsage: func(path string) (DiskUsage, error) { return DiskUsage{}, errAny },
+	}
+	// error reading disk space
+	d.LocalState(true)
+	assert.Empty(t, d.Cache)
+	d.diskUsage = func(path string) (DiskUsage, error) { return DiskUsage{5, 1}, nil }
+
+	// successful case
+	d.LocalState(true)
+	got, ok := d.get("N0")
+	assert.True(t, ok)
+	assert.Greater(t, got.LastTimeMilli, now)
+	assert.Equal(t, DiskUsage{5, 1}, got.DiskUsage)
+
+	// renew cache
+	got.LastTimeMilli = got.LastTimeMilli - _ProtoTTL.Milliseconds()
+	d.Cache["N0"] = got
+	d.diskUsage = func(path string) (DiskUsage, error) { return DiskUsage{6, 2}, nil }
+	d.LocalState(true)
+	got, ok = d.get("N0")
+	assert.True(t, ok)
+	assert.Greater(t, got.LastTimeMilli, now)
+	assert.Equal(t, DiskUsage{6, 2}, got.DiskUsage)
 }

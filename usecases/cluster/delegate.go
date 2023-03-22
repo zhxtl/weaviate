@@ -93,12 +93,14 @@ type delegate struct {
 	Name     string
 	dataPath string
 	sync.Mutex
-	Cache map[string]NodeInfo
+	diskUsage func(path string) (DiskUsage, error)
+	Cache     map[string]NodeInfo
 }
 
 // init must be called first to initialize the cache
 func (d *delegate) init() error {
 	d.Cache = make(map[string]NodeInfo, 32)
+	d.diskUsage = diskSpace
 	space, err := diskSpace(d.dataPath)
 	if err != nil {
 		return fmt.Errorf("disk_space: %w", err)
@@ -126,8 +128,8 @@ func (d *delegate) LocalState(join bool) []byte {
 		err  error
 	)
 	// renew cached value if ttl expires
-	if prv.Available == 0 || time.Since(time.UnixMilli(prv.LastTimeMilli)) > _ProtoTTL {
-		info.DiskUsage, err = diskSpace(d.dataPath)
+	if prv.Available == 0 || time.Since(time.UnixMilli(prv.LastTimeMilli)) >= _ProtoTTL {
+		info.DiskUsage, err = d.diskUsage(d.dataPath)
 		if err != nil {
 			return nil
 		}
