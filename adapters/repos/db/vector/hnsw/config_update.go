@@ -111,16 +111,34 @@ func (h *hnsw) UpdateUserConfig(updated schema.VectorIndexConfig, callback func(
 			return err
 		}
 
-		go func() {
-			if err := h.Compress(parsed.PQ.Segments, parsed.PQ.Centroids, parsed.PQ.BitCompression, int(encoder), int(encoderDistribution)); err != nil {
-				h.logger.Error(err)
-				h.logger.Error(err)
+		if parsed.PQ.CodebookUrl == "" {
+			go func() {
+				if err := h.Compress(parsed.PQ.Segments, parsed.PQ.Centroids, parsed.PQ.BitCompression, int(encoder), int(encoderDistribution)); err != nil {
+					h.logger.Error(err)
+					h.logger.Error(err)
+					callback()
+					return
+				}
+				h.logger.WithField("action", "compress").Info("vector compression complete")
 				callback()
-				return
+			}()
+		} else {
+			codebook, err := ent.RetrieveCodebookFromUrl(parsed.PQ.CodebookUrl)
+			if err != nil {
+				callback()
+				return err
 			}
-			h.logger.WithField("action", "compress").Info("vector compression complete")
-			callback()
-		}()
+			go func() {
+				if err := h.CompressWithCodeBook(codebook); err != nil {
+					h.logger.Error(err)
+					h.logger.Error(err)
+					callback()
+					return
+				}
+				h.logger.WithField("action", "compress").Info("switch complete using codebook")
+				callback()
+			}()
+		}
 	}
 
 	callback()

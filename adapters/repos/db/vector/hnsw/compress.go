@@ -142,3 +142,7 @@ func (h *hnsw) storeCompressedVector(index uint64, vector []byte) {
 	binary.LittleEndian.PutUint64(Id, index)
 	h.compressedStore.Bucket(helpers.CompressedObjectsBucketLSM).Put(Id, vector)
 }
+
+func (h *hnsw) IsCompressed() bool {
+	return h.compressed.Load()
+}

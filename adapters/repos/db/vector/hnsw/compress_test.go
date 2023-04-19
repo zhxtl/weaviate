@@ -582,7 +582,7 @@ func TestHnswPqDeepImage(t *testing.T) {
 	fmt.Println("Sift1MPQKMeans 10K/10K")
 	before := time.Now()
 	k := 100
-	distancer := distancer.NewL2SquaredProvider()
+	distancer := distancer.NewCosineDistanceProvider()
 	truths := testinghelpers.BuildTruths(queries_size, vectors_size, queries, vectors, k, distanceWrapper(distancer), "../diskAnn/testdata/deep-image")
 	fmt.Printf("generating data took %s\n", time.Since(before))
 
@@ -681,9 +681,9 @@ func TestFlatPQDeepImage(t *testing.T) {
 }
 
 func TestCohere(t *testing.T) {
-	vectors_size := 884182
-	queries_size := 1000
-	k := 10
+	vectors_size := 8841823
+	queries_size := 6980
+	k := 1000
 	// Let's first read the file
 	content, err := ioutil.ReadFile("../diskAnn/testdata/cohere/data/codebook.json")
 	if err != nil {
@@ -698,19 +698,23 @@ func TestCohere(t *testing.T) {
 	}
 
 	dimensions := len(codebook) * len(codebook[0][0])
+	fmt.Println("dimensions", dimensions, "segments", len(codebook), "codebook size", len(codebook[0]), "codebook dimension", len(codebook[0][0]), "vectors size", vectors_size)
 	segments := len(codebook)
 	encoders := make([]ssdhelpers.PQEncoder, 0, segments)
 	for segment := range codebook {
+		// fmt.Println("Creating new KMeans with properties:", len(codebook[segment]), dimensions/segments, segment)
 		encoders = append(encoders, ssdhelpers.NewKMeansWithCenters(len(codebook[segment]), dimensions/segments, segment, codebook[segment]))
 	}
-	efConstruction := 64
-	ef := 64
-	maxNeighbors := 32
-	distancer := distancer.NewL2SquaredProvider()
+	efConstruction := 256
+	ef := 256
+	maxNeighbors := 64
+	distancer := distancer.NewDotProductProvider()
 
 	pq, err := ssdhelpers.NewProductQuantizerWithEncoders(segments, len(codebook[0]), false, distancer, len(codebook)*len(codebook[0][0]), ssdhelpers.UseKMeansEncoder, encoders)
 
 	codes := parseFromCsv("../diskAnn/testdata/cohere/data/doc_embeddings.csv", vectors_size)
+
+	fmt.Println(codes[0])
 
 	vectors := make([][]float32, len(codes))
 	ssdhelpers.Concurrently(uint64(len(codes)), func(taskIndex uint64) {
@@ -724,16 +728,7 @@ func TestCohere(t *testing.T) {
 		EF:                    ef,
 		VectorCacheMaxObjects: 10e12,
 	}
-	before := time.Now()
-	lut := pq.CenterAt(queries[333])
-	querying := time.Since(before)
-	ssdhelpers.Concurrently(uint64(vectors_size), func(i uint64) {
-		before := time.Now()
-		lut.LookUp(codes[i])
-		querying += time.Since(before)
-	})
 
-	fmt.Println(querying.Milliseconds())
 	fmt.Println("indexing...")
 
 	index, _ := hnsw.New(
@@ -751,8 +746,9 @@ func TestCohere(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println("compression done, index compressed status:", index.IsCompressed())
 
-	before = time.Now()
+	before := time.Now()
 	total := 0
 	ssdhelpers.Concurrently(uint64(len(vectors)), func(id uint64) {
 		index.Add(uint64(id), vectors[id])
@@ -762,20 +758,45 @@ func TestCohere(t *testing.T) {
 		}
 	})
 	fmt.Printf("Building the index took %s\n", time.Since(before))
-	var relevant uint64
-	var retrieved int
 
-	ssdhelpers.Concurrently(uint64(len(queries)), func(i uint64) {
+	type result struct {
+		ID        uint64    `json:"id"`
+		Topk      []uint64  `json:"topk"`
+		Distances []float32 `json:"distances"`
+	}
+
+	results := make([]result, queries_size)
+
+	for i := 0; i < queries_size; i++ {
 		before = time.Now()
-		index.SearchByVector(queries[i], k, nil)
-		querying += time.Since(before)
-	})
+		query_ids, query_distances, err := index.SearchByVector(queries[i], k, nil)
+		if err != nil {
+			panic(err)
+		}
+		results[i] = result{
+			ID:        uint64(i),
+			Topk:      query_ids,
+			Distances: query_distances,
+		}
+	}
 
-	recall := float32(relevant) / float32(retrieved)
-	latency := float32(querying.Microseconds()) / float32(len(queries))
-	fmt.Println(recall, latency)
-	assert.True(t, recall > 0.9)
-	assert.True(t, latency < 100000)
+	fmt.Println("first results", results[0])
+
+	// write out results to json file
+	json, err := json.Marshal(results)
+	if err != nil {
+		panic(err)
+	}
+	err = ioutil.WriteFile("cohere_results.json", json, 0644)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("Distances and IDs of the nearest neighbors:")
+	assert.True(t, results[0].Topk[0] == 561742)
+	assert.True(t, results[0].Distances[0] < -80.0)
+	assert.True(t, results[0].Distances[0] > -100.0)
+
 }
 
 func TestCohereFlatPQ(t *testing.T) {
@@ -848,7 +869,7 @@ func parseFromCsv(file string, size int) [][]byte {
 		elementArray := strings.Split(testArray[j], ",")
 		test[j] = make([]byte, len(elementArray))
 		for i := range elementArray {
-			f, _ := strconv.ParseInt(elementArray[i][1:len(elementArray[i])-1], 10, 8)
+			f, _ := strconv.ParseFloat(strings.TrimSpace(elementArray[i]), 32)
 			test[j][i] = byte(f)
 		}
 	})
@@ -864,7 +885,7 @@ func parseFloatsFromCsv(file string, size int) [][]float32 {
 		elementArray := strings.Split(testArray[j], ",")
 		test[j] = make([]float32, len(elementArray))
 		for i := range elementArray {
-			f, _ := strconv.ParseFloat(elementArray[i][1:len(elementArray[i])-1], 16)
+			f, _ := strconv.ParseFloat(strings.TrimSpace(elementArray[i]), 32)
 			test[j][i] = float32(f)
 		}
 	})
@@ -893,7 +914,7 @@ func TestCoherePerf(t *testing.T) {
 	for segment := range codebook {
 		encoders = append(encoders, ssdhelpers.NewKMeansWithCenters(len(codebook[segment]), dimensions/segments, segment, codebook[segment]))
 	}
-	distancer := distancer.NewL2SquaredProvider()
+	distancer := distancer.NewDotProductProvider()
 
 	pq, err := ssdhelpers.NewProductQuantizerWithEncoders(segments, len(codebook[0]), false, distancer, len(codebook)*len(codebook[0][0]), ssdhelpers.UseKMeansEncoder, encoders)
 

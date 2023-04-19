@@ -184,6 +184,10 @@ func codebookUrlFromMap(in map[string]interface{}, setFn func(v string)) error {
 		return nil
 	}
 
+	if asString == "" {
+		return nil
+	}
+
 	_, err := ValidCodebookPath(asString)
 	if err != nil {
 		return err
