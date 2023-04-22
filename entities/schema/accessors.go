@@ -12,6 +12,8 @@
 package schema
 
 import (
+	"bytes"
+	"sort"
 	"strings"
 
 	"github.com/weaviate/weaviate/entities/models"
@@ -26,14 +28,44 @@ func (s *Schema) GetClass(className ClassName) *models.Class {
 	return class
 }
 
+func classBinarySearch(
+	classes []*models.Class, className string,
+) (int, bool) {
+	// Warning: binary search assumes that this array is always sorted, so any
+	// write to it must keep that promise.
+	cn := []byte(className)
+	i := sort.Search(len(classes), func(i int) bool {
+		return bytes.Compare([]byte(classes[i].Class), cn) >= 0
+	})
+	if i < len(classes) && classes[i].Class == string(className) {
+		return i, true
+	}
+	return i, false
+}
+
 // FindClassByName will find either a Thing or Class by name.
 func (s *Schema) FindClassByName(className ClassName) *models.Class {
-	semSchemaClass, err := GetClassByName(s.Objects, string(className))
-	if err == nil {
-		return semSchemaClass
+	i, ok := classBinarySearch(s.Objects.Classes, string(className))
+	if !ok {
+		return nil
 	}
 
-	return nil
+	return s.Objects.Classes[i]
+}
+
+// UpsertClass inserts or replaces the class at the correct position to make
+// sure the array stays sorted for binary search
+func (s *Schema) UpsertClass(class *models.Class) {
+	i, ok := classBinarySearch(s.Objects.Classes, string(class.Class))
+	if i == len(s.Objects.Classes) {
+		s.Objects.Classes = append(s.Objects.Classes, class)
+	}
+	if !ok {
+		// class does not exist yet, we need to make room for it
+		s.Objects.Classes = append(
+			s.Objects.Classes[:i+1], s.Objects.Classes[i:]...)
+	}
+	s.Objects.Classes[i] = class
 }
 
 // func (s *Schema) GetKindOfClass(className ClassName) (kind.Kind, bool) {

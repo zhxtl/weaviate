@@ -84,6 +84,14 @@ func (m *Manager) getClassByName(name string) *models.Class {
 	return s.FindClassByName(schema.ClassName(name))
 }
 
+func (m *Manager) upsertClassInMemory(class *models.Class) {
+	s := schema.Schema{
+		Objects: m.state.ObjectSchema,
+	}
+
+	s.UpsertClass(class)
+}
+
 func (m *Manager) ShardingState(className string) *sharding.State {
 	m.shardingStateLock.RLock()
 	copiedState := m.state.ShardingState[className].DeepCopy()

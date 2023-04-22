@@ -189,8 +189,7 @@ func (m *Manager) addClass(ctx context.Context, class *models.Class,
 func (m *Manager) addClassApplyChanges(ctx context.Context, class *models.Class,
 	shardState *sharding.State,
 ) error {
-	semanticSchema := m.state.ObjectSchema
-	semanticSchema.Classes = append(semanticSchema.Classes, class)
+	m.upsertClassInMemory(class)
 
 	m.shardingStateLock.Lock()
 	m.state.ShardingState[class.Class] = shardState

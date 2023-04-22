@@ -24,15 +24,13 @@ func GetClassByName(s *models.Schema, className string) (*models.Class, error) {
 	if s == nil {
 		return nil, fmt.Errorf(ErrorNoSuchClass, className)
 	}
-	// For each class
-	for _, class := range s.Classes {
-		// Check if the name of the class is the given name, that's the class we need
-		if class.Class == className {
-			return class, nil
-		}
+
+	i, ok := classBinarySearch(s.Classes, className)
+	if !ok {
+		return nil, fmt.Errorf(ErrorNoSuchClass, className)
 	}
 
-	return nil, fmt.Errorf(ErrorNoSuchClass, className)
+	return s.Classes[i], nil
 }
 
 // GetPropertyByName returns the class by its name

@@ -22,10 +22,9 @@ import (
 )
 
 func (m *Manager) validateClassNameUniqueness(className string) error {
-	for _, otherClass := range m.state.ObjectSchema.Classes {
-		if className == otherClass.Class {
-			return fmt.Errorf("Name '%s' already used as a name for an Object class", className)
-		}
+	c := m.getClassByName(className)
+	if c != nil {
+		return fmt.Errorf("Name '%s' already used as a name for an Object class", className)
 	}
 
 	return nil

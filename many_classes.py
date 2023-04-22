@@ -7,13 +7,13 @@ from loguru import logger
 # TODO: When this turns into a PR this should be moved into a chaos pipeline
 # repo. But during development it's easier to have this in the same repo.
 
-client = weaviate.Client("http://localhost:8080", timeout_config=(20, 240))
+client = weaviate.Client("http://104.199.26.92", timeout_config=(20, 240))
 
 timeout = 10
 
 checkpoint = time.time()
 interval = 100
-for i in range(1_000):
+for i in range(25_000):
     if i != 0 and i % interval == 0:
         avg = (time.time() - checkpoint) / interval
         logger.info(f"avg create duration is {avg} over past {interval} creates")
@@ -29,9 +29,21 @@ for i in range(1_000):
                     "dataType": ["string"],
                     "name": "title",
                 },
-                {"dataType": ["text"], "name": "content"},
-                {"dataType": ["int"], "name": "int"},
-                {"dataType": ["number"], "name": "number"},
+                {"dataType": ["int"], "name": "int1"},
+                {"dataType": ["int"], "name": "int2"},
+                {"dataType": ["int"], "name": "int3"},
+                {"dataType": ["int"], "name": "int4"},
+                {"dataType": ["int"], "name": "int5"},
+                {"dataType": ["text"], "name": "text1"},
+                {"dataType": ["text"], "name": "text2"},
+                {"dataType": ["text"], "name": "text3"},
+                {"dataType": ["text"], "name": "text4"},
+                {"dataType": ["text"], "name": "text5"},
+                {"dataType": ["number"], "name": "number1"},
+                {"dataType": ["number"], "name": "number2"},
+                {"dataType": ["number"], "name": "number3"},
+                {"dataType": ["number"], "name": "number4"},
+                {"dataType": ["number"], "name": "number5"},
             ],
             "shardingConfig": {
                 "desiredCount": 1,
