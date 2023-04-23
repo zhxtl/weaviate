@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -38,11 +39,22 @@ func (m *Manager) AddClass(ctx context.Context, principal *models.Principal,
 		return err
 	}
 
+	before := time.Now()
 	shardState, err := m.addClass(ctx, class)
 	if err != nil {
 		return err
 	}
+	m.logger.WithField("action", "create_class_schema").
+		WithField("took", time.Since(before)).
+		Info("created class in schema")
 
+	before = time.Now()
+
+	defer func() {
+		m.logger.WithField("action", "create_class_shard").
+			WithField("took", time.Since(before)).
+			Info("created class in schema")
+	}()
 	// call to migrator needs to be outside the lock that is set in addClass
 	return m.migrator.AddClass(ctx, class, shardState)
 	// TODO gh-846: Rollback state update if migration fails

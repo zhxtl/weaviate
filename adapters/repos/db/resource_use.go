@@ -13,12 +13,7 @@ package db
 
 import (
 	"fmt"
-	"runtime"
-	"runtime/debug"
 	"syscall"
-	"time"
-
-	"github.com/weaviate/weaviate/usecases/memwatch"
 )
 
 type diskUse struct {
@@ -43,33 +38,33 @@ func (d diskUse) String() string {
 }
 
 func (db *DB) scanResourceUsage() {
-	memMonitor := memwatch.NewMonitor(
-		runtime.MemProfile, debug.SetMemoryLimit, runtime.MemProfileRate)
+	// memMonitor := memwatch.NewMonitor(
+	// 	runtime.MemProfile, debug.SetMemoryLimit, runtime.MemProfileRate)
 
-	go func() {
-		t := time.NewTicker(time.Second * 30)
-		defer t.Stop()
-		for {
-			select {
-			case <-db.shutdown:
-				return
-			case <-t.C:
-				db.indexLock.RLock()
-				for _, i := range db.indices {
-					for _, s := range i.Shards {
-						if !s.isReadOnly() {
-							diskPath := i.Config.RootPath
-							du := db.getDiskUse(diskPath)
+	// go func() {
+	// 	t := time.NewTicker(time.Second * 30)
+	// 	defer t.Stop()
+	// 	for {
+	// 		select {
+	// 		case <-db.shutdown:
+	// 			return
+	// 		case <-t.C:
+	// 			db.indexLock.RLock()
+	// 			for _, i := range db.indices {
+	// 				for _, s := range i.Shards {
+	// 					if !s.isReadOnly() {
+	// 						diskPath := i.Config.RootPath
+	// 						du := db.getDiskUse(diskPath)
 
-							s.resourceUseWarn(memMonitor, du)
-							s.resourceUseReadonly(memMonitor, du)
-						}
-					}
-				}
-				db.indexLock.RUnlock()
-			}
-		}
-	}()
+	// 						s.resourceUseWarn(memMonitor, du)
+	// 						s.resourceUseReadonly(memMonitor, du)
+	// 					}
+	// 				}
+	// 			}
+	// 			db.indexLock.RUnlock()
+	// 		}
+	// 	}
+	// }()
 }
 
 func (db *DB) getDiskUse(diskPath string) diskUse {
