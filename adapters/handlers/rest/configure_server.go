@@ -19,6 +19,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/weaviate/weaviate/adapters/handlers/graphql"
+	"github.com/weaviate/weaviate/adapters/handlers/graphql/utils"
 	"github.com/weaviate/weaviate/adapters/handlers/rest/state"
 	"github.com/weaviate/weaviate/entities/schema"
 	"github.com/weaviate/weaviate/usecases/auth/authentication/anonymous"
@@ -44,18 +45,22 @@ func makeUpdateSchemaCall(logger logrus.FieldLogger, appState *state.State, trav
 		// Note that this is thread safe; we're running in a single go-routine, because the event
 		// handlers are called when the SchemaLock is still held.
 
-		// gql, err := rebuildGraphQL(
-		// 	updatedSchema,
-		// 	logger,
-		// 	appState.ServerConfig.Config,
-		// 	traverser,
-		// 	appState.Modules,
-		// )
-		// if err != nil && err != utils.ErrEmptySchema {
-		// 	logger.WithField("action", "graphql_rebuild").
-		// 		WithError(err).Error("could not (re)build graphql provider")
-		// }
-		// appState.GraphQL = gql
+		if _, ok := os.LookupEnv("DISABLE_GRAPHQL"); !ok {
+			before := time.Now()
+			gql, err := rebuildGraphQL(
+				updatedSchema,
+				logger,
+				appState.ServerConfig.Config,
+				traverser,
+				appState.Modules,
+			)
+			if err != nil && err != utils.ErrEmptySchema {
+				logger.WithField("action", "graphql_rebuild").
+					WithError(err).Error("could not (re)build graphql provider")
+			}
+			logger.WithField("took", time.Since(before)).Info("done rebuild graphql")
+			appState.GraphQL = gql
+		}
 	}
 }
 

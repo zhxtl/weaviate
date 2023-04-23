@@ -15,6 +15,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime"
 
 	"github.com/pkg/errors"
 	"github.com/weaviate/weaviate/adapters/repos/db/inverted"
@@ -22,6 +23,7 @@ import (
 	"github.com/weaviate/weaviate/entities/schema"
 	"github.com/weaviate/weaviate/usecases/config"
 	"github.com/weaviate/weaviate/usecases/replica"
+	"golang.org/x/sync/errgroup"
 )
 
 // On init we get the current schema and create one index object per class.
@@ -32,53 +34,65 @@ func (db *DB) init(ctx context.Context) error {
 		return errors.Wrapf(err, "create root path directory at %s", db.config.RootPath)
 	}
 
+	eg := &errgroup.Group{}
+	eg.SetLimit(runtime.GOMAXPROCS(0))
+
 	objects := db.schemaGetter.GetSchemaSkipAuth().Objects
 	if objects != nil {
 		for _, class := range objects.Classes {
-			invertedConfig := class.InvertedIndexConfig
-			if invertedConfig == nil {
-				// for backward compatibility, this field was introduced in v1.0.4,
-				// prior schemas will not yet have the field. Init with the defaults
-				// which were previously hard-coded.
-				// In this method we are essentially reading the schema from disk, so
-				// it could have been created before v1.0.4
-				invertedConfig = &models.InvertedIndexConfig{
-					CleanupIntervalSeconds: config.DefaultCleanupIntervalSeconds,
-					Bm25: &models.BM25Config{
-						K1: config.DefaultBM25k1,
-						B:  config.DefaultBM25b,
-					},
+			class := class
+			eg.Go(func() error {
+				invertedConfig := class.InvertedIndexConfig
+				if invertedConfig == nil {
+					// for backward compatibility, this field was introduced in v1.0.4,
+					// prior schemas will not yet have the field. Init with the defaults
+					// which were previously hard-coded.
+					// In this method we are essentially reading the schema from disk, so
+					// it could have been created before v1.0.4
+					invertedConfig = &models.InvertedIndexConfig{
+						CleanupIntervalSeconds: config.DefaultCleanupIntervalSeconds,
+						Bm25: &models.BM25Config{
+							K1: config.DefaultBM25k1,
+							B:  config.DefaultBM25b,
+						},
+					}
 				}
-			}
-			if err := replica.ValidateConfig(class); err != nil {
-				return fmt.Errorf("replication config: %w", err)
-			}
+				if err := replica.ValidateConfig(class); err != nil {
+					return fmt.Errorf("replication config: %w", err)
+				}
 
-			idx, err := NewIndex(ctx, IndexConfig{
-				ClassName:                 schema.ClassName(class.Class),
-				RootPath:                  db.config.RootPath,
-				ResourceUsage:             db.config.ResourceUsage,
-				QueryMaximumResults:       db.config.QueryMaximumResults,
-				MemtablesFlushIdleAfter:   db.config.MemtablesFlushIdleAfter,
-				MemtablesInitialSizeMB:    db.config.MemtablesInitialSizeMB,
-				MemtablesMaxSizeMB:        db.config.MemtablesMaxSizeMB,
-				MemtablesMinActiveSeconds: db.config.MemtablesMinActiveSeconds,
-				MemtablesMaxActiveSeconds: db.config.MemtablesMaxActiveSeconds,
-				TrackVectorDimensions:     db.config.TrackVectorDimensions,
-				ReplicationFactor:         class.ReplicationConfig.Factor,
-			}, db.schemaGetter.ShardingState(class.Class),
-				inverted.ConfigFromModel(invertedConfig),
-				class.VectorIndexConfig.(schema.VectorIndexConfig),
-				db.schemaGetter, db, db.logger, db.nodeResolver, db.remoteIndex,
-				db.replicaClient, db.promMetrics, class, db.jobQueueCh)
-			if err != nil {
-				return errors.Wrap(err, "create index")
-			}
+				idx, err := NewIndex(ctx, IndexConfig{
+					ClassName:                 schema.ClassName(class.Class),
+					RootPath:                  db.config.RootPath,
+					ResourceUsage:             db.config.ResourceUsage,
+					QueryMaximumResults:       db.config.QueryMaximumResults,
+					MemtablesFlushIdleAfter:   db.config.MemtablesFlushIdleAfter,
+					MemtablesInitialSizeMB:    db.config.MemtablesInitialSizeMB,
+					MemtablesMaxSizeMB:        db.config.MemtablesMaxSizeMB,
+					MemtablesMinActiveSeconds: db.config.MemtablesMinActiveSeconds,
+					MemtablesMaxActiveSeconds: db.config.MemtablesMaxActiveSeconds,
+					TrackVectorDimensions:     db.config.TrackVectorDimensions,
+					ReplicationFactor:         class.ReplicationConfig.Factor,
+				}, db.schemaGetter.ShardingState(class.Class),
+					inverted.ConfigFromModel(invertedConfig),
+					class.VectorIndexConfig.(schema.VectorIndexConfig),
+					db.schemaGetter, db, db.logger, db.nodeResolver, db.remoteIndex,
+					db.replicaClient, db.promMetrics, class, db.jobQueueCh)
+				if err != nil {
+					return errors.Wrap(err, "create index")
+				}
 
-			db.indexLock.Lock()
-			db.indices[idx.ID()] = idx
-			idx.notifyReady()
-			db.indexLock.Unlock()
+				db.indexLock.Lock()
+				db.indices[idx.ID()] = idx
+				idx.notifyReady()
+				db.indexLock.Unlock()
+
+				return nil
+			})
+		}
+
+		if err := eg.Wait(); err != nil {
+			return err
 		}
 	}
 
