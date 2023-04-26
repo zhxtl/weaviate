@@ -52,6 +52,7 @@ func testGetSchemaWithoutClient(t *testing.T) {
 					"pq": map[string]interface{}{
 						"bitCompression": false,
 						"centroids":      float64(256),
+						"codebookUrl":    "",
 						"enabled":        false,
 						"encoder": map[string]interface{}{
 							"distribution": "log-normal",
