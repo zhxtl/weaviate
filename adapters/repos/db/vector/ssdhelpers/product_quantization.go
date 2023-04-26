@@ -14,6 +14,7 @@ package ssdhelpers
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"math"
 	"sync/atomic"
 
@@ -388,14 +389,25 @@ func (pq *ProductQuantizer) Fit(data [][]float32) {
 	}*/
 }
 
-// func (pq *ProductQuantizer) EncodeQuantized(vec []float32) []byte {
-// 	// Convert a float32 list of quantized values to a byte list of codes
-// 	codes := make([]byte, pq.m*pq.bytes)
-// 	for i := 0; i < pq.m; i++ {
-// 		pq.PutCode(uint64(vec[i]), codes, i)
-// 	}
-// 	return codes
-// }
+func (pq *ProductQuantizer) EncodeQuantized(vec []float32) []byte {
+	// Convert a float32 list of quantized values to a byte list of codes
+	// This will product errors if more than
+	codes := make([]byte, pq.m*pq.bytes)
+	for i := 0; i < pq.m; i++ {
+		pq.PutCode(uint64(vec[i]), codes, i)
+	}
+	return codes
+}
+
+func (pq *ProductQuantizer) EncodeIfRequired(vec []float32) ([]byte, error) {
+	if len(vec) == pq.dimensions {
+		return pq.Encode(vec), nil
+	}
+	if len(vec) == pq.m {
+		return pq.EncodeQuantized(vec), nil
+	}
+	return nil, fmt.Errorf("invalid vector length: %d", len(vec))
+}
 
 func (pq *ProductQuantizer) Encode(vec []float32) []byte {
 	codes := make([]byte, pq.m*pq.bytes)

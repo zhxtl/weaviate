@@ -242,6 +242,59 @@ func Test_NoRacePQEncodeBits(t *testing.T) {
 	})
 }
 
+func Test_NoRacePQEncodeIfRequired(t *testing.T) {
+	t.Run("produces error on invalid length vector", func(t *testing.T) {
+		m := 48
+		dimensions := 768
+		centroids := 256
+
+		encoders := make([]ssdhelpers.PQEncoder, m)
+
+		dummyCentres := make([][]float32, centroids)
+
+		// Centroids of format [0,0,0..], [1,1,1..], [2,2,2..] etc
+		for c := range dummyCentres {
+			dummyCentres[c] = make([]float32, dimensions/m)
+			for i := range dummyCentres[c] {
+				dummyCentres[c][i] = float32(c) + 1.0
+			}
+		}
+
+		fmt.Print(dummyCentres[0])
+
+		for i := range encoders {
+			encoders[i] = ssdhelpers.NewKMeansWithCenters(centroids, dimensions/m, i, dummyCentres)
+		}
+
+		distancer := distancer.NewL2SquaredProvider()
+
+		pq, err := ssdhelpers.NewProductQuantizerWithEncoders(
+			m,
+			centroids,
+			true,
+			distancer,
+			dimensions,
+			ssdhelpers.UseKMeansEncoder,
+			encoders,
+		)
+
+		assert.True(t, err == nil)
+
+		vec := make([]float32, m)
+		_, err = pq.EncodeIfRequired(vec)
+		assert.True(t, err == nil)
+
+		vec = make([]float32, 52)
+		_, err = pq.EncodeIfRequired(vec)
+		assert.EqualError(t, err, "invalid vector length: 52")
+
+		vec = make([]float32, dimensions)
+		_, err = pq.EncodeIfRequired(vec)
+		assert.True(t, err == nil)
+
+	})
+}
+
 func Test_NoRacePQDecodeBytes(t *testing.T) {
 	t.Run("extracts correctly on one code per byte", func(t *testing.T) {
 		amount := 100

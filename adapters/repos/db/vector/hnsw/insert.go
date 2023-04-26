@@ -89,7 +89,10 @@ func (h *hnsw) insertInitialElement(node *vertex, nodeVec []float32) error {
 
 	h.nodes[node.id] = node
 	if h.compressed.Load() {
-		compressed := h.pq.Encode(nodeVec)
+		compressed, err := h.pq.EncodeIfRequired(nodeVec)
+		if err != nil {
+			return errors.Wrapf(err, "encode vector %d", node.id)
+		}
 		h.storeCompressedVector(node.id, compressed)
 		h.compressedVectorsCache.preload(node.id, compressed)
 	} else {
@@ -164,7 +167,10 @@ func (h *hnsw) insert(node *vertex, nodeVec []float32) error {
 	// // make sure this new vec is immediately present in the cache, so we don't
 	// // have to read it from disk again
 	if h.compressed.Load() {
-		compressed := h.pq.Encode(nodeVec)
+		compressed, err := h.pq.EncodeIfRequired(nodeVec)
+		if err != nil {
+			return errors.Wrapf(err, "encode vector %d", node.id)
+		}
 		h.storeCompressedVector(node.id, compressed)
 		h.compressedVectorsCache.preload(node.id, compressed)
 	} else {

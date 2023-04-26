@@ -14,6 +14,7 @@ package ssdhelpers
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"math"
 	"math/rand"
 
@@ -85,6 +86,12 @@ func (m *KMeans) Nearest(point []float32) uint64 {
 }
 
 func (m *KMeans) nNearest(point []float32, n int) ([]uint64, []float32) {
+
+	fmt.Printf("nNearest: %v\n", point)
+	fmt.Printf("len(point): %v\n", len(point))
+	fmt.Printf("m.segment: %v\n", m.segment)
+	fmt.Printf("m.dimensions: %v\n", m.dimensions)
+
 	mins := make([]uint64, n)
 	minD := make([]float32, n)
 	for i := range mins {
