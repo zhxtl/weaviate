@@ -281,6 +281,8 @@ func (m *Migrator) RecountProperties(ctx context.Context) error {
 				return nil
 			}
 
+			shard.propLengths.Flush(false)
+
 			return nil
 		})
 		if err != nil {
