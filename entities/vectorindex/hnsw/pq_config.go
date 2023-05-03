@@ -32,6 +32,7 @@ const (
 	DefaultPQEncoderType         = "kmeans"
 	DefaultPQEncoderDistribution = "log-normal"
 	DefaultPQCentroids           = 256
+	DefaultPQTrainingLimit       = 100000
 )
 
 // Product Quantization encoder configuration
@@ -48,6 +49,7 @@ type PQConfig struct {
 	Centroids      int       `json:"centroids"`
 	Encoder        PQEncoder `json:"encoder"`
 	CodebookUrl    string    `json:"codebookUrl"`
+	TrainingLimit  int       `json:"trainingLimit"`
 }
 
 func ValidEncoder(encoder string) (ssdhelpers.Encoder, error) {
@@ -170,7 +172,6 @@ func RetrieveCodebookFromUrl(codebookUrl string) ([][][]float32, error) {
 	}
 
 	return codebook, nil
-
 }
 
 func codebookUrlFromMap(in map[string]interface{}, setFn func(v string)) error {
@@ -274,6 +275,12 @@ func parsePQMap(in map[string]interface{}, pq *PQConfig) error {
 
 	if err := optionalIntFromMap(pqConfigMap, "centroids", func(v int) {
 		pq.Centroids = v
+	}); err != nil {
+		return err
+	}
+
+	if err := optionalIntFromMap(pqConfigMap, "trainingLimit", func(v int) {
+		pq.TrainingLimit = v
 	}); err != nil {
 		return err
 	}

@@ -98,7 +98,6 @@ func (h *hnsw) CompressWithCodeBook(codeBook [][][]float32) error {
 	encoders := make([]ssdhelpers.PQEncoder, 0, segments)
 	for segment := range codeBook {
 		encoders = append(encoders, ssdhelpers.NewKMeansWithCenters(len(codeBook[segment]), dimensions/segments, segment, codeBook[segment]))
-
 	}
 	h.pq, err = ssdhelpers.NewProductQuantizerWithEncoders(segments, len(codeBook[0]), false, h.distancerProvider, len(codeBook)*len(codeBook[0][0]), ssdhelpers.UseKMeansEncoder, encoders)
 	if err != nil {

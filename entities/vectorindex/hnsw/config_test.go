@@ -14,7 +14,6 @@ package hnsw
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"math"
 	"os"
 	"testing"
@@ -53,6 +52,7 @@ func Test_UserConfig(t *testing.T) {
 					BitCompression: DefaultPQBitCompression,
 					Segments:       DefaultPQSegments,
 					Centroids:      DefaultPQCentroids,
+					TrainingLimit:  DefaultPQTrainingLimit,
 					Encoder: PQEncoder{
 						Type:         DefaultPQEncoderType,
 						Distribution: DefaultPQEncoderDistribution,
@@ -82,6 +82,7 @@ func Test_UserConfig(t *testing.T) {
 					BitCompression: DefaultPQBitCompression,
 					Segments:       DefaultPQSegments,
 					Centroids:      DefaultPQCentroids,
+					TrainingLimit:  DefaultPQTrainingLimit,
 					Encoder: PQEncoder{
 						Type:         DefaultPQEncoderType,
 						Distribution: DefaultPQEncoderDistribution,
@@ -122,6 +123,7 @@ func Test_UserConfig(t *testing.T) {
 					BitCompression: DefaultPQBitCompression,
 					Segments:       DefaultPQSegments,
 					Centroids:      DefaultPQCentroids,
+					TrainingLimit:  DefaultPQTrainingLimit,
 					Encoder: PQEncoder{
 						Type:         DefaultPQEncoderType,
 						Distribution: DefaultPQEncoderDistribution,
@@ -162,6 +164,7 @@ func Test_UserConfig(t *testing.T) {
 					BitCompression: DefaultPQBitCompression,
 					Segments:       DefaultPQSegments,
 					Centroids:      DefaultPQCentroids,
+					TrainingLimit:  DefaultPQTrainingLimit,
 					Encoder: PQEncoder{
 						Type:         DefaultPQEncoderType,
 						Distribution: DefaultPQEncoderDistribution,
@@ -202,6 +205,7 @@ func Test_UserConfig(t *testing.T) {
 					BitCompression: DefaultPQBitCompression,
 					Segments:       DefaultPQSegments,
 					Centroids:      DefaultPQCentroids,
+					TrainingLimit:  DefaultPQTrainingLimit,
 					Encoder: PQEncoder{
 						Type:         DefaultPQEncoderType,
 						Distribution: DefaultPQEncoderDistribution,
@@ -240,6 +244,7 @@ func Test_UserConfig(t *testing.T) {
 					BitCompression: DefaultPQBitCompression,
 					Segments:       DefaultPQSegments,
 					Centroids:      DefaultPQCentroids,
+					TrainingLimit:  DefaultPQTrainingLimit,
 					Encoder: PQEncoder{
 						Type:         DefaultPQEncoderType,
 						Distribution: DefaultPQEncoderDistribution,
@@ -283,9 +288,10 @@ func Test_UserConfig(t *testing.T) {
 				DynamicEFFactor:        19,
 				Distance:               DefaultDistanceMetric,
 				PQ: PQConfig{
-					Enabled:   true,
-					Segments:  64,
-					Centroids: DefaultPQCentroids,
+					Enabled:       true,
+					Segments:      64,
+					Centroids:     DefaultPQCentroids,
+					TrainingLimit: DefaultPQTrainingLimit,
 					Encoder: PQEncoder{
 						Type:         "tile",
 						Distribution: "normal",
@@ -311,6 +317,7 @@ func Test_UserConfig(t *testing.T) {
 					"bitCompression": false,
 					"segments":       float64(64),
 					"centroids":      float64(DefaultPQCentroids),
+					"trainingLimit":  float64(DefaultPQTrainingLimit),
 					"codebookUrl":    "file:///tmp/codebook.json",
 					"encoder": map[string]interface{}{
 						"type": "kmeans",
@@ -329,10 +336,11 @@ func Test_UserConfig(t *testing.T) {
 				DynamicEFFactor:        19,
 				Distance:               DefaultDistanceMetric,
 				PQ: PQConfig{
-					Enabled:     true,
-					Segments:    64,
-					Centroids:   DefaultPQCentroids,
-					CodebookUrl: "file:///tmp/codebook.json",
+					Enabled:       true,
+					Segments:      64,
+					Centroids:     DefaultPQCentroids,
+					TrainingLimit: DefaultPQTrainingLimit,
+					CodebookUrl:   "file:///tmp/codebook.json",
 					Encoder: PQEncoder{
 						Type:         "kmeans",
 						Distribution: DefaultPQEncoderDistribution,
@@ -423,6 +431,7 @@ func Test_UserConfig(t *testing.T) {
 					BitCompression: DefaultPQBitCompression,
 					Segments:       DefaultPQSegments,
 					Centroids:      DefaultPQCentroids,
+					TrainingLimit:  DefaultPQTrainingLimit,
 					Encoder: PQEncoder{
 						Type:         DefaultPQEncoderType,
 						Distribution: DefaultPQEncoderDistribution,
@@ -484,7 +493,6 @@ func Test_UserConfig(t *testing.T) {
 }
 
 func Test_PQCodebook(t *testing.T) {
-
 	pqData := make([][][]float32, 8)
 	for i := range pqData {
 		pqData[i] = make([][]float32, 16)
@@ -496,9 +504,13 @@ func Test_PQCodebook(t *testing.T) {
 		}
 	}
 
-	tmpfile, err := ioutil.TempFile("", "*.json")
+	tmpfile, err := os.CreateTemp("", "*.json")
 	assert.Nil(t, err)
-	defer os.Remove(tmpfile.Name())
+
+	defer func() {
+		tmpfile.Close()
+		os.Remove(tmpfile.Name())
+	}()
 
 	enc := json.NewEncoder(tmpfile)
 	err = enc.Encode(pqData)
@@ -515,11 +527,9 @@ func Test_PQCodebook(t *testing.T) {
 	assert.Equal(t, len(codebook[0]), 16)
 	assert.Equal(t, len(codebook[0][0]), 32)
 	assert.Equal(t, codebook[5][6][7], float32(2760))
-
 }
 
 func Test_UrlPQCodebook(t *testing.T) {
-
 	codebookUrl := "https://storage.googleapis.com/semi-random-dev-codebook-test/json/codebook.json"
 
 	codebook, err := RetrieveCodebookFromUrl(codebookUrl)
@@ -529,14 +539,11 @@ func Test_UrlPQCodebook(t *testing.T) {
 	assert.Equal(t, len(codebook[0]), 256)
 	assert.Equal(t, len(codebook[0][0]), 16)
 	assert.Equal(t, codebook[0][0][1], float32(0.3027593195438385))
-
 }
 
 func Test_BadUrlPQCodebook(t *testing.T) {
-
 	codebookUrl := "https://storage.googleapis.com/semi-random-dev-codebook-test/json/codebook-invalid.json"
 
 	_, err := RetrieveCodebookFromUrl(codebookUrl)
 	assert.ErrorContains(t, err, "could not download codebook: 404 Not Found")
-
 }

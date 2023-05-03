@@ -89,6 +89,7 @@ func (c *UserConfig) SetDefaults() {
 		BitCompression: DefaultPQBitCompression,
 		Segments:       DefaultPQSegments,
 		Centroids:      DefaultPQCentroids,
+		TrainingLimit:  DefaultPQTrainingLimit,
 		Encoder: PQEncoder{
 			Type:         DefaultPQEncoderType,
 			Distribution: DefaultPQEncoderDistribution,

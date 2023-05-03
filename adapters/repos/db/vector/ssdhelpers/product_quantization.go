@@ -125,6 +125,7 @@ type ProductQuantizer struct {
 	codingMask          uint64
 	sharpCodes          bool
 	useBitsEncoding     bool
+	trainingLimit       int
 	ExtractCode         func(encoded []byte, index int) uint64
 	PutCode             func(code uint64, encoded []byte, index int)
 }
@@ -354,6 +355,9 @@ func (d *PQDistancer) Distance(x []byte) (float32, bool, error) {
 }
 
 func (pq *ProductQuantizer) Fit(data [][]float32) {
+	if pq.trainingLimit > 0 && len(data) > pq.trainingLimit {
+		data = data[:pq.trainingLimit]
+	}
 	switch pq.encoderType {
 	case UseTileEncoder:
 		pq.kms = make([]PQEncoder, pq.m)

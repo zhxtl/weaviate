@@ -53,6 +53,7 @@ func testGetSchemaWithoutClient(t *testing.T) {
 						"bitCompression": false,
 						"centroids":      float64(256),
 						"codebookUrl":    "",
+						"trainingLimit":  float64(100000),
 						"enabled":        false,
 						"encoder": map[string]interface{}{
 							"distribution": "log-normal",

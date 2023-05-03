@@ -85,7 +85,6 @@ func (m *KMeans) Nearest(point []float32) uint64 {
 }
 
 func (m *KMeans) nNearest(point []float32, n int) ([]uint64, []float32) {
-
 	mins := make([]uint64, n)
 	minD := make([]float32, n)
 	for i := range mins {

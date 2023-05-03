@@ -291,7 +291,6 @@ func Test_NoRacePQEncodeIfRequired(t *testing.T) {
 		vec = make([]float32, dimensions)
 		_, err = pq.EncodeIfRequired(vec)
 		assert.True(t, err == nil)
-
 	})
 }
 
