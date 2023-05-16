@@ -39,8 +39,8 @@ type ReindexableProperty struct {
 	PropertyName    string
 	IndexType       PropertyIndexType
 	NewIndex        bool // is new index, there is no bucket to replace with
-	DesiredStrategy string
-	BucketOptions   []lsmkv.BucketOption
+	DesiredStrategy lsmkv.Strategy
+	BucketOptions   lsmkv.BucketOptions
 }
 
 type ShardInvertedReindexer struct {

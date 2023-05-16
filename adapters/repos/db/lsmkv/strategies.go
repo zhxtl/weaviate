@@ -17,15 +17,20 @@ import (
 	"github.com/weaviate/weaviate/adapters/repos/db/lsmkv/segmentindex"
 )
 
+
+
 const (
 	// StrategyReplace allows for idem-potent PUT where the latest takes presence
-	StrategyReplace       = "replace"
-	StrategySetCollection = "setcollection"
-	StrategyMapCollection = "mapcollection"
-	StrategyRoaringSet    = "roaringset"
+	StrategyReplace       = Strategy("replace")
+	StrategySetCollection = Strategy("setcollection")
+	StrategyMapCollection = Strategy("mapcollection")
+	StrategyRoaringSet    = Strategy("roaringset")
 )
 
-func SegmentStrategyFromString(in string) segmentindex.Strategy {
+type Strategy string
+
+
+func SegmentStrategyFromString(in Strategy) segmentindex.Strategy {
 	switch in {
 	case StrategyReplace:
 		return segmentindex.StrategyReplace
@@ -40,9 +45,9 @@ func SegmentStrategyFromString(in string) segmentindex.Strategy {
 	}
 }
 
-func IsExpectedStrategy(strategy string, expectedStrategies ...string) bool {
+func IsExpectedStrategy(strategy Strategy, expectedStrategies ...Strategy) bool {
 	if len(expectedStrategies) == 0 {
-		expectedStrategies = []string{StrategyReplace, StrategySetCollection, StrategyMapCollection, StrategyRoaringSet}
+		expectedStrategies = []Strategy{StrategyReplace, StrategySetCollection, StrategyMapCollection, StrategyRoaringSet}
 	}
 
 	for _, s := range expectedStrategies {
@@ -53,7 +58,7 @@ func IsExpectedStrategy(strategy string, expectedStrategies ...string) bool {
 	return false
 }
 
-func CheckExpectedStrategy(strategy string, expectedStrategies ...string) {
+func CheckExpectedStrategy(strategy Strategy, expectedStrategies ...Strategy) {
 	if !IsExpectedStrategy(strategy, expectedStrategies...) {
 		panic(fmt.Sprintf("one of strategies %v expected, strategy '%s' found", expectedStrategies, strategy))
 	}

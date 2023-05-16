@@ -63,9 +63,9 @@ func (t *shardInvertedReindexTaskMissingTextFilterable) GetPropertiesToReindex(c
 		return reindexableProperties, nil
 	}
 
-	bucketOptions := []lsmkv.BucketOption{
-		lsmkv.WithIdleThreshold(time.Duration(shard.index.Config.MemtablesFlushIdleAfter) * time.Second),
-	}
+	bucketOptions := lsmkv.BucketOptions{}
+	bucketOptions.WithIdleThreshold(time.Duration(shard.index.Config.MemtablesFlushIdleAfter) * time.Second)
+	
 
 	for propName := range props {
 		bucketNameSearchable := helpers.BucketSearchableFromPropNameLSM(propName)

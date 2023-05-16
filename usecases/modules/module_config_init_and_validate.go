@@ -99,7 +99,12 @@ func (p *Provider) setSinglePropertyConfigDefaults(class *models.Class,
 	userSpecified := make(map[string]interface{})
 
 	if prop.ModuleConfig != nil {
-		userSpecified = prop.ModuleConfig.(map[string]interface{})[class.Vectorizer].(map[string]interface{})
+		mconf := prop.ModuleConfig.(map[string]interface{})
+		vectoriser, ok := mconf[class.Vectorizer]
+		if !ok {
+			panic("Schema wants "+class.Vectorizer+" but weaviate config does not have it")
+		}
+		userSpecified = vectoriser.(map[string]interface{})
 	}
 
 	for key, value := range modDefaults {

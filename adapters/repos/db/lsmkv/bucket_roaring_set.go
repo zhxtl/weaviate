@@ -98,7 +98,7 @@ func (b *Bucket) RoaringSetGet(key []byte) (*sroar.Bitmap, error) {
 	return segments.Flatten(), nil
 }
 
-func checkStrategyRoaringSet(bucketStrat string) error {
+func checkStrategyRoaringSet(bucketStrat Strategy) error {
 	if bucketStrat == StrategyRoaringSet {
 		return nil
 	}

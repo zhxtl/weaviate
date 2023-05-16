@@ -27,8 +27,8 @@ var (
 
 // BucketFromPropName creates the byte-representation used as the bucket name
 // for a partiular prop in the inverted index
-func BucketFromPropName(propName string) []byte {
-	return []byte(fmt.Sprintf("property_%s", propName))
+func BucketFromPropName(propName, storeType string) []byte {
+	return []byte(fmt.Sprintf("property_%s", storeType))
 }
 
 // MetaCountProp helps create an internally used propName for meta props that
@@ -48,26 +48,26 @@ func PropNull(propName string) string {
 
 // BucketFromPropName creates string used as the bucket name
 // for a particular prop in the inverted index
-func BucketFromPropNameLSM(propName string) string {
-	return fmt.Sprintf("property_%s", propName)
+func BucketFromPropNameLSM(propName, storeType string) string {
+	return fmt.Sprintf("property_%s", storeType)
 }
 
-func BucketFromPropNameLengthLSM(propName string) string {
-	return BucketFromPropNameLSM(PropLength(propName))
+func BucketFromPropNameLengthLSM(propName, storeType string) string {
+	return BucketFromPropNameLSM(PropLength(propName), storeType)
 }
 
-func BucketFromPropNameNullLSM(propName string) string {
-	return BucketFromPropNameLSM(PropNull(propName))
+func BucketFromPropNameNullLSM(propName, storeType string) string {
+	return BucketFromPropNameLSM(PropNull(propName), storeType)
 }
 
-func BucketFromPropNameMetaCountLSM(propName string) string {
-	return BucketFromPropNameLSM(MetaCountProp(propName))
+func BucketFromPropNameMetaCountLSM(propName, storeType string) string {
+	return BucketFromPropNameLSM(MetaCountProp(propName), storeType)
 }
 
 func TempBucketFromBucketName(bucketName string) string {
 	return bucketName + "_temp"
 }
 
-func BucketSearchableFromPropNameLSM(propName string) string {
-	return BucketFromPropNameLSM(propName + "_searchable")
+func BucketSearchableFromPropNameLSM(propName, storeType string) string {
+	return BucketFromPropNameLSM(propName + "_searchable", storeType)
 }

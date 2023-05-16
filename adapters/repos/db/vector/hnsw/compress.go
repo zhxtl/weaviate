@@ -28,7 +28,7 @@ func (h *hnsw) initCompressedStore() error {
 	if err != nil {
 		return errors.Wrap(err, "Init lsmkv (compressed vectors store)")
 	}
-	err = store.CreateOrLoadBucket(context.Background(), helpers.CompressedObjectsBucketLSM)
+	err = store.CreateOrLoadBucket(context.Background(), helpers.CompressedObjectsBucketLSM, nil)
 	if err != nil {
 		return errors.Wrapf(err, "Create or load bucket (compressed vectors store)")
 	}

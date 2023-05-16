@@ -17,72 +17,111 @@ import (
 	"github.com/pkg/errors"
 )
 
-type BucketOption func(b *Bucket) error
-
-func WithStrategy(strategy string) BucketOption {
-	return func(b *Bucket) error {
-		switch strategy {
-		case StrategyReplace, StrategyMapCollection, StrategySetCollection,
-			StrategyRoaringSet:
-		default:
-			return errors.Errorf("unrecognized strategy %q", strategy)
-		}
-
-		b.strategy = strategy
-		return nil
-	}
+type BucketOptions struct {
+	Strategy *Strategy
+	MemtableThreshold *uint64
+	WalThreshold *uint64
+	FlushAfterIdle *time.Duration
+	SecondaryIndices *uint16
+	LegacyMapSortingBeforeCompaction *bool
+	MemtableResizer *memtableSizeAdvisor
+	MonitorCount *bool
 }
 
-func WithMemtableThreshold(threshold uint64) BucketOption {
-	return func(b *Bucket) error {
-		b.memtableThreshold = threshold
-		return nil
+func (b *BucketOptions) Apply(bucket *Bucket) error {
+	if b.Strategy != nil {
+		bucket.strategy = *b.Strategy
 	}
+
+	if b.MemtableThreshold != nil {
+		bucket.memtableThreshold = *b.MemtableThreshold
+	}
+
+	if b.WalThreshold != nil {
+		bucket.walThreshold = *b.WalThreshold
+	}
+
+	if b.FlushAfterIdle != nil {
+		bucket.flushAfterIdle = *b.FlushAfterIdle
+	}
+
+	if b.SecondaryIndices != nil {
+		bucket.secondaryIndices = *b.SecondaryIndices
+	}
+
+	if b.LegacyMapSortingBeforeCompaction != nil {
+		bucket.legacyMapSortingBeforeCompaction = *b.LegacyMapSortingBeforeCompaction
+	}
+
+	if b.MemtableResizer != nil {
+		bucket.memtableResizer = b.MemtableResizer
+	}
+
+	if b.MonitorCount != nil {
+		bucket.monitorCount = *b.MonitorCount
+	}
+
+	return nil
 }
 
-func WithWalThreshold(threshold uint64) BucketOption {
-	return func(b *Bucket) error {
-		b.walThreshold = threshold
-		return nil
+func (b *BucketOptions) WithStrategy(strategy Strategy) error {
+	switch strategy {
+	case StrategyReplace, StrategyMapCollection, StrategySetCollection, StrategyRoaringSet:
+	default:
+		return errors.Errorf("unrecognized strategy %q", strategy)
 	}
+	b.Strategy = &strategy
+	return nil
 }
 
-func WithIdleThreshold(threshold time.Duration) BucketOption {
-	return func(b *Bucket) error {
-		b.flushAfterIdle = threshold
-		return nil
-	}
+func (b *BucketOptions) WithMemtableThreshold(threshold uint64) error {
+	b.MemtableThreshold = &threshold
+	return nil
 }
 
-func WithSecondaryIndices(count uint16) BucketOption {
-	return func(b *Bucket) error {
-		b.secondaryIndices = count
-		return nil
-	}
+func (b *BucketOptions) WithWalThreshold(threshold uint64) error {
+	b.WalThreshold = &threshold
+	return nil
 }
 
-func WithLegacyMapSorting() BucketOption {
-	return func(b *Bucket) error {
-		b.legacyMapSortingBeforeCompaction = true
-		return nil
-	}
+func (b *BucketOptions) WithIdleThreshold(threshold time.Duration) error {
+	b.FlushAfterIdle = &threshold
+	return nil
 }
 
-func WithDynamicMemtableSizing(
+func (b *BucketOptions) WithSecondaryIndices(count uint16) error {
+	b.SecondaryIndices = &count
+	return nil
+}
+
+func (b *BucketOptions) WithLegacyMapSorting() error {
+	legacy := true
+	b.LegacyMapSortingBeforeCompaction = &legacy
+	return nil
+}
+
+func (b *BucketOptions) WithDynamicMemtableSizing(
 	initialMB, maxMB, minActiveSeconds, maxActiveSeconds int,
-) BucketOption {
-	return func(b *Bucket) error {
-		mb := 1024 * 1024
-		cfg := memtableSizeAdvisorCfg{
-			initial:     initialMB * mb,
-			stepSize:    10 * mb,
-			maxSize:     maxMB * mb,
-			minDuration: time.Duration(minActiveSeconds) * time.Second,
-			maxDuration: time.Duration(maxActiveSeconds) * time.Second,
-		}
-		b.memtableResizer = newMemtableSizeAdvisor(cfg)
-		return nil
+) error {
+	mb := 1024 * 1024
+	cfg := memtableSizeAdvisorCfg{
+		initial:     initialMB * mb,
+		stepSize:    10 * mb,
+		maxSize:     maxMB * mb,
+		minDuration: time.Duration(minActiveSeconds) * time.Second,
+		maxDuration: time.Duration(maxActiveSeconds) * time.Second,
 	}
+	b.MemtableResizer = newMemtableSizeAdvisor(cfg)
+	return nil
+}
+
+func (b *BucketOptions) WithMonitorCount() error {
+	if b.Strategy == nil || *b.Strategy != StrategyReplace {
+		return errors.Errorf("count monitoring only supported on 'replace' buckets")
+	}
+	monitor := true
+	b.MonitorCount = &monitor
+	return nil
 }
 
 type secondaryIndexKeys [][]byte
@@ -98,16 +137,6 @@ func WithSecondaryKey(pos int, key []byte) SecondaryKeyOption {
 
 		s[pos] = key
 
-		return nil
-	}
-}
-
-func WithMonitorCount() BucketOption {
-	return func(b *Bucket) error {
-		if b.strategy != StrategyReplace {
-			return errors.Errorf("count monitoring only supported on 'replace' buckets")
-		}
-		b.monitorCount = true
 		return nil
 	}
 }

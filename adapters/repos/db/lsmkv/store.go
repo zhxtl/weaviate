@@ -109,13 +109,14 @@ func (s *Store) bucketDir(bucketName string) string {
 //	// you can now access the bucket using store.Bucket()
 //	b := store.Bucket("my_bucket_name")
 func (s *Store) CreateOrLoadBucket(ctx context.Context, bucketName string,
-	opts ...BucketOption,
+	opts *BucketOptions,
 ) error {
 	if b := s.Bucket(bucketName); b != nil {
 		return nil
 	}
 
-	b, err := NewBucket(ctx, s.bucketDir(bucketName), s.rootDir, s.logger, s.metrics, opts...)
+	fmt.Printf("CreateOrLoadBucket: %s\n", bucketName)
+	b, err := NewBucket(ctx, s.bucketDir(bucketName), s.rootDir, s.logger, s.metrics, opts)
 	if err != nil {
 		return err
 	}
@@ -301,7 +302,7 @@ func (s *Store) GetBucketsByName() map[string]*Bucket {
 // Creates bucket, first removing any files if already exist
 // Bucket can not be registered in bucketsByName before removal
 func (s *Store) CreateBucket(ctx context.Context, bucketName string,
-	opts ...BucketOption,
+	opts *BucketOptions,
 ) error {
 	if b := s.Bucket(bucketName); b != nil {
 		return fmt.Errorf("bucket %s exists and is already in use", bucketName)
@@ -312,7 +313,8 @@ func (s *Store) CreateBucket(ctx context.Context, bucketName string,
 		return errors.Wrapf(err, "failed removing bucket %s files", bucketName)
 	}
 
-	b, err := NewBucket(ctx, bucketDir, s.rootDir, s.logger, s.metrics, opts...)
+	fmt.Printf("creating bucket %s at %s\n", bucketName, bucketDir)
+	b, err := NewBucket(ctx, bucketDir, s.rootDir, s.logger, s.metrics, opts)
 	if err != nil {
 		return err
 	}

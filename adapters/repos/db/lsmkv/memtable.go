@@ -31,7 +31,7 @@ type Memtable struct {
 	commitlog          *commitLogger
 	size               uint64
 	path               string
-	strategy           string
+	strategy           Strategy
 	secondaryIndices   uint16
 	secondaryToPrimary []map[string][]byte
 	lastWrite          time.Time
@@ -39,7 +39,7 @@ type Memtable struct {
 	metrics            *memtableMetrics
 }
 
-func newMemtable(path string, strategy string,
+func newMemtable(path string, strategy Strategy,
 	secondaryIndices uint16, metrics *Metrics,
 ) (*Memtable, error) {
 	cl, err := newCommitLogger(path)
@@ -59,7 +59,7 @@ func newMemtable(path string, strategy string,
 		secondaryIndices: secondaryIndices,
 		lastWrite:        time.Now(),
 		createdAt:        time.Now(),
-		metrics:          newMemtableMetrics(metrics, filepath.Dir(path), strategy),
+		metrics:          newMemtableMetrics(metrics, filepath.Dir(path), string(strategy)),
 	}
 
 	if m.secondaryIndices > 0 {

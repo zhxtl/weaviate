@@ -48,14 +48,14 @@ type Bucket struct {
 	flushAfterIdle    time.Duration
 	memtableThreshold uint64
 	memtableResizer   *memtableSizeAdvisor
-	strategy          string
+	strategy          Strategy
 	// Strategy inverted index is supposed to be created with, but existing
 	// segment files were created with different one.
 	// It can happen when new strategy were introduced to weaviate, but
 	// files are already created using old implementation.
 	// Example: RoaringSet strategy replaces CollectionSet strategy.
 	// Field can be used for migration files of old strategy to newer one.
-	desiredStrategy  string
+	desiredStrategy  Strategy
 	secondaryIndices uint16
 
 	// for backward compatibility
@@ -83,13 +83,16 @@ type Bucket struct {
 // [Store]. In this case the [Store] can manage buckets for you, using methods
 // such as CreateOrLoadBucket().
 func NewBucket(ctx context.Context, dir, rootDir string, logger logrus.FieldLogger,
-	metrics *Metrics, opts ...BucketOption,
+	metrics *Metrics, opts *BucketOptions,
 ) (*Bucket, error) {
 	beforeAll := time.Now()
 	defaultMemTableThreshold := uint64(10 * 1024 * 1024)
 	defaultWalThreshold := uint64(1024 * 1024 * 1024)
 	defaultFlushAfterIdle := 60 * time.Second
 	defaultStrategy := StrategyReplace
+
+
+	fmt.Printf("NewBucket: dir=%s, rootDir=%s\n", dir, rootDir	)
 
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
@@ -106,18 +109,17 @@ func NewBucket(ctx context.Context, dir, rootDir string, logger logrus.FieldLogg
 		metrics:           metrics,
 	}
 
-	for _, opt := range opts {
-		if err := opt(b); err != nil {
-			return nil, err
-		}
-	}
+
+	//Apply all the non-nil options from the options struct to the bucket
+	//If an error occurs, return it
+	opts.Apply(b)
 
 	if b.memtableResizer != nil {
 		b.memtableThreshold = uint64(b.memtableResizer.Initial())
 	}
 
 	sg, err := newSegmentGroup(dir, logger, b.legacyMapSortingBeforeCompaction,
-		metrics, b.strategy, b.monitorCount)
+		metrics, string(b.strategy), b.monitorCount)
 	if err != nil {
 		return nil, errors.Wrap(err, "init disk segments")
 	}
@@ -131,7 +133,7 @@ func NewBucket(ctx context.Context, dir, rootDir string, logger logrus.FieldLogg
 		sg.segments[0].strategy == segmentindex.StrategySetCollection {
 		b.strategy = StrategySetCollection
 		b.desiredStrategy = StrategyRoaringSet
-		sg.strategy = StrategySetCollection
+		sg.strategy = string(StrategySetCollection)
 	}
 	// As of v1.19 property's IndexInterval setting is replaced with
 	// IndexFilterable (roaring set) + IndexSearchable (map) and enabled by default.
@@ -144,7 +146,7 @@ func NewBucket(ctx context.Context, dir, rootDir string, logger logrus.FieldLogg
 		sg.segments[0].strategy == segmentindex.StrategyMapCollection {
 		b.strategy = StrategyMapCollection
 		b.desiredStrategy = StrategyRoaringSet
-		sg.strategy = StrategyMapCollection
+		sg.strategy = string(StrategyMapCollection)
 	}
 
 	b.disk = sg
@@ -864,11 +866,11 @@ func (b *Bucket) atomicallySwitchMemtable() error {
 	return b.setNewActiveMemtable()
 }
 
-func (b *Bucket) Strategy() string {
+func (b *Bucket) Strategy() Strategy {
 	return b.strategy
 }
 
-func (b *Bucket) DesiredStrategy() string {
+func (b *Bucket) DesiredStrategy() Strategy {
 	return b.desiredStrategy
 }
 
