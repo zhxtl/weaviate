@@ -9,7 +9,7 @@
 //  CONTACT: hello@weaviate.io
 //
 
-package nearImage
+package nearAudio
 
 import "testing"
 

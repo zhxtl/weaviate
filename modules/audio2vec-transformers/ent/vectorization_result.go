@@ -13,7 +13,7 @@ package ent
 
 type VectorizationResult struct {
 	ID         string
-	Image      string
+	Audio      string
 	Dimensions int
 	Vector     []float32
 }

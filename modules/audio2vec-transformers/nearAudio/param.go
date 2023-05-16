@@ -9,44 +9,44 @@
 //  CONTACT: hello@weaviate.io
 //
 
-package nearImage
+package nearAudio
 
 import (
 	"github.com/pkg/errors"
 )
 
-type NearImageParams struct {
-	Image        string
+type NearAudioParams struct {
+	Audio        string
 	Certainty    float64
 	Distance     float64
 	WithDistance bool
 }
 
-func (n NearImageParams) GetCertainty() float64 {
+func (n NearAudioParams) GetCertainty() float64 {
 	return n.Certainty
 }
 
-func (n NearImageParams) GetDistance() float64 {
+func (n NearAudioParams) GetDistance() float64 {
 	return n.Distance
 }
 
-func (n NearImageParams) SimilarityMetricProvided() bool {
+func (n NearAudioParams) SimilarityMetricProvided() bool {
 	return n.Certainty != 0 || n.WithDistance
 }
 
-func validateNearImageFn(param interface{}) error {
-	nearImage, ok := param.(*NearImageParams)
+func validateNearAudioFn(param interface{}) error {
+	nearAudio, ok := param.(*NearAudioParams)
 	if !ok {
 		return errors.New("'nearAudio' invalid parameter")
 	}
 
-	if len(nearImage.Image) == 0 {
+	if len(nearAudio.Audio) == 0 {
 		return errors.Errorf("'nearAudio.image' needs to be defined")
 	}
 
-	if nearImage.Certainty != 0 && nearImage.WithDistance {
+	if nearAudio.Certainty != 0 && nearAudio.WithDistance {
 		return errors.Errorf(
-			"nearText cannot provide both distance and certainty")
+			"nearAudio cannot provide both distance and certainty")
 	}
 
 	return nil

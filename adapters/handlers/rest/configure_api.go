@@ -15,6 +15,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	modaudio "github.com/weaviate/weaviate/modules/audio2vec-transformers"
 	"net"
 	"net/http"
 	"os"
@@ -537,6 +538,14 @@ func registerModules(appState *state.State) error {
 		appState.Logger.
 			WithField("action", "startup").
 			WithField("module", "img2vec-neural").
+			Debug("enabled module")
+	}
+
+	if _, ok := enabledModules["audio2vec-transformers"]; ok {
+		appState.Modules.Register(modaudio.New())
+		appState.Logger.
+			WithField("action", "startup").
+			WithField("module", "audio2vec-transformers").
 			Debug("enabled module")
 	}
 

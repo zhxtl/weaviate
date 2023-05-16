@@ -23,7 +23,7 @@ func New() *GraphQLArgumentsProvider {
 
 func (g *GraphQLArgumentsProvider) Arguments() map[string]modulecapabilities.GraphQLArgument {
 	arguments := map[string]modulecapabilities.GraphQLArgument{}
-	arguments["nearImage"] = g.getNearImage()
+	arguments["nearAudio"] = g.getNearImage()
 	return arguments
 }
 

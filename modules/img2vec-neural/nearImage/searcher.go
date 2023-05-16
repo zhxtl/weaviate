@@ -36,7 +36,7 @@ type imgVectorizer interface {
 
 func (s *Searcher) VectorSearches() map[string]modulecapabilities.VectorForParams {
 	vectorSearches := map[string]modulecapabilities.VectorForParams{}
-	vectorSearches["nearImage"] = s.vectorForNearImageParam
+	vectorSearches["nearAudio"] = s.vectorForNearImageParam
 	return vectorSearches
 }
 

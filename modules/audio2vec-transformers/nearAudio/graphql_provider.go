@@ -9,7 +9,7 @@
 //  CONTACT: hello@weaviate.io
 //
 
-package nearImage
+package nearAudio
 
 import (
 	"github.com/weaviate/weaviate/entities/modulecapabilities"
@@ -23,16 +23,16 @@ func New() *GraphQLArgumentsProvider {
 
 func (g *GraphQLArgumentsProvider) Arguments() map[string]modulecapabilities.GraphQLArgument {
 	arguments := map[string]modulecapabilities.GraphQLArgument{}
-	arguments["nearImage"] = g.getNearImage()
+	arguments["nearAudio"] = g.getNearAudio()
 	return arguments
 }
 
-func (g *GraphQLArgumentsProvider) getNearImage() modulecapabilities.GraphQLArgument {
+func (g *GraphQLArgumentsProvider) getNearAudio() modulecapabilities.GraphQLArgument {
 	return modulecapabilities.GraphQLArgument{
-		GetArgumentsFunction:       getNearImageArgumentFn,
-		AggregateArgumentsFunction: aggregateNearImageArgumentFn,
-		ExploreArgumentsFunction:   exploreNearImageArgumentFn,
-		ExtractFunction:            extractNearImageFn,
-		ValidateFunction:           validateNearImageFn,
+		GetArgumentsFunction:       getNearAudioArgumentFn,
+		AggregateArgumentsFunction: aggregateNearAudioArgumentFn,
+		ExploreArgumentsFunction:   exploreNearAudioArgumentFn,
+		ExtractFunction:            extractNearAudioFn,
+		ValidateFunction:           validateNearAudioFn,
 	}
 }

@@ -9,15 +9,15 @@
 //  CONTACT: hello@weaviate.io
 //
 
-package nearImage
+package nearAudio
 
 // extractNearImageFn arguments, such as "image" and "certainty"
-func extractNearImageFn(source map[string]interface{}) interface{} {
-	var args NearImageParams
+func extractNearAudioFn(source map[string]interface{}) interface{} {
+	var args NearAudioParams
 
-	image, ok := source["image"].(string)
+	audio, ok := source["audio"].(string)
 	if ok {
-		args.Image = image
+		args.Audio = audio
 	}
 
 	certainty, ok := source["certainty"]

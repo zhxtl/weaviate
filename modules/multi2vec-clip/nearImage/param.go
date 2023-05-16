@@ -37,11 +37,11 @@ func (n NearImageParams) SimilarityMetricProvided() bool {
 func validateNearImageFn(param interface{}) error {
 	nearImage, ok := param.(*NearImageParams)
 	if !ok {
-		return errors.New("'nearImage' invalid parameter")
+		return errors.New("'nearAudio' invalid parameter")
 	}
 
 	if len(nearImage.Image) == 0 {
-		return errors.Errorf("'nearImage.image' needs to be defined")
+		return errors.Errorf("'nearAudio.image' needs to be defined")
 	}
 
 	if nearImage.Certainty != 0 && nearImage.WithDistance {

@@ -9,24 +9,24 @@
 //  CONTACT: hello@weaviate.io
 //
 
-package modimage
+package modaudio
 
 import (
 	"github.com/weaviate/weaviate/entities/modulecapabilities"
-	"github.com/weaviate/weaviate/modules/img2vec-neural/nearImage"
+	"github.com/weaviate/weaviate/modules/audio2vec-transformers/nearAudio"
 )
 
-func (m *ImageModule) initNearImage() error {
-	m.searcher = nearImage.NewSearcher(m.vectorizer)
-	m.graphqlProvider = nearImage.New()
+func (m *AudioModule) initNearAudio() error {
+	m.searcher = nearAudio.NewSearcher(m.vectorizer)
+	m.graphqlProvider = nearAudio.New()
 	return nil
 }
 
-func (m *ImageModule) Arguments() map[string]modulecapabilities.GraphQLArgument {
+func (m *AudioModule) Arguments() map[string]modulecapabilities.GraphQLArgument {
 	return m.graphqlProvider.Arguments()
 }
 
-func (m *ImageModule) VectorSearches() map[string]modulecapabilities.VectorForParams {
+func (m *AudioModule) VectorSearches() map[string]modulecapabilities.VectorForParams {
 	return m.searcher.VectorSearches()
 }
 

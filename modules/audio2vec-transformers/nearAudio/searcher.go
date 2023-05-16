@@ -9,7 +9,7 @@
 //  CONTACT: hello@weaviate.io
 //
 
-package nearImage
+package nearAudio
 
 import (
 	"context"
@@ -22,39 +22,39 @@ import (
 )
 
 type Searcher struct {
-	vectorizer imgVectorizer
+	vectorizer audioVectorizer
 }
 
-func NewSearcher(vectorizer imgVectorizer) *Searcher {
+func NewSearcher(vectorizer audioVectorizer) *Searcher {
 	return &Searcher{vectorizer}
 }
 
-type imgVectorizer interface {
-	VectorizeImage(ctx context.Context,
-		id, image string) ([]float32, error)
+type audioVectorizer interface {
+	VectorizeAudio(ctx context.Context,
+		id, audio string) ([]float32, error)
 }
 
 func (s *Searcher) VectorSearches() map[string]modulecapabilities.VectorForParams {
 	vectorSearches := map[string]modulecapabilities.VectorForParams{}
-	vectorSearches["nearImage"] = s.vectorForNearImageParam
+	vectorSearches["nearAudio"] = s.vectorForNearAudioParam
 	return vectorSearches
 }
 
-func (s *Searcher) vectorForNearImageParam(ctx context.Context, params interface{},
+func (s *Searcher) vectorForNearAudioParam(ctx context.Context, params interface{},
 	className string,
 	findVectorFn modulecapabilities.FindVectorFn,
 	cfg moduletools.ClassConfig,
 ) ([]float32, error) {
-	return s.vectorFromNearImageParam(ctx, params.(*NearImageParams), className, findVectorFn, cfg)
+	return s.vectorFromNearAudioParam(ctx, params.(*NearAudioParams), className, findVectorFn, cfg)
 }
 
-func (s *Searcher) vectorFromNearImageParam(ctx context.Context,
-	params *NearImageParams, className string, findVectorFn modulecapabilities.FindVectorFn,
+func (s *Searcher) vectorFromNearAudioParam(ctx context.Context,
+	params *NearAudioParams, className string, findVectorFn modulecapabilities.FindVectorFn,
 	cfg moduletools.ClassConfig,
 ) ([]float32, error) {
 	// find vector for given search query
 	searchID := fmt.Sprintf("search_%v", time.Now().UnixNano())
-	vector, err := s.vectorizer.VectorizeImage(ctx, searchID, params.Image)
+	vector, err := s.vectorizer.VectorizeAudio(ctx, searchID, params.Audio)
 	if err != nil {
 		return nil, errors.Errorf("vectorize image: %v", err)
 	}

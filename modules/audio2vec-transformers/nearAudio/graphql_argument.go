@@ -9,7 +9,7 @@
 //  CONTACT: hello@weaviate.io
 //
 
-package nearImage
+package nearAudio
 
 import (
 	"fmt"
@@ -18,35 +18,35 @@ import (
 	"github.com/weaviate/weaviate/adapters/handlers/graphql/descriptions"
 )
 
-func getNearImageArgumentFn(classname string) *graphql.ArgumentConfig {
-	return nearImageArgument("GetObjects", classname)
+func getNearAudioArgumentFn(classname string) *graphql.ArgumentConfig {
+	return nearAudioArgument("GetObjects", classname)
 }
 
-func exploreNearImageArgumentFn() *graphql.ArgumentConfig {
-	return nearImageArgument("Explore", "")
+func exploreNearAudioArgumentFn() *graphql.ArgumentConfig {
+	return nearAudioArgument("Explore", "")
 }
 
-func aggregateNearImageArgumentFn(classname string) *graphql.ArgumentConfig {
-	return nearImageArgument("Aggregate", classname)
+func aggregateNearAudioArgumentFn(classname string) *graphql.ArgumentConfig {
+	return nearAudioArgument("Aggregate", classname)
 }
 
-func nearImageArgument(prefix, className string) *graphql.ArgumentConfig {
-	prefixName := fmt.Sprintf("Img2VecImage%s%s", prefix, className)
+func nearAudioArgument(prefix, className string) *graphql.ArgumentConfig {
+	prefixName := fmt.Sprintf("Audio2VecAudio%s%s", prefix, className)
 	return &graphql.ArgumentConfig{
 		Type: graphql.NewInputObject(
 			graphql.InputObjectConfig{
-				Name:        fmt.Sprintf("%sNearImageInpObj", prefixName),
-				Fields:      nearImageFields(prefixName),
+				Name:        fmt.Sprintf("%sNearAudioInpObj", prefixName),
+				Fields:      nearAudioFields(prefixName),
 				Description: descriptions.GetWhereInpObj,
 			},
 		),
 	}
 }
 
-func nearImageFields(prefix string) graphql.InputObjectConfigFieldMap {
+func nearAudioFields(prefix string) graphql.InputObjectConfigFieldMap {
 	return graphql.InputObjectConfigFieldMap{
-		"image": &graphql.InputObjectFieldConfig{
-			Description: "Base64 encoded image",
+		"audio": &graphql.InputObjectFieldConfig{
+			Description: "Base64 encoded audio",
 			Type:        graphql.NewNonNull(graphql.String),
 		},
 		"certainty": &graphql.InputObjectFieldConfig{

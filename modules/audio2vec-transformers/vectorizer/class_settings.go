@@ -25,24 +25,24 @@ func NewClassSettings(cfg moduletools.ClassConfig) *classSettings {
 	return &classSettings{cfg: cfg}
 }
 
-func (ic *classSettings) ImageField(property string) bool {
+func (ic *classSettings) AudioField(property string) bool {
 	if ic.cfg == nil {
 		// we would receive a nil-config on cross-class requests, such as Explore{}
 		return false
 	}
 
-	imageFields, ok := ic.cfg.Class()["imageFields"]
+	audioFields, ok := ic.cfg.Class()["audioFields"]
 	if !ok {
 		return false
 	}
 
-	imageFieldsArray, ok := imageFields.([]interface{})
+	audioFieldsArray, ok := audioFields.([]interface{})
 	if !ok {
 		return false
 	}
 
-	fieldNames := make([]string, len(imageFieldsArray))
-	for i, value := range imageFieldsArray {
+	fieldNames := make([]string, len(audioFieldsArray))
+	for i, value := range audioFieldsArray {
 		fieldNames[i] = value.(string)
 	}
 
@@ -61,21 +61,21 @@ func (ic *classSettings) Validate() error {
 		return errors.New("empty config")
 	}
 
-	imageFields, ok := ic.cfg.Class()["imageFields"]
+	audioFields, ok := ic.cfg.Class()["audioFields"]
 	if !ok {
 		return errors.New("imageFields not present")
 	}
 
-	imageFieldsArray, ok := imageFields.([]interface{})
+	audioFieldsArray, ok := audioFields.([]interface{})
 	if !ok {
 		return errors.New("imageFields must be an array")
 	}
 
-	if len(imageFieldsArray) == 0 {
+	if len(audioFieldsArray) == 0 {
 		return errors.New("must contain at least one image field name in imageFields")
 	}
 
-	for _, value := range imageFieldsArray {
+	for _, value := range audioFieldsArray {
 		v, ok := value.(string)
 		if !ok {
 			return errors.New("imageField must be a string")

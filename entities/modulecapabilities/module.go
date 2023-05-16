@@ -24,6 +24,7 @@ const (
 	Backup              ModuleType = "Backup"
 	Extension           ModuleType = "Extension"
 	Img2Vec             ModuleType = "Img2Vec"
+	Audio2Vec           ModuleType = "Audio2Vec"
 	Multi2Vec           ModuleType = "Multi2Vec"
 	Ref2Vec             ModuleType = "Ref2Vec"
 	Text2MultiVec       ModuleType = "Text2MultiVec"

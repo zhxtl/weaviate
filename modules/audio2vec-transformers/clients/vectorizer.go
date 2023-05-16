@@ -21,7 +21,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"github.com/weaviate/weaviate/modules/img2vec-neural/ent"
+	"github.com/weaviate/weaviate/modules/audio2vec-transformers/ent"
 )
 
 type vectorizer struct {
@@ -39,11 +39,11 @@ func New(origin string, logger logrus.FieldLogger) *vectorizer {
 }
 
 func (v *vectorizer) Vectorize(ctx context.Context,
-	id, image string,
+	id, audio string,
 ) (*ent.VectorizationResult, error) {
 	body, err := json.Marshal(vecRequest{
 		ID:    id,
-		Image: image,
+		Audio: audio,
 	})
 	if err != nil {
 		return nil, errors.Wrapf(err, "marshal body")
@@ -77,7 +77,7 @@ func (v *vectorizer) Vectorize(ctx context.Context,
 
 	return &ent.VectorizationResult{
 		ID:         resBody.ID,
-		Image:      image,
+		Audio:      audio,
 		Dimensions: resBody.Dim,
 		Vector:     resBody.Vector,
 	}, nil
@@ -89,7 +89,7 @@ func (v *vectorizer) url(path string) string {
 
 type vecRequest struct {
 	ID    string `json:"id"`
-	Image string `json:"image"`
+	Audio string `json:"audio"`
 }
 
 type vecResponse struct {

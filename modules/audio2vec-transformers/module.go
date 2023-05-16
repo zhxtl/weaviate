@@ -9,7 +9,7 @@
 //  CONTACT: hello@weaviate.io
 //
 
-package modimage
+package modaudio
 
 import (
 	"context"
@@ -22,50 +22,50 @@ import (
 	"github.com/weaviate/weaviate/entities/models"
 	"github.com/weaviate/weaviate/entities/modulecapabilities"
 	"github.com/weaviate/weaviate/entities/moduletools"
-	"github.com/weaviate/weaviate/modules/img2vec-neural/clients"
-	"github.com/weaviate/weaviate/modules/img2vec-neural/vectorizer"
+	"github.com/weaviate/weaviate/modules/audio2vec-transformers/clients"
+	"github.com/weaviate/weaviate/modules/audio2vec-transformers/vectorizer"
 )
 
-func New() *ImageModule {
-	return &ImageModule{}
+func New() *AudioModule {
+	return &AudioModule{}
 }
 
-type ImageModule struct {
-	vectorizer      imageVectorizer
+type AudioModule struct {
+	vectorizer      audioVectorizer
 	graphqlProvider modulecapabilities.GraphQLArguments
 	searcher        modulecapabilities.Searcher
 }
 
-type imageVectorizer interface {
+type audioVectorizer interface {
 	Object(ctx context.Context, object *models.Object, objDiff *moduletools.ObjectDiff,
 		settings vectorizer.ClassSettings) error
-	VectorizeImage(ctx context.Context,
-		id, image string) ([]float32, error)
+	VectorizeAudio(ctx context.Context,
+		id, audio string) ([]float32, error)
 }
 
-func (m *ImageModule) Name() string {
-	return "img2vec-neural"
+func (m *AudioModule) Name() string {
+	return "audio2vec-transformers"
 }
 
-func (m *ImageModule) Type() modulecapabilities.ModuleType {
-	return modulecapabilities.Img2Vec
+func (m *AudioModule) Type() modulecapabilities.ModuleType {
+	return modulecapabilities.Audio2Vec
 }
 
-func (m *ImageModule) Init(ctx context.Context,
+func (m *AudioModule) Init(ctx context.Context,
 	params moduletools.ModuleInitParams,
 ) error {
 	if err := m.initVectorizer(ctx, params.GetLogger()); err != nil {
 		return errors.Wrap(err, "init vectorizer")
 	}
 
-	if err := m.initNearImage(); err != nil {
+	if err := m.initNearAudio(); err != nil {
 		return errors.Wrap(err, "init near text")
 	}
 
 	return nil
 }
 
-func (m *ImageModule) initVectorizer(ctx context.Context,
+func (m *AudioModule) initVectorizer(ctx context.Context,
 	logger logrus.FieldLogger,
 ) error {
 	// TODO: proper config management
@@ -84,19 +84,19 @@ func (m *ImageModule) initVectorizer(ctx context.Context,
 	return nil
 }
 
-func (m *ImageModule) RootHandler() http.Handler {
+func (m *AudioModule) RootHandler() http.Handler {
 	// TODO: remove once this is a capability interface
 	return nil
 }
 
-func (m *ImageModule) VectorizeObject(ctx context.Context,
+func (m *AudioModule) VectorizeObject(ctx context.Context,
 	obj *models.Object, objDiff *moduletools.ObjectDiff, cfg moduletools.ClassConfig,
 ) error {
 	icheck := vectorizer.NewClassSettings(cfg)
 	return m.vectorizer.Object(ctx, obj, objDiff, icheck)
 }
 
-func (m *ImageModule) MetaInfo() (map[string]interface{}, error) {
+func (m *AudioModule) MetaInfo() (map[string]interface{}, error) {
 	return map[string]interface{}{}, nil
 }
 

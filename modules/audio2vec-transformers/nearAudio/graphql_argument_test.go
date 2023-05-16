@@ -9,7 +9,7 @@
 //  CONTACT: hello@weaviate.io
 //
 
-package nearImage
+package nearAudio
 
 import (
 	"testing"
@@ -19,7 +19,7 @@ import (
 )
 
 func TestNearImageGraphQLArgument(t *testing.T) {
-	t.Run("should generate nearImage argument properly", func(t *testing.T) {
+	t.Run("should generate nearAudio argument properly", func(t *testing.T) {
 		// given
 		prefix := "Prefix"
 		classname := "Class"
@@ -28,7 +28,7 @@ func TestNearImageGraphQLArgument(t *testing.T) {
 
 		// then
 		// the built graphQL field needs to support this structure:
-		// nearImage: {
+		// nearAudio: {
 		//   image: "base64;encoded,image",
 		//   distance: 0.4
 		// }

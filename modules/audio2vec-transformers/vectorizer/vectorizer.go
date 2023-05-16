@@ -18,7 +18,7 @@ import (
 	"github.com/go-openapi/strfmt"
 	"github.com/weaviate/weaviate/entities/models"
 	"github.com/weaviate/weaviate/entities/moduletools"
-	"github.com/weaviate/weaviate/modules/img2vec-neural/ent"
+	"github.com/weaviate/weaviate/modules/audio2vec-transformers/ent"
 	libvectorizer "github.com/weaviate/weaviate/usecases/vectorizer"
 )
 
@@ -38,7 +38,7 @@ type Client interface {
 }
 
 type ClassSettings interface {
-	ImageField(property string) bool
+	AudioField(property string) bool
 }
 
 func (v *Vectorizer) Object(ctx context.Context, object *models.Object,
@@ -53,8 +53,8 @@ func (v *Vectorizer) Object(ctx context.Context, object *models.Object,
 	return nil
 }
 
-func (v *Vectorizer) VectorizeImage(ctx context.Context, id, image string) ([]float32, error) {
-	res, err := v.client.Vectorize(ctx, id, image)
+func (v *Vectorizer) VectorizeAudio(ctx context.Context, id, audio string) ([]float32, error) {
+	res, err := v.client.Vectorize(ctx, id, audio)
 	if err != nil {
 		return nil, err
 	}
@@ -67,16 +67,16 @@ func (v *Vectorizer) object(ctx context.Context, id strfmt.UUID,
 ) ([]float32, error) {
 	vectorize := objDiff == nil || objDiff.GetVec() == nil
 
-	// vectorize image
-	images := []string{}
+	// vectorize audio
+	audios := []string{}
 	if schema != nil {
 		for prop, value := range schema.(map[string]interface{}) {
-			if !ichek.ImageField(prop) {
+			if !ichek.AudioField(prop) {
 				continue
 			}
 			valueString, ok := value.(string)
 			if ok {
-				images = append(images, valueString)
+				audios = append(audios, valueString)
 				vectorize = vectorize || (objDiff != nil && objDiff.IsChangedProp(prop))
 			}
 		}
@@ -88,9 +88,9 @@ func (v *Vectorizer) object(ctx context.Context, id strfmt.UUID,
 	}
 
 	vectors := [][]float32{}
-	for i, image := range images {
+	for i, audio := range audios {
 		imgID := fmt.Sprintf("%s_%v", id, i)
-		vector, err := v.VectorizeImage(ctx, imgID, image)
+		vector, err := v.VectorizeAudio(ctx, imgID, audio)
 		if err != nil {
 			return nil, err
 		}

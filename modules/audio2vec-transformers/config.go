@@ -9,7 +9,7 @@
 //  CONTACT: hello@weaviate.io
 //
 
-package modimage
+package modaudio
 
 import (
 	"context"
@@ -18,20 +18,20 @@ import (
 	"github.com/weaviate/weaviate/entities/modulecapabilities"
 	"github.com/weaviate/weaviate/entities/moduletools"
 	"github.com/weaviate/weaviate/entities/schema"
-	"github.com/weaviate/weaviate/modules/img2vec-neural/vectorizer"
+	"github.com/weaviate/weaviate/modules/audio2vec-transformers/vectorizer"
 )
 
-func (m *ImageModule) ClassConfigDefaults() map[string]interface{} {
+func (m *AudioModule) ClassConfigDefaults() map[string]interface{} {
 	return map[string]interface{}{}
 }
 
-func (m *ImageModule) PropertyConfigDefaults(
+func (m *AudioModule) PropertyConfigDefaults(
 	dt *schema.DataType,
 ) map[string]interface{} {
 	return map[string]interface{}{}
 }
 
-func (m *ImageModule) ValidateClass(ctx context.Context,
+func (m *AudioModule) ValidateClass(ctx context.Context,
 	class *models.Class, cfg moduletools.ClassConfig,
 ) error {
 	icheck := vectorizer.NewClassSettings(cfg)
