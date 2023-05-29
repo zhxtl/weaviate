@@ -26,6 +26,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/weaviate/weaviate/adapters/repos/db/helpers"
 	"github.com/weaviate/weaviate/adapters/repos/db/vector/hnsw/distancer"
 	"github.com/weaviate/weaviate/entities/cyclemanager"
 	ent "github.com/weaviate/weaviate/entities/vectorindex/hnsw"
@@ -79,6 +80,9 @@ func TestFilteredRecall(t *testing.T) {
 			EFConstruction: efConstruction,
 			EF:             ef,
 		}, cyclemanager.NewNoop())
+
+		filterToIDs := make(map[int][]uint64)
+
 		require.Nil(t, err)
 		vectorIndex = index
 
@@ -98,7 +102,13 @@ func TestFilteredRecall(t *testing.T) {
 				defer wg.Done()
 				for i, vec := range myJobs {
 					originalIndex := (i * workerCount) + workerID
-					err := vectorIndex.Add(uint64(originalIndex), vec.Vector) // change signature to add vec.Label
+					nodeId := uint64(originalIndex)
+					err := vectorIndex.Add(nodeId, vec.Vector) // change signature to add vec.Label
+					if _, ok := filterToIDs[vec.Label]; !ok {
+						filterToIDs[vec.Label] = []uint64{nodeId}
+					} else {
+						filterToIDs[vec.Label] = append(filterToIDs[vec.Label], nodeId)
+					}
 					require.Nil(t, err)
 				}
 			}(workerID, jobs)
@@ -106,9 +116,9 @@ func TestFilteredRecall(t *testing.T) {
 
 		wg.Wait()
 		fmt.Printf("importing took %s\n", time.Since(before))
-	})
 
-	t.Run("inspect a query", func(t *testing.T) {
+		fmt.Printf("Inspect a query")
+
 		k := 20
 
 		hasDuplicates := 0
@@ -123,16 +133,21 @@ func TestFilteredRecall(t *testing.T) {
 		}
 
 		fmt.Printf("%d out of %d searches contained duplicates\n", hasDuplicates, len(queries))
-	})
 
-	t.Run("with k=10", func(t *testing.T) {
-		k := 10
+		fmt.Printf("With k=10")
+
+		k = 10
 
 		var relevant int
 		var retrieved int
 
 		for i := 0; i < len(queries); i++ {
-			results, _, err := vectorIndex.SearchByVector(queries[i].Vector, k, nil)
+			queryFilter := queries[i].Label
+			//construct an allowList from the []uint64 of ids that match the filter
+			queryAllowList := helpers.NewAllowList(filterToIDs[queryFilter]...)
+			//results, _, err := vectorIndex.SearchByVector(queries[i].Vector, k, nil)
+			results, _, err := vectorIndex.SearchByVector(queries[i].Vector, k, queryAllowList)
+
 			require.Nil(t, err)
 
 			retrieved += k
