@@ -96,6 +96,7 @@ func TestFilteredRecall(t *testing.T) {
 		}
 
 		wg := &sync.WaitGroup{}
+		mutex := &sync.Mutex{}
 		for workerID, jobs := range jobsForWorker {
 			wg.Add(1)
 			go func(workerID int, myJobs []LabeledVector) {
@@ -104,11 +105,14 @@ func TestFilteredRecall(t *testing.T) {
 					originalIndex := (i * workerCount) + workerID
 					nodeId := uint64(originalIndex)
 					err := vectorIndex.Add(nodeId, vec.Vector) // change signature to add vec.Label
+					require.Nil(t, err)
+					mutex.Lock()
 					if _, ok := filterToIDs[vec.Label]; !ok {
 						filterToIDs[vec.Label] = []uint64{nodeId}
 					} else {
 						filterToIDs[vec.Label] = append(filterToIDs[vec.Label], nodeId)
 					}
+					mutex.Unlock()
 					require.Nil(t, err)
 				}
 			}(workerID, jobs)
@@ -150,7 +154,7 @@ func TestFilteredRecall(t *testing.T) {
 
 			require.Nil(t, err)
 
-			retrieved += k
+			retrieved += len(truths[i])
 			relevant += matchesInLists(truths[i], results)
 		}
 
