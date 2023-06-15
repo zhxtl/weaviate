@@ -173,7 +173,6 @@ func (i *Index) IterateShards(ctx context.Context, cb func(index *Index, shard *
 }
 
 func (i *Index) addProperty(ctx context.Context, prop *models.Property) error {
-	
 	for _, shard := range i.Shards {
 		err := shard.createPropertyIndex(ctx, prop)
 		if err != nil {
