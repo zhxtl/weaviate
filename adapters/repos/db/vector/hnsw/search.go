@@ -159,8 +159,20 @@ func (h *hnsw) SearchByVectorDistance(vector []float32, targetDistance float32, 
 
 func (h *hnsw) searchLayerByVector(queryVector []float32,
 	entrypoints *priorityqueue.Queue, ef int, level int,
-	allowList helpers.AllowList) (*priorityqueue.Queue, error,
+	filteredInsert bool, allowList helpers.AllowList) (*priorityqueue.Queue, error,
 ) {
+	/*
+		If we have a huge graph, we have to create this allowList to pass into the function.
+		Simple filters --> can't we just provide filter as a single int?
+
+		!allowList.contains(neighborID) --> filter == neighborID.filter
+
+		^
+
+		neighborID.filter // something like that (each vertex has a filter)
+
+
+	*/
 	h.pools.visitedListsLock.Lock()
 	visited := h.pools.visitedLists.Borrow()
 	h.pools.visitedListsLock.Unlock()
@@ -216,7 +228,19 @@ func (h *hnsw) searchLayerByVector(queryVector []float32,
 		}
 		candidate := candidates.Pop()
 		h.RLock()
-		candidateNode := h.nodes[candidate.ID]
+		candidateNode := h.nodes[candidate.ID] // The nodes *[]vertex thing is indexed by id
+		/*
+
+			This is an array of pointers, nil pointers don't take up memory.
+			So you have a big array but it is full of nil, so it's not allocating memory.
+			A map would be slower to access beceause it has to find the correct key.
+
+			This is what grows with those grow functions...
+
+
+
+		*/
+
 		h.RUnlock()
 		if candidateNode == nil {
 			// could have been a node that already had a tombstone attached and was
@@ -254,6 +278,7 @@ func (h *hnsw) searchLayerByVector(queryVector []float32,
 		copy(connectionsReusable, candidateNode.connections[level])
 		candidateNode.Unlock()
 
+		// Wouldn't all of these connections share the filter already?
 		for _, neighborID := range connectionsReusable {
 
 			if ok := visited.Visited(neighborID); ok {
@@ -287,9 +312,15 @@ func (h *hnsw) searchLayerByVector(queryVector []float32,
 					// have an allow list (i.e. the user has probably set some sort of a
 					// filter restricting this search further. As a result we have to
 					// ignore items not on the list
+					if filteredInsert == true {
+						//if
+					}
 					if !allowList.Contains(neighborID) {
 						continue
 					}
+					// h.nodes[neighborID].filter
+
+					// changed to if neighbor.filter == filter... {}
 				}
 
 				if h.hasTombstone(neighborID) {
@@ -480,7 +511,7 @@ func (h *hnsw) knnSearchByVector(searchVec []float32, k int,
 	for level := h.currentMaximumLayer; level >= 1; level-- {
 		eps := priorityqueue.NewMin(10)
 		eps.Insert(entryPointID, entryPointDistance)
-		res, err := h.searchLayerByVector(searchVec, eps, 1, level, nil)
+		res, err := h.searchLayerByVector(searchVec, eps, 1, level, false, nil)
 		if err != nil {
 			return nil, nil, errors.Wrapf(err, "knn search: search layer at level %d", level)
 		}

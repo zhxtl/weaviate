@@ -16,7 +16,8 @@ import (
 )
 
 type vertex struct {
-	id uint64
+	id     uint64
+	filter int
 	sync.Mutex
 	level       int
 	connections [][]uint64

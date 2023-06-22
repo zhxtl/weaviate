@@ -22,10 +22,10 @@ import (
 
 func (h *hnsw) findAndConnectNeighbors(node *vertex,
 	entryPointID uint64, nodeVec []float32, targetLevel, currentMaxLevel int,
-	denyList helpers.AllowList,
+	allowList helpers.AllowList, denyList helpers.AllowList,
 ) error {
 	nfc := newNeighborFinderConnector(h, node, entryPointID, nodeVec, targetLevel,
-		currentMaxLevel, denyList)
+		currentMaxLevel, allowList, denyList)
 
 	return nfc.Do()
 }
@@ -38,13 +38,14 @@ type neighborFinderConnector struct {
 	nodeVec         []float32
 	targetLevel     int
 	currentMaxLevel int
+	allowList       helpers.AllowList
 	denyList        helpers.AllowList
 	// bufLinksLog     BufferedLinksLogger
 }
 
 func newNeighborFinderConnector(graph *hnsw, node *vertex, entryPointID uint64,
 	nodeVec []float32, targetLevel, currentMaxLevel int,
-	denyList helpers.AllowList,
+	allowList helpers.AllowList, denyList helpers.AllowList,
 ) *neighborFinderConnector {
 	return &neighborFinderConnector{
 		graph:           graph,
@@ -53,13 +54,14 @@ func newNeighborFinderConnector(graph *hnsw, node *vertex, entryPointID uint64,
 		nodeVec:         nodeVec,
 		targetLevel:     targetLevel,
 		currentMaxLevel: currentMaxLevel,
+		allowList:       allowList,
 		denyList:        denyList,
 	}
 }
 
 func (n *neighborFinderConnector) Do() error {
 	for level := min(n.targetLevel, n.currentMaxLevel); level >= 0; level-- {
-		err := n.doAtLevel(level)
+		err := n.doAtLevel(level, n.allowList)
 		if err != nil {
 			return errors.Wrapf(err, "at level %d", level)
 		}
@@ -68,17 +70,20 @@ func (n *neighborFinderConnector) Do() error {
 	return nil
 }
 
-func (n *neighborFinderConnector) doAtLevel(level int) error {
+func (n *neighborFinderConnector) doAtLevel(level int, allowList helpers.AllowList) error {
 	before := time.Now()
-	if err := n.pickEntrypoint(); err != nil {
-		return errors.Wrap(err, "pick entrypoint at level beginning")
-	}
+
+	/*
+		if err := n.pickEntrypoint(); err != nil {
+			return errors.Wrap(err, "pick entrypoint at level beginning")
+		}
+	*/
 
 	eps := priorityqueue.NewMin(1)
 	eps.Insert(n.entryPointID, n.entryPointDist)
 
 	results, err := n.graph.searchLayerByVector(n.nodeVec, eps, n.graph.efConstruction,
-		level, nil)
+		level, allowList)
 	if err != nil {
 		return errors.Wrapf(err, "search layer at level %d", level)
 	}
@@ -234,7 +239,9 @@ func (n *neighborFinderConnector) maximumConnections(level int) int {
 	return n.graph.maximumConnections
 }
 
-func (n *neighborFinderConnector) pickEntrypoint() error {
+// going to just not use this function for now...
+// I don't yet understand the context it lives in
+func (n *neighborFinderConnector) pickEntrypointForFilter(filter int) error {
 	// the neighborFinderConnector always has a suggestion for an entrypoint that
 	// it got from the outside, most of the times we can use this, but in some
 	// cases we can't. To see if we can use it, three conditions need to be met:
@@ -246,7 +253,7 @@ func (n *neighborFinderConnector) pickEntrypoint() error {
 	// 3. we need to be able to obtain a vector for it
 
 	localDeny := n.denyList.DeepCopy()
-	candidate := n.entryPointID
+	candidate := n.graph.entryPointIDperFilter[filter]
 
 	// make sure the loop cannot block forever. In most cases, results should be
 	// found within micro to milliseconds, this is just a last resort to handle

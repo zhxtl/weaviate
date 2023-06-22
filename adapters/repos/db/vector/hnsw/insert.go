@@ -40,7 +40,7 @@ func (h *hnsw) ValidateBeforeInsert(vector []float32) error {
 	return nil
 }
 
-func (h *hnsw) Add(id uint64, vector []float32) error {
+func (h *hnsw) Add(id uint64, filter int, vector []float32) error {
 	before := time.Now()
 	if len(vector) == 0 {
 		return errors.Errorf("insert called with nil-vector")
@@ -50,7 +50,8 @@ func (h *hnsw) Add(id uint64, vector []float32) error {
 	defer h.insertMetrics.total(before)
 
 	node := &vertex{
-		id: id,
+		id:     id,
+		filter: filter,
 	}
 
 	if h.distancerProvider.Type() == "cosine-dot" {
@@ -64,16 +65,17 @@ func (h *hnsw) Add(id uint64, vector []float32) error {
 	return h.insert(node, vector)
 }
 
-func (h *hnsw) insertInitialElement(node *vertex, nodeVec []float32) error {
+func (h *hnsw) insertInitialElementPerFilter(node *vertex, nodeVec []float32) error {
 	h.Lock()
 	defer h.Unlock()
 
+	// Sheesh what is this?
 	if err := h.commitLog.SetEntryPointWithMaxLayer(node.id, 0); err != nil {
 		return err
 	}
 
-	h.entryPointID = node.id
-	h.currentMaximumLayer = 0
+	h.entryPointIDperFilter[node.filter] = node.id
+	h.currentMaximumLayerPerFilter[node.filter] = 0
 	node.connections = [][]uint64{
 		make([]uint64, 0, h.maximumConnectionsLayerZero),
 	}
@@ -100,7 +102,7 @@ func (h *hnsw) insertInitialElement(node *vertex, nodeVec []float32) error {
 	return nil
 }
 
-func (h *hnsw) insert(node *vertex, nodeVec []float32) error {
+func (h *hnsw) insert(node *vertex, nodeVec []float32, allowList helpers.AllowList) error {
 	h.deleteVsInsertLock.RLock()
 	defer h.deleteVsInsertLock.RUnlock()
 
@@ -111,7 +113,7 @@ func (h *hnsw) insert(node *vertex, nodeVec []float32) error {
 	h.initialInsertOnce.Do(func() {
 		if h.isEmpty() {
 			wasFirst = true
-			firstInsertError = h.insertInitialElement(node, nodeVec)
+			firstInsertError = h.insertInitialElementPerFilter(node, nodeVec)
 		}
 	})
 	if wasFirst {
@@ -123,10 +125,10 @@ func (h *hnsw) insert(node *vertex, nodeVec []float32) error {
 	h.RLock()
 	// initially use the "global" entrypoint which is guaranteed to be on the
 	// currently highest layer
-	entryPointID := h.entryPointID
+	entryPointID := h.entryPointIDperFilter[node.filter]
 	// initially use the level of the entrypoint which is the highest level of
 	// the h-graph in the first iteration
-	currentMaximumLayer := h.currentMaximumLayer
+	currentMaximumLayer := h.currentMaximumLayerPerFilter[node.filter]
 	h.RUnlock()
 
 	targetLevel := int(math.Floor(-math.Log(h.randFunc()) * h.levelNormalizer))
@@ -179,7 +181,7 @@ func (h *hnsw) insert(node *vertex, nodeVec []float32) error {
 	before = time.Now()
 
 	entryPointID, err = h.findBestEntrypointForNode(currentMaximumLayer, targetLevel,
-		entryPointID, nodeVec)
+		entryPointID, nodeVec, allowList)
 	if err != nil {
 		return errors.Wrap(err, "find best entrypoint")
 	}
@@ -200,7 +202,7 @@ func (h *hnsw) insert(node *vertex, nodeVec []float32) error {
 	node.unmarkAsMaintenance()
 
 	h.Lock()
-	if targetLevel > h.currentMaximumLayer {
+	if targetLevel > h.currentMaximumLayerPerFilter[node.filter] {
 		// before = time.Now()
 		// m.addBuildingLocking(before)
 		if err := h.commitLog.SetEntryPointWithMaxLayer(nodeId, targetLevel); err != nil {
@@ -208,8 +210,8 @@ func (h *hnsw) insert(node *vertex, nodeVec []float32) error {
 			return err
 		}
 
-		h.entryPointID = nodeId
-		h.currentMaximumLayer = targetLevel
+		h.entryPointIDperFilter[node.filter] = nodeId
+		h.currentMaximumLayerPerFilter[node.filter] = targetLevel
 	}
 	h.Unlock()
 

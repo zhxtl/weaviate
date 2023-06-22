@@ -22,6 +22,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"github.com/weaviate/weaviate/adapters/repos/db/helpers"
 	"github.com/weaviate/weaviate/adapters/repos/db/lsmkv"
 	"github.com/weaviate/weaviate/adapters/repos/db/vector/hnsw/distancer"
 	"github.com/weaviate/weaviate/adapters/repos/db/vector/hnsw/priorityqueue"
@@ -64,12 +65,12 @@ type hnsw struct {
 	// the current maximum can be smaller than the configured maximum because of
 	// the exponentially decaying layer function. The initial entry is started at
 	// layer 0, but this has the chance to grow with every subsequent entry
-	currentMaximumLayer int
+	currentMaximumLayerPerFilter map[int]int // changed from currentMaximumLayer int
 
 	// this is a point on the highest level, if we insert a new point with a
 	// higher level it will become the new entry point. Note tat the level of
 	// this point is always currentMaximumLayer
-	entryPointID uint64
+	entryPointIDperFilter map[int]uint64 // not sure if uint64 is the right type for the filters, but this will be super obvious in a second
 
 	// ef parameter used in construction phases, should be higher than ef during querying
 	efConstruction int
@@ -155,7 +156,7 @@ type hnsw struct {
 type CommitLogger interface {
 	ID() string
 	AddNode(node *vertex) error
-	SetEntryPointWithMaxLayer(id uint64, level int) error
+	SetEntryPointWithMaxLayerPerFilter(id uint64, filter int, level int) error
 	AddLinkAtLevel(nodeid uint64, level int, target uint64) error
 	ReplaceLinksAtLevel(nodeid uint64, level int, targets []uint64) error
 	AddTombstone(nodeid uint64) error
@@ -369,7 +370,7 @@ func New(cfg Config, uc ent.UserConfig, tombstoneCleanupCycle cyclemanager.Cycle
 // }
 
 func (h *hnsw) findBestEntrypointForNode(currentMaxLevel, targetLevel int,
-	entryPointID uint64, nodeVec []float32,
+	entryPointID uint64, nodeVec []float32, allowList helpers.AllowList,
 ) (uint64, error) {
 	// in case the new target is lower than the current max, we need to search
 	// each layer for a better candidate and update the candidate
@@ -385,7 +386,7 @@ func (h *hnsw) findBestEntrypointForNode(currentMaxLevel, targetLevel int,
 		}
 
 		eps.Insert(entryPointID, dist)
-		res, err := h.searchLayerByVector(nodeVec, eps, 1, level, nil)
+		res, err := h.searchLayerByVector(nodeVec, eps, 1, level, allowList)
 		if err != nil {
 			return 0,
 				errors.Wrapf(err, "update candidate: search layer at level %d", level)
@@ -538,7 +539,7 @@ func (h *hnsw) distBetweenNodeAndVec(node uint64, vecB []float32) (float32, bool
 }
 
 func (h *hnsw) Stats() {
-	fmt.Printf("levels: %d\n", h.currentMaximumLayer)
+	//fmt.Printf("levels: %d\n", h.currentMaximumLayer) // will need to modify this for per currentMaximumLayerPerFilter
 
 	perLevelCount := map[int]uint{}
 
@@ -642,9 +643,11 @@ func (h *hnsw) Flush() error {
 	return h.commitLog.Flush()
 }
 
+/* Not sure what happens with this
 func (h *hnsw) Entrypoint() uint64 {
 	h.RLock()
 	defer h.RUnlock()
 
 	return h.entryPointID
 }
+*/
