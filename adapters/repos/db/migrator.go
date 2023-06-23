@@ -162,7 +162,7 @@ func (m *Migrator) NewPartitions(ctx context.Context, class *models.Class, parti
 	rollback := func() {
 		for name, shard := range shards {
 			if err := shard.drop(); err != nil {
-				m.logger.WithField("action", "add_partition").
+				m.logger.WithField("action", "drop_shard").
 					WithField("class", class.Class).
 					Errorf("cannot drop self created shard %s: %v", name, err)
 			}
@@ -193,6 +193,36 @@ func (m *Migrator) NewPartitions(ctx context.Context, class *models.Class, parti
 		}
 
 		shards[name] = shard
+	}
+
+	return commit, nil
+}
+
+// DeletePartitions delete partitions and returns a commit func
+// that can be used to either commit or rollback deletion
+func (m *Migrator) DeletePartitions(ctx context.Context, class *models.Class, partitions []string) (commit func(success bool), err error) {
+	idx := m.db.GetIndex(schema.ClassName(class.Class))
+	if idx == nil {
+		return func(bool) {}, nil
+	}
+
+	shards := make(map[string]*Shard, len(partitions))
+	commit = func(success bool) {
+		if !success {
+			return
+		}
+		for _, name := range partitions {
+			if shard, _ := idx.shards.LoadAndDelete(name); shard != nil {
+				shards[name] = shard
+			}
+		}
+
+		for name, shard := range shards {
+			if err := shard.drop(); err != nil {
+				m.logger.WithField("action", "drop_shard").
+					WithField("class", class.Class).WithField("shard", name).Error(err)
+			}
+		}
 	}
 
 	return commit, nil
