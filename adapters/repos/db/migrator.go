@@ -207,17 +207,30 @@ func (m *Migrator) DeletePartitions(ctx context.Context, class *models.Class, pa
 	}
 
 	shards := make(map[string]*Shard, len(partitions))
+	for _, name := range partitions {
+		prev, ok := idx.shards.Swap(name, nil)
+		if !ok { // shard doesn't exits
+			idx.shards.LoadAndDelete(name) // rollback created key-value = {name, nil}
+		}
+		if prev != nil {
+			shards[name] = prev
+			idx.shards.Store(name, nil) // prevent update during deletion
+		}
+	}
+
+	rollback := func() {
+		for name, shard := range shards {
+			idx.shards.CompareAndSwap(name, nil, shard)
+		}
+	}
 	commit = func(success bool) {
 		if !success {
+			rollback()
 			return
-		}
-		for _, name := range partitions {
-			if shard, _ := idx.shards.LoadAndDelete(name); shard != nil {
-				shards[name] = shard
-			}
 		}
 
 		for name, shard := range shards {
+			idx.shards.LoadAndDelete(name)
 			if err := shard.drop(); err != nil {
 				m.logger.WithField("action", "drop_shard").
 					WithField("class", class.Class).WithField("shard", name).Error(err)

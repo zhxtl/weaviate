@@ -75,6 +75,21 @@ func (m *shardMap) Store(name string, shard *Shard) {
 	(*sync.Map)(m).Store(name, shard)
 }
 
+// Swap swaps the shard for a key and returns the previous value if any.
+// The loaded result reports whether the key was present.
+func (m *shardMap) Swap(name string, shard *Shard) (previous *Shard, loaded bool) {
+	v, ok := (*sync.Map)(m).Swap(name, shard)
+	if v == nil || !ok {
+		return nil, ok
+	}
+	return v.(*Shard), ok
+}
+
+// CompareAndSwap swaps the old and new values for key if the value stored in the map is equal to old.
+func (m *shardMap) CompareAndSwap(name string, old, new *Shard) bool {
+	return (*sync.Map)(m).CompareAndSwap(name, old, new)
+}
+
 // LoadAndDelete deletes the value for a key, returning the previous value if any.
 // The loaded result reports whether the key was present.
 func (m *shardMap) LoadAndDelete(name string) (*Shard, bool) {
