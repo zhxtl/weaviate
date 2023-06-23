@@ -212,18 +212,22 @@ func TestRepositoryUpdateShards(t *testing.T) {
 	_, ss = addClass(&schema, "C1", 0, 2, 5)
 	shards := serializeShards(*ss)
 	if err := repo.NewShards(ctx, "C1", shards); err != nil {
-		t.Fatalf("NewShards(): %v", err)
+		t.Fatalf("add new shards: %v", err)
 	}
 	if err := repo.NewShards(ctx, "C3", shards); err == nil {
-		t.Fatal("adding shards to non existing class must fail")
+		t.Fatal("add new shards to a non existing class must fail")
 	}
 	repo.asserEqualSchema(t, schema, "adding new shards")
 
 	xset := removeShards(ss, []int{0, 3, 4})
 	if err := repo.DeleteShards(ctx, "C1", xset); err != nil {
-		t.Fatalf("DeleteShards: %v", err)
+		t.Fatalf("delete shards: %v", err)
 	}
 	repo.asserEqualSchema(t, schema, "remove shards")
+
+	if err := repo.DeleteShards(ctx, "C3", xset); err != nil {
+		t.Fatalf("delete shards from unknown class: %v", err)
+	}
 }
 
 func createClass(name string, start, nProps, nShards int) (models.Class, sharding.State) {

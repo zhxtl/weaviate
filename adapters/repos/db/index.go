@@ -75,6 +75,16 @@ func (m *shardMap) Store(name string, shard *Shard) {
 	(*sync.Map)(m).Store(name, shard)
 }
 
+// LoadAndDelete deletes the value for a key, returning the previous value if any.
+// The loaded result reports whether the key was present.
+func (m *shardMap) LoadAndDelete(name string) (*Shard, bool) {
+	v, ok := (*sync.Map)(m).LoadAndDelete(name)
+	if v == nil || !ok {
+		return nil, ok
+	}
+	return v.(*Shard), ok
+}
+
 // Index is the logical unit which contains all the data for one particular
 // class. An index can be further broken up into self-contained units, called
 // Shards, to allow for easy distribution across Nodes

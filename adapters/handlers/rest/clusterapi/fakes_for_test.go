@@ -56,6 +56,10 @@ func (f *fakeRepo) NewShards(ctx context.Context, class string, shards []ucs.Key
 	return nil
 }
 
+func (f *fakeRepo) DeleteShards(ctx context.Context, class string, shards []string) error {
+	return nil
+}
+
 type fakeAuthorizer struct{}
 
 func (f *fakeAuthorizer) Authorize(principal *models.Principal, verb, resource string) error {
@@ -202,6 +206,10 @@ func (n *NilMigrator) AddProperty(ctx context.Context, className string, prop *m
 }
 
 func (n *NilMigrator) NewPartitions(ctx context.Context, class *models.Class, partitions []string) (commit func(success bool), err error) {
+	return nil, nil
+}
+
+func (n *NilMigrator) DeletePartitions(ctx context.Context, class *models.Class, partitions []string) (commit func(success bool), err error) {
 	return nil, nil
 }
 

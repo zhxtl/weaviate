@@ -299,12 +299,15 @@ func (r *store) NewShards(_ context.Context, class string, shards []ucs.KeyValue
 	return r.db.Update(f)
 }
 
+// DeleteShards of a specific class
+//
+//	If the class or a shard does not exist then nothing is done and a nil error is returned
 func (r *store) DeleteShards(_ context.Context, class string, shards []string) error {
 	classKey := encodeClassName(class)
 	f := func(tx *bolt.Tx) error {
 		b := tx.Bucket(schemaBucket).Bucket(classKey)
 		if b == nil {
-			return fmt.Errorf("class not found")
+			return nil
 		}
 		return deleteShards(b, shards, make([]byte, 1, 68))
 	}
