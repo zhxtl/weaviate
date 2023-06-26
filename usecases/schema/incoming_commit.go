@@ -31,6 +31,8 @@ func (m *Manager) handleCommit(ctx context.Context, tx *cluster.Transaction) err
 		return m.handleUpdateClassCommit(ctx, tx)
 	case AddPartitions:
 		return m.handleAddPartitionsCommit(ctx, tx)
+	case DeleteTenants:
+		return m.handleDeletePartitionsCommit(ctx, tx)
 	default:
 		return errors.Errorf("unrecognized commit type %q", tx.Type)
 	}
@@ -157,4 +159,25 @@ func (m *Manager) handleAddPartitionsCommit(ctx context.Context,
 	}
 
 	return m.onAddPartitions(ctx, st, cls, req)
+}
+
+func (m *Manager) handleDeletePartitionsCommit(ctx context.Context,
+	tx *cluster.Transaction,
+) error {
+	m.Lock()
+	defer m.Unlock()
+
+	req, ok := tx.Payload.(DeleteTenantsPayload)
+	if !ok {
+		return errors.Errorf("expected commit payload to be DeletePartitions, but got %T",
+			tx.Payload)
+	}
+	cls := m.getClassByName(req.ClassName)
+	if cls == nil {
+		m.logger.WithField("action", "delete_tenants").
+			WithField("class", req.ClassName).Warn("class not found")
+		return nil
+	}
+
+	return m.onDeletePartitions(ctx, cls, req)
 }

@@ -101,6 +101,8 @@ func UnmarshalTransaction(txType cluster.TransactionType,
 		return unmarshalRawJson[ReadSchemaPayload](payload)
 	case AddPartitions:
 		return unmarshalRawJson[AddPartitionsPayload](payload)
+	case DeleteTenants:
+		return unmarshalRawJson[DeleteTenantsPayload](payload)
 	default:
 		return nil, errors.Errorf("unrecognized schema transaction type %q", txType)
 

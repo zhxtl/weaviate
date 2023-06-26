@@ -94,13 +94,13 @@ func Test_Schema_Authorization(t *testing.T) {
 			methodName:       "AddTenants",
 			additionalArgs:   []interface{}{"className", []*models.Tenant{{Name: "P1"}}},
 			expectedVerb:     "update",
-			expectedResource: "schema/objects",
+			expectedResource: "schema/tenants",
 		},
 		{
 			methodName:       "RemoveTenants",
 			additionalArgs:   []interface{}{"className", []*models.Tenant{{Name: "P1"}}},
 			expectedVerb:     "update",
-			expectedResource: "schema/objects",
+			expectedResource: "schema/tenants",
 		},
 	}
 
