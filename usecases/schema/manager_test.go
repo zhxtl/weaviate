@@ -59,6 +59,10 @@ func (n *NilMigrator) NewPartitions(ctx context.Context, class *models.Class, pa
 	return func(bool) {}, nil
 }
 
+func (n *NilMigrator) DeletePartitions(ctx context.Context, class *models.Class, partitions []string) (commit func(success bool), err error) {
+	return func(bool) {}, nil
+}
+
 func (n *NilMigrator) UpdateProperty(ctx context.Context, className string, propName string, newName *string) error {
 	return nil
 }

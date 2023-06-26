@@ -26,8 +26,8 @@ const (
 	AddClass    cluster.TransactionType = "add_class"
 	AddProperty cluster.TransactionType = "add_property"
 	// AddPartitions to a specific class
-	AddPartitions    cluster.TransactionType = "add_partitions"
-	DeletePartitions cluster.TransactionType = "delete_partitions"
+	AddPartitions cluster.TransactionType = "add_partitions"
+	DeleteTenants cluster.TransactionType = "delete_partitions"
 
 	DeleteClass cluster.TransactionType = "delete_class"
 	UpdateClass cluster.TransactionType = "update_class"
@@ -60,10 +60,10 @@ type AddPartitionsPayload struct {
 	Partitions []Partition `json:"partitions"`
 }
 
-// DeletePartitionsPayload allows for removing multiple partitions to a class
-type DeletePartitionsPayload struct {
-	ClassName  string   `json:"className"`
-	Partitions []string `json:"partitions"`
+// DeleteTenantsPayload allows for removing multiple partitions to a class
+type DeleteTenantsPayload struct {
+	ClassName string   `json:"className"`
+	tenants   []string `json:"partitions"`
 }
 
 type DeleteClassPayload struct {

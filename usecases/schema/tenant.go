@@ -16,13 +16,12 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/pkg/errors"
 	"github.com/weaviate/weaviate/entities/models"
 	"github.com/weaviate/weaviate/usecases/sharding"
 )
 
 // AddTenants is used to add new tenants to a class
-// Class must exit and has partitioning enabled
+// Class must exist and has partitioning enabled
 func (m *Manager) AddTenants(ctx context.Context, principal *models.Principal, class string, tenants []*models.Tenant) error {
 	err := m.Authorizer.Authorize(principal, "update", "schema/objects")
 	if err != nil {
@@ -44,7 +43,7 @@ func (m *Manager) AddTenants(ctx context.Context, principal *models.Principal, c
 	tenantNames := make([]string, len(tenants))
 	for i, tenant := range tenants {
 		if tenant.Name == "" {
-			return fmt.Errorf("found empty tenant key at index %d", rf)
+			return fmt.Errorf("found empty tenant key at index %d", i)
 		}
 		// TODO: validate p.Name (length, charset, case sensitivity)
 		tenantNames[i] = tenant.Name
@@ -66,7 +65,7 @@ func (m *Manager) AddTenants(ctx context.Context, principal *models.Principal, c
 	tx, err := m.cluster.BeginTransaction(ctx, AddPartitions,
 		request, DefaultTxTTL)
 	if err != nil {
-		return errors.Wrap(err, "open cluster-wide transaction")
+		return fmt.Errorf("open cluster-wide transaction: %w", err)
 	}
 
 	if err := m.cluster.CommitWriteTransaction(ctx, tx); err != nil {
@@ -110,6 +109,81 @@ func (m *Manager) onAddPartitions(ctx context.Context,
 		Debug("saving updated schema to configuration store")
 
 	if err := m.repo.NewShards(ctx, class.Class, pairs); err != nil {
+		commit(false) // rollback new partitions
+		return err
+	}
+	commit(true) // commit new partitions
+	m.shardingStateLock.Lock()
+	m.state.ShardingState[request.ClassName] = st
+	m.shardingStateLock.Unlock()
+	m.triggerSchemaUpdateCallbacks()
+
+	return nil
+}
+
+// DeleteTenants is used to delete tenants of a class
+// Class must exist and has partitioning enabled
+func (m *Manager) RemoveTenants(ctx context.Context, principal *models.Principal, class string, tenants []*models.Tenant) error {
+	err := m.Authorizer.Authorize(principal, "update", "schema/objects")
+	if err != nil {
+		return err
+	}
+
+	cls, st := m.getClassByName(class), m.ShardingState(class) // m.ShardingState returns a copy
+	if cls == nil || st == nil {
+		return fmt.Errorf("class %q: %w", class, ErrNotFound)
+	}
+	if !isMultiTenancyEnabled(cls.MultiTenancyConfig) {
+		return fmt.Errorf("multi-tenancy is not enabled for class %q", class)
+	}
+
+	tenantNames := make([]string, len(tenants))
+	for i, tenant := range tenants {
+		if tenant.Name == "" {
+			return fmt.Errorf("found empty tenant key at index %d", i)
+		}
+		// TODO: validate p.Name (length, charset, case sensitivity)
+		tenantNames[i] = tenant.Name
+	}
+
+	request := DeleteTenantsPayload{
+		ClassName: class,
+		tenants:   tenantNames,
+	}
+
+	tx, err := m.cluster.BeginTransaction(ctx, DeleteTenants,
+		request, DefaultTxTTL)
+	if err != nil {
+		return fmt.Errorf("open cluster-wide transaction: %w", err)
+	}
+
+	if err := m.cluster.CommitWriteTransaction(ctx, tx); err != nil {
+		m.logger.WithError(err).Errorf("not every node was able to commit")
+	}
+
+	return m.onDeletePartitions(ctx, st, cls, request)
+}
+
+func (m *Manager) onDeletePartitions(ctx context.Context,
+	st *sharding.State, class *models.Class, request DeleteTenantsPayload,
+) error {
+	for _, p := range request.tenants {
+		st.DeletePartition(p)
+	}
+
+	commit, err := m.migrator.DeletePartitions(ctx, class, request.tenants)
+	if err != nil {
+		m.logger.WithField("action", "delete_partitions").
+			WithField("class", request.ClassName).Error(err)
+	}
+
+	st.SetLocalName(m.clusterState.LocalName())
+
+	m.logger.
+		WithField("action", "schema.delete_tenants").
+		Debug("saving updated schema to configuration store")
+
+	if err := m.repo.DeleteShards(ctx, class.Class, request.tenants); err != nil {
 		commit(false) // rollback new partitions
 		return err
 	}
