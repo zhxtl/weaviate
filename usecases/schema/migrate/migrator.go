@@ -36,7 +36,7 @@ type Migrator interface {
 		propName string, newName *string) error
 
 	NewTenants(ctx context.Context, class *models.Class, tenants []string) (commit func(success bool), err error)
-	RemoveTenants(ctx context.Context, class *models.Class, tenants []string) (commit func(success bool), err error)
+	DeleteTenants(ctx context.Context, class *models.Class, tenants []string) (commit func(success bool), err error)
 
 	ValidateVectorIndexConfigUpdate(ctx context.Context,
 		old, updated schema.VectorIndexConfig) error

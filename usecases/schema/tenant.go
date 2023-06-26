@@ -62,7 +62,7 @@ func (m *Manager) AddTenants(ctx context.Context, principal *models.Principal, c
 		i++
 	}
 
-	tx, err := m.cluster.BeginTransaction(ctx, AddTenants,
+	tx, err := m.cluster.BeginTransaction(ctx, addTenants,
 		request, DefaultTxTTL)
 	if err != nil {
 		return fmt.Errorf("open cluster-wide transaction: %w", err)
@@ -121,9 +121,9 @@ func (m *Manager) onAddTenants(ctx context.Context,
 	return nil
 }
 
-// RemoveTenants is used to delete tenants of a class
+// DeleteTenants is used to delete tenants of a class
 // Class must exist and has partitioning enabled
-func (m *Manager) RemoveTenants(ctx context.Context, principal *models.Principal, class string, tenants []*models.Tenant) error {
+func (m *Manager) DeleteTenants(ctx context.Context, principal *models.Principal, class string, tenants []*models.Tenant) error {
 	err := m.Authorizer.Authorize(principal, "update", "schema/tenants")
 	if err != nil {
 		return err
@@ -146,12 +146,12 @@ func (m *Manager) RemoveTenants(ctx context.Context, principal *models.Principal
 		tenantNames[i] = tenant.Name
 	}
 
-	request := RemoveTenantsPayload{
+	request := DeleteTenantsPayload{
 		Class:   class,
 		Tenants: tenantNames,
 	}
 
-	tx, err := m.cluster.BeginTransaction(ctx, RemoveTenants,
+	tx, err := m.cluster.BeginTransaction(ctx, deleteTenants,
 		request, DefaultTxTTL)
 	if err != nil {
 		return fmt.Errorf("open cluster-wide transaction: %w", err)
@@ -161,19 +161,19 @@ func (m *Manager) RemoveTenants(ctx context.Context, principal *models.Principal
 		m.logger.WithError(err).Errorf("not every node was able to commit")
 	}
 
-	return m.onRemoveTenants(ctx, cls, request)
+	return m.onDeleteTenants(ctx, cls, request)
 }
 
-func (m *Manager) onRemoveTenants(ctx context.Context, class *models.Class, req RemoveTenantsPayload,
+func (m *Manager) onDeleteTenants(ctx context.Context, class *models.Class, req DeleteTenantsPayload,
 ) error {
-	commit, err := m.migrator.RemoveTenants(ctx, class, req.Tenants)
+	commit, err := m.migrator.DeleteTenants(ctx, class, req.Tenants)
 	if err != nil {
-		m.logger.WithField("action", "remove_tenants").
+		m.logger.WithField("action", "delete_tenants").
 			WithField("class", req.Class).Error(err)
 	}
 
 	m.logger.
-		WithField("action", "schema.remove_tenants").
+		WithField("action", "schema.delete_tenants").
 		WithField("n", len(req.Tenants)).Debugf("persist schema updates")
 
 	if err := m.repo.DeleteShards(ctx, class.Class, req.Tenants); err != nil {

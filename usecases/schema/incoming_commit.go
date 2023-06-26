@@ -29,10 +29,10 @@ func (m *Manager) handleCommit(ctx context.Context, tx *cluster.Transaction) err
 		return m.handleDeleteClassCommit(ctx, tx)
 	case UpdateClass:
 		return m.handleUpdateClassCommit(ctx, tx)
-	case AddTenants:
+	case addTenants:
 		return m.handleAddTenantsCommit(ctx, tx)
-	case RemoveTenants:
-		return m.handleRemoveTenantsCommit(ctx, tx)
+	case deleteTenants:
+		return m.handleDeleteTenantsCommit(ctx, tx)
 	default:
 		return errors.Errorf("unrecognized commit type %q", tx.Type)
 	}
@@ -161,15 +161,15 @@ func (m *Manager) handleAddTenantsCommit(ctx context.Context,
 	return m.onAddTenants(ctx, st, cls, req)
 }
 
-func (m *Manager) handleRemoveTenantsCommit(ctx context.Context,
+func (m *Manager) handleDeleteTenantsCommit(ctx context.Context,
 	tx *cluster.Transaction,
 ) error {
 	m.Lock()
 	defer m.Unlock()
 
-	req, ok := tx.Payload.(RemoveTenantsPayload)
+	req, ok := tx.Payload.(DeleteTenantsPayload)
 	if !ok {
-		return errors.Errorf("expected commit payload to be RemoveTenants, but got %T",
+		return errors.Errorf("expected commit payload to be DeleteTenants, but got %T",
 			tx.Payload)
 	}
 	cls := m.getClassByName(req.Class)
@@ -179,5 +179,5 @@ func (m *Manager) handleRemoveTenantsCommit(ctx context.Context,
 		return nil
 	}
 
-	return m.onRemoveTenants(ctx, cls, req)
+	return m.onDeleteTenants(ctx, cls, req)
 }

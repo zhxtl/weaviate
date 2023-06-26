@@ -25,9 +25,10 @@ const (
 	// write-only
 	AddClass    cluster.TransactionType = "add_class"
 	AddProperty cluster.TransactionType = "add_property"
-	// AddTenants to a specific class
-	AddTenants    cluster.TransactionType = "add_tenants"
-	RemoveTenants cluster.TransactionType = "remove_tenants"
+
+	// tenant types
+	addTenants    cluster.TransactionType = "add_tenants"
+	deleteTenants cluster.TransactionType = "delete_tenants"
 
 	DeleteClass cluster.TransactionType = "delete_class"
 	UpdateClass cluster.TransactionType = "update_class"
@@ -60,8 +61,8 @@ type AddTenantsPayload struct {
 	Tenants []Tenant `json:"tenants"`
 }
 
-// RemoveTenantsPayload allows for removing multiple tenants from a class
-type RemoveTenantsPayload struct {
+// DeleteTenantsPayload allows for removing multiple tenants from a class
+type DeleteTenantsPayload struct {
 	Class   string   `json:"class_name"`
 	Tenants []string `json:"tenants"`
 }
@@ -99,10 +100,10 @@ func UnmarshalTransaction(txType cluster.TransactionType,
 		return unmarshalRawJson[UpdateClassPayload](payload)
 	case ReadSchema:
 		return unmarshalRawJson[ReadSchemaPayload](payload)
-	case AddTenants:
+	case addTenants:
 		return unmarshalRawJson[AddTenantsPayload](payload)
-	case RemoveTenants:
-		return unmarshalRawJson[RemoveTenantsPayload](payload)
+	case deleteTenants:
+		return unmarshalRawJson[DeleteTenantsPayload](payload)
 	default:
 		return nil, errors.Errorf("unrecognized schema transaction type %q", txType)
 

@@ -125,7 +125,7 @@ func TestAddTenants(t *testing.T) {
 	}
 }
 
-func TestRemoveTenants(t *testing.T) {
+func TestDeleteTenants(t *testing.T) {
 	var (
 		ctx     = context.Background()
 		mt      = &models.MultiTenancyConfig{Enabled: true, TenantKey: "uUID"}
@@ -228,7 +228,7 @@ func TestRemoveTenants(t *testing.T) {
 				t.Fatalf("%s: add tenants: %v", test.name, err)
 			}
 		}
-		err = sm.RemoveTenants(ctx, nil, test.Class, test.tenants)
+		err = sm.DeleteTenants(ctx, nil, test.Class, test.tenants)
 		if test.errMsg == "" {
 			if err != nil {
 				t.Fatalf("%s: remove tenants: %v", test.name, err)

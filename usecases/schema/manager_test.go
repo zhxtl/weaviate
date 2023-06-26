@@ -59,7 +59,7 @@ func (n *NilMigrator) NewTenants(ctx context.Context, class *models.Class, tenan
 	return func(bool) {}, nil
 }
 
-func (n *NilMigrator) RemoveTenants(ctx context.Context, class *models.Class, tenants []string) (commit func(success bool), err error) {
+func (n *NilMigrator) DeleteTenants(ctx context.Context, class *models.Class, tenants []string) (commit func(success bool), err error) {
 	return func(bool) {}, nil
 }
 
