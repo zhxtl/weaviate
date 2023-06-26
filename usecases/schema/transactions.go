@@ -25,9 +25,9 @@ const (
 	// write-only
 	AddClass    cluster.TransactionType = "add_class"
 	AddProperty cluster.TransactionType = "add_property"
-	// AddPartitions to a specific class
-	AddPartitions cluster.TransactionType = "add_partitions"
-	DeleteTenants cluster.TransactionType = "delete_partitions"
+	// AddTenants to a specific class
+	AddTenants    cluster.TransactionType = "add_tenants"
+	RemoveTenants cluster.TransactionType = "remove_tenants"
 
 	DeleteClass cluster.TransactionType = "delete_class"
 	UpdateClass cluster.TransactionType = "update_class"
@@ -48,22 +48,22 @@ type AddPropertyPayload struct {
 	Property  *models.Property `json:"property"`
 }
 
-// Partition represents properties of a specific partition (physical shard)
-type Partition struct {
-	Name  string   `json:"name"`
+// Tenant represents properties of a specific tenant (physical shard)
+type Tenant struct {
+	Class string   `json:"name"`
 	Nodes []string `json:"nodes"`
 }
 
-// AddPartitionsPayload allows for adding multiple partitions to a class
-type AddPartitionsPayload struct {
-	ClassName  string      `json:"className"`
-	Partitions []Partition `json:"partitions"`
+// AddTenantsPayload allows for adding multiple tenants to a class
+type AddTenantsPayload struct {
+	Class   string   `json:"class_name"`
+	Tenants []Tenant `json:"tenants"`
 }
 
-// DeleteTenantsPayload allows for removing multiple partitions to a class
-type DeleteTenantsPayload struct {
-	ClassName string   `json:"className"`
-	tenants   []string `json:"partitions"`
+// RemoveTenantsPayload allows for removing multiple tenants from a class
+type RemoveTenantsPayload struct {
+	Class   string   `json:"class_name"`
+	Tenants []string `json:"tenants"`
 }
 
 type DeleteClassPayload struct {
@@ -99,10 +99,10 @@ func UnmarshalTransaction(txType cluster.TransactionType,
 		return unmarshalRawJson[UpdateClassPayload](payload)
 	case ReadSchema:
 		return unmarshalRawJson[ReadSchemaPayload](payload)
-	case AddPartitions:
-		return unmarshalRawJson[AddPartitionsPayload](payload)
-	case DeleteTenants:
-		return unmarshalRawJson[DeleteTenantsPayload](payload)
+	case AddTenants:
+		return unmarshalRawJson[AddTenantsPayload](payload)
+	case RemoveTenants:
+		return unmarshalRawJson[RemoveTenantsPayload](payload)
 	default:
 		return nil, errors.Errorf("unrecognized schema transaction type %q", txType)
 

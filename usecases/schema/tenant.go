@@ -52,17 +52,17 @@ func (m *Manager) AddTenants(ctx context.Context, principal *models.Principal, c
 	if err != nil {
 		return fmt.Errorf("get partitions: %w", err)
 	}
-	request := AddPartitionsPayload{
-		ClassName:  class,
-		Partitions: make([]Partition, len(partitions)),
+	request := AddTenantsPayload{
+		Class:   class,
+		Tenants: make([]Tenant, len(partitions)),
 	}
 	i := 0
 	for name, owners := range partitions {
-		request.Partitions[i] = Partition{Name: name, Nodes: owners}
+		request.Tenants[i] = Tenant{Class: name, Nodes: owners}
 		i++
 	}
 
-	tx, err := m.cluster.BeginTransaction(ctx, AddPartitions,
+	tx, err := m.cluster.BeginTransaction(ctx, AddTenants,
 		request, DefaultTxTTL)
 	if err != nil {
 		return fmt.Errorf("open cluster-wide transaction: %w", err)
@@ -72,16 +72,16 @@ func (m *Manager) AddTenants(ctx context.Context, principal *models.Principal, c
 		m.logger.WithError(err).Errorf("not every node was able to commit")
 	}
 
-	return m.onAddPartitions(ctx, st, cls, request)
+	return m.onAddTenants(ctx, st, cls, request)
 }
 
-func (m *Manager) onAddPartitions(ctx context.Context,
-	st *sharding.State, class *models.Class, request AddPartitionsPayload,
+func (m *Manager) onAddTenants(ctx context.Context,
+	st *sharding.State, class *models.Class, request AddTenantsPayload,
 ) error {
-	pairs := make([]KeyValuePair, 0, len(request.Partitions))
-	for _, p := range request.Partitions {
-		if _, ok := st.Physical[p.Name]; !ok {
-			p := st.AddPartition(p.Name, p.Nodes)
+	pairs := make([]KeyValuePair, 0, len(request.Tenants))
+	for _, p := range request.Tenants {
+		if _, ok := st.Physical[p.Class]; !ok {
+			p := st.AddPartition(p.Class, p.Nodes)
 			data, err := json.Marshal(p)
 			if err != nil {
 				return fmt.Errorf("cannot marshal partition %s: %w", p.Name, err)
@@ -89,17 +89,17 @@ func (m *Manager) onAddPartitions(ctx context.Context,
 			pairs = append(pairs, KeyValuePair{p.Name, data})
 		}
 	}
-	shards := make([]string, 0, len(request.Partitions))
-	for _, p := range request.Partitions {
-		if st.IsShardLocal(p.Name) {
-			shards = append(shards, p.Name)
+	shards := make([]string, 0, len(request.Tenants))
+	for _, p := range request.Tenants {
+		if st.IsShardLocal(p.Class) {
+			shards = append(shards, p.Class)
 		}
 	}
 
 	commit, err := m.migrator.NewPartitions(ctx, class, shards)
 	if err != nil {
 		m.logger.WithField("action", "add_partitions").
-			WithField("class", request.ClassName).Error(err)
+			WithField("class", request.Class).Error(err)
 	}
 
 	st.SetLocalName(m.clusterState.LocalName())
@@ -114,7 +114,7 @@ func (m *Manager) onAddPartitions(ctx context.Context,
 	}
 	commit(true) // commit new partitions
 	m.shardingStateLock.Lock()
-	m.state.ShardingState[request.ClassName] = st
+	m.state.ShardingState[request.Class] = st
 	m.shardingStateLock.Unlock()
 	m.triggerSchemaUpdateCallbacks()
 
@@ -146,12 +146,12 @@ func (m *Manager) RemoveTenants(ctx context.Context, principal *models.Principal
 		tenantNames[i] = tenant.Name
 	}
 
-	request := DeleteTenantsPayload{
-		ClassName: class,
-		tenants:   tenantNames,
+	request := RemoveTenantsPayload{
+		Class:   class,
+		Tenants: tenantNames,
 	}
 
-	tx, err := m.cluster.BeginTransaction(ctx, DeleteTenants,
+	tx, err := m.cluster.BeginTransaction(ctx, RemoveTenants,
 		request, DefaultTxTTL)
 	if err != nil {
 		return fmt.Errorf("open cluster-wide transaction: %w", err)
@@ -161,22 +161,22 @@ func (m *Manager) RemoveTenants(ctx context.Context, principal *models.Principal
 		m.logger.WithError(err).Errorf("not every node was able to commit")
 	}
 
-	return m.onDeletePartitions(ctx, cls, request)
+	return m.onRemoveTenants(ctx, cls, request)
 }
 
-func (m *Manager) onDeletePartitions(ctx context.Context, class *models.Class, req DeleteTenantsPayload,
+func (m *Manager) onRemoveTenants(ctx context.Context, class *models.Class, req RemoveTenantsPayload,
 ) error {
-	commit, err := m.migrator.DeletePartitions(ctx, class, req.tenants)
+	commit, err := m.migrator.DeletePartitions(ctx, class, req.Tenants)
 	if err != nil {
 		m.logger.WithField("action", "delete_partitions").
-			WithField("class", req.ClassName).Error(err)
+			WithField("class", req.Class).Error(err)
 	}
 
 	m.logger.
 		WithField("action", "schema.delete_tenants").
-		WithField("n", len(req.tenants)).Debugf("persist schema updates")
+		WithField("n", len(req.Tenants)).Debugf("persist schema updates")
 
-	if err := m.repo.DeleteShards(ctx, class.Class, req.tenants); err != nil {
+	if err := m.repo.DeleteShards(ctx, class.Class, req.Tenants); err != nil {
 		commit(false) // rollback new partitions
 		return err
 	}
@@ -184,8 +184,8 @@ func (m *Manager) onDeletePartitions(ctx context.Context, class *models.Class, r
 
 	// update cache
 	m.shardingStateLock.Lock()
-	if ss := m.state.ShardingState[req.ClassName]; ss != nil {
-		for _, p := range req.tenants {
+	if ss := m.state.ShardingState[req.Class]; ss != nil {
+		for _, p := range req.Tenants {
 			ss.DeletePartition(p)
 		}
 	}
