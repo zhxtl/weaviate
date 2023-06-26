@@ -50,7 +50,7 @@ func (m *Manager) AddTenants(ctx context.Context, principal *models.Principal, c
 	}
 	partitions, err := st.GetPartitions(m.clusterState, tenantNames, rf)
 	if err != nil {
-		return fmt.Errorf("get partitions: %w", err)
+		return fmt.Errorf("get partitions from sharding state: %w", err)
 	}
 	request := AddTenantsPayload{
 		Class:   class,
@@ -96,9 +96,9 @@ func (m *Manager) onAddTenants(ctx context.Context,
 		}
 	}
 
-	commit, err := m.migrator.NewPartitions(ctx, class, shards)
+	commit, err := m.migrator.NewTenants(ctx, class, shards)
 	if err != nil {
-		m.logger.WithField("action", "add_partitions").
+		m.logger.WithField("action", "add_tenants").
 			WithField("class", request.Class).Error(err)
 	}
 
@@ -109,10 +109,10 @@ func (m *Manager) onAddTenants(ctx context.Context,
 		Debug("saving updated schema to configuration store")
 
 	if err := m.repo.NewShards(ctx, class.Class, pairs); err != nil {
-		commit(false) // rollback new partitions
+		commit(false) // rollback adding new tenant
 		return err
 	}
-	commit(true) // commit new partitions
+	commit(true) // commit new adding new tenant
 	m.shardingStateLock.Lock()
 	m.state.ShardingState[request.Class] = st
 	m.shardingStateLock.Unlock()
@@ -121,7 +121,7 @@ func (m *Manager) onAddTenants(ctx context.Context,
 	return nil
 }
 
-// DeleteTenants is used to delete tenants of a class
+// RemoveTenants is used to delete tenants of a class
 // Class must exist and has partitioning enabled
 func (m *Manager) RemoveTenants(ctx context.Context, principal *models.Principal, class string, tenants []*models.Tenant) error {
 	err := m.Authorizer.Authorize(principal, "update", "schema/tenants")
@@ -166,21 +166,21 @@ func (m *Manager) RemoveTenants(ctx context.Context, principal *models.Principal
 
 func (m *Manager) onRemoveTenants(ctx context.Context, class *models.Class, req RemoveTenantsPayload,
 ) error {
-	commit, err := m.migrator.DeletePartitions(ctx, class, req.Tenants)
+	commit, err := m.migrator.RemoveTenants(ctx, class, req.Tenants)
 	if err != nil {
-		m.logger.WithField("action", "delete_partitions").
+		m.logger.WithField("action", "remove_tenants").
 			WithField("class", req.Class).Error(err)
 	}
 
 	m.logger.
-		WithField("action", "schema.delete_tenants").
+		WithField("action", "schema.remove_tenants").
 		WithField("n", len(req.Tenants)).Debugf("persist schema updates")
 
 	if err := m.repo.DeleteShards(ctx, class.Class, req.Tenants); err != nil {
-		commit(false) // rollback new partitions
+		commit(false) // rollback deletion of tenants
 		return err
 	}
-	commit(true) // commit new partitions
+	commit(true) // commit deletion of tenants
 
 	// update cache
 	m.shardingStateLock.Lock()

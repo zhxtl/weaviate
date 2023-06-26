@@ -150,7 +150,7 @@ func (m *Manager) handleAddTenantsCommit(ctx context.Context,
 
 	req, ok := tx.Payload.(AddTenantsPayload)
 	if !ok {
-		return errors.Errorf("expected commit payload to be AddPartitions, but got %T",
+		return errors.Errorf("expected commit payload to be AddTenants, but got %T",
 			tx.Payload)
 	}
 	cls, st := m.getClassByName(req.Class), m.ShardingState(req.Class)

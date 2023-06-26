@@ -150,9 +150,9 @@ func (m *Migrator) UpdateShardStatus(ctx context.Context, className, shardName, 
 	return idx.updateShardStatus(ctx, shardName, targetStatus)
 }
 
-// NewPartitions creates new partitions and returns a commit func
+// NewTenants creates new partitions and returns a commit func
 // that can be used to either commit or rollback the partitions
-func (m *Migrator) NewPartitions(ctx context.Context, class *models.Class, partitions []string) (commit func(success bool), err error) {
+func (m *Migrator) NewTenants(ctx context.Context, class *models.Class, partitions []string) (commit func(success bool), err error) {
 	idx := m.db.GetIndex(schema.ClassName(class.Class))
 	if idx == nil {
 		return nil, fmt.Errorf("cannot find index for %q", class.Class)

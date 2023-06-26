@@ -34,8 +34,9 @@ type Migrator interface {
 		prop *models.Property) error
 	UpdateProperty(ctx context.Context, className string,
 		propName string, newName *string) error
-	NewPartitions(ctx context.Context, class *models.Class, partitions []string) (commit func(success bool), err error)
-	DeletePartitions(ctx context.Context, class *models.Class, partitions []string) (commit func(success bool), err error)
+
+	NewTenants(ctx context.Context, class *models.Class, tenants []string) (commit func(success bool), err error)
+	RemoveTenants(ctx context.Context, class *models.Class, tenants []string) (commit func(success bool), err error)
 
 	ValidateVectorIndexConfigUpdate(ctx context.Context,
 		old, updated schema.VectorIndexConfig) error
