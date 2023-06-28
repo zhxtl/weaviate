@@ -109,7 +109,7 @@ func TestRecall(t *testing.T) {
 		hasDuplicates := 0
 
 		for _, vec := range queries {
-			results, _, err := vectorIndex.SearchByVector(vec, k, nil)
+			results, _, err := vectorIndex.SearchByVector(vec, k, 0, nil)
 			require.Nil(t, err)
 			if containsDuplicates(results) {
 				hasDuplicates++
@@ -127,7 +127,7 @@ func TestRecall(t *testing.T) {
 		var retrieved int
 
 		for i := 0; i < len(queries); i++ {
-			results, _, err := vectorIndex.SearchByVector(queries[i], k, nil)
+			results, _, err := vectorIndex.SearchByVector(queries[i], k, 0, nil)
 			require.Nil(t, err)
 
 			retrieved += k

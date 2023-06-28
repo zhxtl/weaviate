@@ -23,8 +23,8 @@ func dumpIndex(index *hnsw, labels ...string) {
 	}
 	fmt.Printf("--------------------------------------------------\n")
 	fmt.Printf("ID: %s\n", index.id)
-	fmt.Printf("Entrypoint: %d\n", index.entryPointID)
-	fmt.Printf("Max Level: %d\n", index.currentMaximumLayer)
+	fmt.Printf("Entrypoint: %d\n", index.entryPointIDperFilter[0])
+	fmt.Printf("Max Level: %d\n", index.currentMaximumLayerPerFilter[0])
 	fmt.Printf("Tombstones %v\n", index.tombstones)
 	fmt.Printf("\nNodes and Connections:\n")
 	for _, node := range index.nodes {

@@ -41,6 +41,10 @@ func (n *NoopCommitLogger) SetEntryPointWithMaxLayer(id uint64, level int) error
 	return nil
 }
 
+func (n *NoopCommitLogger) SetEntryPointWithMaxLayerPerFilter(id uint64, filter int, level int) error {
+	return nil
+}
+
 func (n *NoopCommitLogger) AddLinkAtLevel(nodeid uint64, level int, target uint64) error {
 	return nil
 }

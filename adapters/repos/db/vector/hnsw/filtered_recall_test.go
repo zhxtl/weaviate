@@ -32,6 +32,8 @@ import (
 	ent "github.com/weaviate/weaviate/entities/vectorindex/hnsw"
 )
 
+//"github.com/weaviate/weaviate/adapters/repos/db/helpers"
+
 func TestFilteredRecall(t *testing.T) {
 	efConstruction := 256
 	ef := 256
@@ -104,7 +106,15 @@ func TestFilteredRecall(t *testing.T) {
 				for i, vec := range myJobs {
 					originalIndex := (i * workerCount) + workerID
 					nodeId := uint64(originalIndex)
-					err := vectorIndex.Add(nodeId, vec.Vector) // change signature to add vec.Label
+					err := vectorIndex.filteredAdd(nodeId, vec.Label, vec.Vector) // change signature to add vec.Label
+					/* Looks good
+					// e.g. map[0:40 1:1 2:2 3:3 4:4 5:5 6:366 7:7 8:448 9:369 10:10 11:11 12:12 13:13 14:54 15:15 16:16 17:17 18:18 19:19]
+					mutex.Lock()
+					fmt.Print("\n")
+					fmt.Print(vectorIndex.entryPointIDperFilter)
+					fmt.Print("\n")
+					mutex.Unlock()
+					*/
 					require.Nil(t, err)
 					mutex.Lock()
 					if _, ok := filterToIDs[vec.Label]; !ok {
@@ -121,26 +131,9 @@ func TestFilteredRecall(t *testing.T) {
 		wg.Wait()
 		fmt.Printf("importing took %s\n", time.Since(before))
 
-		fmt.Printf("Inspect a query")
+		fmt.Printf("With k=20")
 
 		k := 20
-
-		hasDuplicates := 0
-
-		for _, vec := range queries {
-			results, _, err := vectorIndex.SearchByVector(vec.Vector, k, nil)
-			require.Nil(t, err)
-			if containsDuplicates(results) {
-				hasDuplicates++
-				panic("stop")
-			}
-		}
-
-		fmt.Printf("%d out of %d searches contained duplicates\n", hasDuplicates, len(queries))
-
-		fmt.Printf("With k=10")
-
-		k = 10
 
 		var relevant int
 		var retrieved int
@@ -149,13 +142,24 @@ func TestFilteredRecall(t *testing.T) {
 			queryFilter := queries[i].Label
 			//construct an allowList from the []uint64 of ids that match the filter
 			queryAllowList := helpers.NewAllowList(filterToIDs[queryFilter]...)
+			results, _, err := vectorIndex.SearchByVector(queries[i].Vector, k, queryFilter, queryAllowList)
 			//results, _, err := vectorIndex.SearchByVector(queries[i].Vector, k, nil)
-			results, _, err := vectorIndex.SearchByVector(queries[i].Vector, k, queryAllowList)
+			// it shouldn't matter if it has the allowList or not
+			// ^ because it's only connected to nodes that share the same filter
+			// confirmed, same recall #
 
 			require.Nil(t, err)
 
 			retrieved += len(truths[i])
 			relevant += matchesInLists(truths[i], results)
+
+			fmt.Print("\n")
+			fmt.Print(queries[i].Label)
+			fmt.Print("\n")
+			fmt.Print(results)
+			fmt.Print("\n")
+			fmt.Print(truths[i])
+			fmt.Print("\n")
 		}
 
 		recall := float32(relevant) / float32(retrieved)

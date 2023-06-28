@@ -68,7 +68,7 @@ func Test_NoRaceCompressDoesNotCrash(t *testing.T) {
 	index.Delete(delete_indices...)
 	index.Compress(dimensions, 256, false, int(ssdhelpers.UseKMeansEncoder), int(ssdhelpers.LogNormalEncoderDistribution))
 	for _, v := range queries {
-		_, _, err := index.SearchByVector(v, k, nil)
+		_, _, err := index.SearchByVector(v, k, 0, nil)
 		assert.Nil(t, err)
 	}
 }

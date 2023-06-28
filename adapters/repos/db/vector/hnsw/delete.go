@@ -13,7 +13,6 @@ package hnsw
 
 import (
 	"context"
-	"sync"
 	"time"
 
 	"github.com/pkg/errors"
@@ -112,9 +111,9 @@ func (h *hnsw) resetUnsecured() error {
 	h.resetCtx = resetCtx
 	h.resetCtxCancel = resetCtxCancel
 
-	h.entryPointID = 0
-	h.currentMaximumLayer = 0
-	h.initialInsertOnce = &sync.Once{}
+	//h.entryPointID = 0
+	//h.currentMaximumLayer = 0
+	//h.initialInsertOnce = &sync.Once{}
 	h.nodes = make([]*vertex, initialSize)
 
 	return h.commitLog.Reset()
@@ -137,7 +136,7 @@ func (h *hnsw) getEntrypoint() uint64 {
 	h.RLock()
 	defer h.RUnlock()
 
-	return h.entryPointID
+	return h.entryPointIDperFilter[0]
 }
 
 func (h *hnsw) copyTombstonesToAllowList(breakCleanUpTombstonedNodes breakCleanUpTombstonedNodesFunc) (ok bool, deleteList helpers.AllowList) {
@@ -278,8 +277,8 @@ func (h *hnsw) reassignNeighbor(neighbor uint64, deleteList helpers.AllowList, b
 
 	h.RLock()
 	neighborNode := h.nodes[neighbor]
-	currentEntrypoint := h.entryPointID
-	currentMaximumLayer := h.currentMaximumLayer
+	currentEntrypoint := h.entryPointIDperFilter[0]
+	currentMaximumLayer := h.currentMaximumLayerPerFilter[0]
 	h.RUnlock()
 
 	if neighborNode == nil || deleteList.Contains(neighborNode.id) {
@@ -316,7 +315,7 @@ func (h *hnsw) reassignNeighbor(neighbor uint64, deleteList helpers.AllowList, b
 	neighborNode.Unlock()
 
 	entryPointID, err := h.findBestEntrypointForNode(currentMaximumLayer,
-		neighborLevel, currentEntrypoint, neighborVec)
+		neighborLevel, currentEntrypoint, neighborVec, 0)
 	if err != nil {
 		return false, errors.Wrap(err, "find best entrypoint")
 	}
@@ -366,7 +365,7 @@ func (h *hnsw) reassignNeighbor(neighbor uint64, deleteList helpers.AllowList, b
 	}
 
 	if err := h.findAndConnectNeighbors(neighborNode, entryPointID, neighborVec,
-		neighborLevel, currentMaximumLayer, deleteList); err != nil {
+		neighborLevel, currentMaximumLayer, 0, deleteList); err != nil {
 		return false, errors.Wrap(err, "find and connect neighbors")
 	}
 	neighborNode.unmarkAsMaintenance()
@@ -408,8 +407,8 @@ func (h *hnsw) deleteEntrypoint(node *vertex, denyList helpers.AllowList) error 
 	}
 
 	h.Lock()
-	h.entryPointID = newEntrypoint
-	h.currentMaximumLayer = level
+	h.entryPointIDperFilter[0] = newEntrypoint
+	h.currentMaximumLayerPerFilter[0] = level
 	h.Unlock()
 	if err := h.commitLog.SetEntryPointWithMaxLayer(newEntrypoint, level); err != nil {
 		return err
@@ -485,7 +484,7 @@ func (h *hnsw) findNewLocalEntrypoint(denyList helpers.AllowList, targetLevel in
 		// we can just use the global one, as the global one is guaranteed to be
 		// present on every level, i.e. it is always chosen from the highest
 		// currently available level
-		return h.getEntrypoint(), h.currentMaximumLayer
+		return h.getEntrypoint(), h.currentMaximumLayerPerFilter[0]
 	}
 
 	h.RLock()

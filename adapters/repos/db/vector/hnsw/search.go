@@ -61,7 +61,7 @@ func (h *hnsw) autoEfFromK(k int) int {
 	return ef
 }
 
-func (h *hnsw) SearchByVector(vector []float32, k int, allowList helpers.AllowList) ([]uint64, []float32, error) {
+func (h *hnsw) SearchByVector(vector []float32, k int, filter int, allowList helpers.AllowList) ([]uint64, []float32, error) {
 	h.compressActionLock.RLock()
 	defer h.compressActionLock.RUnlock()
 
@@ -71,11 +71,13 @@ func (h *hnsw) SearchByVector(vector []float32, k int, allowList helpers.AllowLi
 		vector = distancer.Normalize(vector)
 	}
 
-	flatSearchCutoff := int(atomic.LoadInt64(&h.flatSearchCutoff))
-	if allowList != nil && !h.forbidFlat && allowList.Len() < flatSearchCutoff {
-		return h.flatSearch(vector, k, allowList)
-	}
-	return h.knnSearchByVector(vector, k, h.searchTimeEF(k), allowList)
+	/*
+		flatSearchCutoff := int(atomic.LoadInt64(&h.flatSearchCutoff))
+		if allowList != nil && !h.forbidFlat && allowList.Len() < flatSearchCutoff {
+			return h.flatSearch(vector, k, allowList)
+		}
+	*/
+	return h.knnSearchByVector(vector, k, h.searchTimeEF(k), filter, allowList)
 }
 
 // SearchByVectorDistance wraps SearchByVector, and calls it recursively until
@@ -88,7 +90,7 @@ func (h *hnsw) SearchByVector(vector []float32, k int, allowList helpers.AllowLi
 // needs ids for sake of something like aggregation, a maxLimit of -1 can be
 // passed in to truly obtain all results from the vector index.
 func (h *hnsw) SearchByVectorDistance(vector []float32, targetDistance float32, maxLimit int64,
-	allowList helpers.AllowList,
+	filter int, allowList helpers.AllowList,
 ) ([]uint64, []float32, error) {
 	var (
 		searchParams = newSearchByDistParams(maxLimit)
@@ -100,7 +102,7 @@ func (h *hnsw) SearchByVectorDistance(vector []float32, targetDistance float32, 
 	recursiveSearch := func() (bool, error) {
 		shouldContinue := false
 
-		ids, dist, err := h.SearchByVector(vector, searchParams.totalLimit, allowList)
+		ids, dist, err := h.SearchByVector(vector, searchParams.totalLimit, filter, allowList)
 		if err != nil {
 			return false, errors.Wrap(err, "vector search")
 		}
@@ -159,20 +161,8 @@ func (h *hnsw) SearchByVectorDistance(vector []float32, targetDistance float32, 
 
 func (h *hnsw) searchLayerByVector(queryVector []float32,
 	entrypoints *priorityqueue.Queue, ef int, level int,
-	filteredInsert bool, allowList helpers.AllowList) (*priorityqueue.Queue, error,
+	filteredInsert bool, filter int, allowList helpers.AllowList) (*priorityqueue.Queue, error,
 ) {
-	/*
-		If we have a huge graph, we have to create this allowList to pass into the function.
-		Simple filters --> can't we just provide filter as a single int?
-
-		!allowList.contains(neighborID) --> filter == neighborID.filter
-
-		^
-
-		neighborID.filter // something like that (each vertex has a filter)
-
-
-	*/
 	h.pools.visitedListsLock.Lock()
 	visited := h.pools.visitedLists.Borrow()
 	h.pools.visitedListsLock.Unlock()
@@ -237,8 +227,6 @@ func (h *hnsw) searchLayerByVector(queryVector []float32,
 
 			This is what grows with those grow functions...
 
-
-
 		*/
 
 		h.RUnlock()
@@ -248,7 +236,9 @@ func (h *hnsw) searchLayerByVector(queryVector []float32,
 			continue
 		}
 
-		candidateNode.Lock()
+		candidateNode.Lock() // shouldn't be a problem, extended the function signature to take the filter
+		/* This could be a problem when generalizing filtered-HNSW from more than 1 filter.*/
+
 		if candidateNode.level < level {
 			// a node level could have been downgraded as part of a delete-reassign,
 			// but the connections pointing to it not yet cleaned up. In this case
@@ -275,11 +265,16 @@ func (h *hnsw) searchLayerByVector(queryVector []float32,
 			connectionsReusable = connectionsReusable[:len(candidateNode.connections[level])]
 		}
 
+		// would like to understand this `copy` better
 		copy(connectionsReusable, candidateNode.connections[level])
 		candidateNode.Unlock()
 
 		// Wouldn't all of these connections share the filter already?
 		for _, neighborID := range connectionsReusable {
+
+			// might want to check the filter before even doing the distance at all
+			// it seems in Filtered-HNSW search, you still explore a candidates distance even if it doesn't match the allowList
+			// probably for no reason though, suspect this is wasted computation
 
 			if ok := visited.Visited(neighborID); ok {
 				// skip if we've already visited this neighbor
@@ -289,6 +284,8 @@ func (h *hnsw) searchLayerByVector(queryVector []float32,
 			// make sure we never visit this neighbor again
 			visited.Visit(neighborID)
 			var distance float32
+			var neighborFilter int
+			neighborFilter = 99_999
 			var ok bool
 			var err error
 			if h.compressed.Load() {
@@ -313,12 +310,16 @@ func (h *hnsw) searchLayerByVector(queryVector []float32,
 					// filter restricting this search further. As a result we have to
 					// ignore items not on the list
 					if filteredInsert == true {
-						//if
+						neighborFilter = h.nodes[neighborID].filter // need to check pointers currently uint64 type ^ `var neighborFilter uint64`
+						if filter != neighborFilter {
+							continue
+
+						}
+					} else {
+						if !allowList.Contains(neighborID) {
+							continue
+						}
 					}
-					if !allowList.Contains(neighborID) {
-						continue
-					}
-					// h.nodes[neighborID].filter
 
 					// changed to if neighbor.filter == filter... {}
 				}
@@ -490,13 +491,13 @@ func (h *hnsw) handleDeletedNode(docID uint64) {
 }
 
 func (h *hnsw) knnSearchByVector(searchVec []float32, k int,
-	ef int, allowList helpers.AllowList,
+	ef int, filter int, allowList helpers.AllowList,
 ) ([]uint64, []float32, error) {
 	if h.isEmpty() {
 		return nil, nil, nil
 	}
 
-	entryPointID := h.entryPointID
+	entryPointID := h.entryPointIDperFilter[filter]
 	entryPointDistance, ok, err := h.distBetweenNodeAndVec(entryPointID, searchVec)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "knn search: distance between entrypoint and query node")
@@ -508,10 +509,10 @@ func (h *hnsw) knnSearchByVector(searchVec []float32, k int,
 	}
 
 	// stop at layer 1, not 0!
-	for level := h.currentMaximumLayer; level >= 1; level-- {
+	for level := h.currentMaximumLayerPerFilter[0]; level >= 1; level-- {
 		eps := priorityqueue.NewMin(10)
 		eps.Insert(entryPointID, entryPointDistance)
-		res, err := h.searchLayerByVector(searchVec, eps, 1, level, false, nil)
+		res, err := h.searchLayerByVector(searchVec, eps, 1, level, false, 0, allowList)
 		if err != nil {
 			return nil, nil, errors.Wrapf(err, "knn search: search layer at level %d", level)
 		}
@@ -554,7 +555,7 @@ func (h *hnsw) knnSearchByVector(searchVec []float32, k int,
 
 	eps := priorityqueue.NewMin(10)
 	eps.Insert(entryPointID, entryPointDistance)
-	res, err := h.searchLayerByVector(searchVec, eps, ef, 0, allowList)
+	res, err := h.searchLayerByVector(searchVec, eps, ef, 0, false, 0, allowList)
 	if err != nil {
 		return nil, nil, errors.Wrapf(err, "knn search: search layer at level %d", 0)
 	}

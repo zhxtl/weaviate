@@ -22,8 +22,7 @@ import (
 func TestVectorCachePrefilling(t *testing.T) {
 	cache := newFakeCache()
 	index := &hnsw{
-		nodes:               generateDummyVertices(100),
-		currentMaximumLayer: 3,
+		nodes: generateDummyVertices(100),
 	}
 
 	logger, _ := test.NewNullLogger()

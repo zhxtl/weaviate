@@ -29,8 +29,8 @@ func (h *hnsw) Dump(labels ...string) {
 	}
 	fmt.Printf("--------------------------------------------------\n")
 	fmt.Printf("ID: %s\n", h.id)
-	fmt.Printf("Entrypoint: %d\n", h.entryPointID)
-	fmt.Printf("Max Level: %d\n", h.currentMaximumLayer)
+	fmt.Printf("Entrypoint: %d\n", h.entryPointIDperFilter[0])
+	fmt.Printf("Max Level: %d\n", h.currentMaximumLayerPerFilter[0])
 	fmt.Printf("Tombstones %v\n", h.tombstones)
 	fmt.Printf("\nNodes and Connections:\n")
 	for _, node := range h.nodes {
@@ -52,8 +52,8 @@ func (h *hnsw) DumpJSON(labels ...string) {
 	dump := JSONDump{
 		Labels:              labels,
 		ID:                  h.id,
-		Entrypoint:          h.entryPointID,
-		CurrentMaximumLayer: h.currentMaximumLayer,
+		Entrypoint:          h.entryPointIDperFilter[0],
+		CurrentMaximumLayer: h.currentMaximumLayerPerFilter[0],
 		Tombstones:          h.tombstones,
 	}
 	for _, node := range h.nodes {
@@ -127,8 +127,8 @@ func NewFromJSONDump(dumpBytes []byte, vecForID VectorForID) (*hnsw, error) {
 		return nil, err
 	}
 
-	index.currentMaximumLayer = dump.CurrentMaximumLayer
-	index.entryPointID = dump.Entrypoint
+	index.currentMaximumLayerPerFilter[0] = dump.CurrentMaximumLayer
+	index.entryPointIDperFilter[0] = dump.Entrypoint
 	index.tombstones = dump.Tombstones
 
 	for _, n := range dump.Nodes {
@@ -163,8 +163,8 @@ func NewFromJSONDumpMap(dumpBytes []byte, vecForID VectorForID) (*hnsw, error) {
 		return nil, err
 	}
 
-	index.currentMaximumLayer = dump.CurrentMaximumLayer
-	index.entryPointID = dump.Entrypoint
+	index.currentMaximumLayerPerFilter[0] = dump.CurrentMaximumLayer
+	index.entryPointIDperFilter[0] = dump.Entrypoint
 	index.tombstones = dump.Tombstones
 
 	for _, n := range dump.Nodes {

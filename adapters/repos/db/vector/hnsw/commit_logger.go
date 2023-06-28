@@ -260,6 +260,7 @@ type HnswCommitType uint8 // 256 options, plenty of room for future extensions
 const (
 	AddNode HnswCommitType = iota
 	SetEntryPointMaxLevel
+	SetEntryPointMaxLevelPerFilter
 	AddLinkAtLevel
 	ReplaceLinksAtLevel
 	AddTombstone
@@ -278,6 +279,8 @@ func (t HnswCommitType) String() string {
 		return "AddNode"
 	case SetEntryPointMaxLevel:
 		return "SetEntryPointWithMaxLayer"
+	case SetEntryPointMaxLevelPerFilter:
+		return "SetEntryPointWithMaxLayerPerFilter"
 	case AddLinkAtLevel:
 		return "AddLinkAtLevel"
 	case AddLinksAtLevel:
@@ -326,6 +329,13 @@ func (l *hnswCommitLogger) SetEntryPointWithMaxLayer(id uint64, level int) error
 	defer l.Unlock()
 
 	return l.commitLogger.SetEntryPointWithMaxLayer(id, level)
+}
+
+func (l *hnswCommitLogger) SetEntryPointWithMaxLayerPerFilter(id uint64, filter int, level int) error {
+	l.Lock()
+	defer l.Unlock()
+
+	return l.commitLogger.SetEntryPointWithMaxLayerPerFilter(id, filter, level)
 }
 
 func (l *hnswCommitLogger) ReplaceLinksAtLevel(nodeid uint64, level int, targets []uint64) error {

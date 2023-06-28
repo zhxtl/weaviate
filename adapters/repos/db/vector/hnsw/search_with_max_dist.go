@@ -22,7 +22,7 @@ import (
 func (h *hnsw) KnnSearchByVectorMaxDist(searchVec []float32, dist float32,
 	ef int, allowList helpers.AllowList,
 ) ([]uint64, error) {
-	entryPointID := h.entryPointID
+	entryPointID := h.entryPointIDperFilter[0]
 	entryPointDistance, ok, err := h.distBetweenNodeAndVec(entryPointID, searchVec)
 	if err != nil {
 		return nil, errors.Wrap(err, "knn search: distance between entrypoint and query node")
@@ -34,11 +34,11 @@ func (h *hnsw) KnnSearchByVectorMaxDist(searchVec []float32, dist float32,
 	}
 
 	// stop at layer 1, not 0!
-	for level := h.currentMaximumLayer; level >= 1; level-- {
+	for level := h.currentMaximumLayerPerFilter[0]; level >= 1; level-- {
 		eps := priorityqueue.NewMin(1)
 		eps.Insert(entryPointID, entryPointDistance)
 		// ignore allowList on layers > 0
-		res, err := h.searchLayerByVector(searchVec, eps, 1, level, nil)
+		res, err := h.searchLayerByVector(searchVec, eps, 1, level, false, 0, nil)
 		if err != nil {
 			return nil, errors.Wrapf(err, "knn search: search layer at level %d", level)
 		}
@@ -53,7 +53,7 @@ func (h *hnsw) KnnSearchByVectorMaxDist(searchVec []float32, dist float32,
 
 	eps := priorityqueue.NewMin(1)
 	eps.Insert(entryPointID, entryPointDistance)
-	res, err := h.searchLayerByVector(searchVec, eps, ef, 0, allowList)
+	res, err := h.searchLayerByVector(searchVec, eps, ef, 0, false, 0, allowList)
 	if err != nil {
 		return nil, errors.Wrapf(err, "knn search: search layer at level %d", 0)
 	}

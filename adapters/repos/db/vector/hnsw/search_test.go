@@ -56,8 +56,8 @@ func TestNilCheckOnPartiallyCleanedNode(t *testing.T) {
 	})
 
 	t.Run("manually add the nodes", func(t *testing.T) {
-		vectorIndex.entryPointID = 0
-		vectorIndex.currentMaximumLayer = 1
+		vectorIndex.entryPointIDperFilter[0] = 0
+		vectorIndex.currentMaximumLayerPerFilter[0] = 1
 		vectorIndex.nodes = []*vertex{
 			{
 				// must be on a non-zero layer for this bug to occur
@@ -78,7 +78,7 @@ func TestNilCheckOnPartiallyCleanedNode(t *testing.T) {
 	})
 
 	t.Run("run a search that would typically find the new ep", func(t *testing.T) {
-		res, _, err := vectorIndex.SearchByVector([]float32{1.7, 1.7}, 20, nil)
+		res, _, err := vectorIndex.SearchByVector([]float32{1.7, 1.7}, 20, 0, nil)
 		require.Nil(t, err)
 		assert.Equal(t, []uint64{2, 0}, res, "right results are found")
 	})

@@ -22,7 +22,6 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"github.com/weaviate/weaviate/adapters/repos/db/helpers"
 	"github.com/weaviate/weaviate/adapters/repos/db/lsmkv"
 	"github.com/weaviate/weaviate/adapters/repos/db/vector/hnsw/distancer"
 	"github.com/weaviate/weaviate/adapters/repos/db/vector/hnsw/priorityqueue"
@@ -53,7 +52,7 @@ type hnsw struct {
 	// make sure the very first insert happens just once, otherwise we
 	// accidentally overwrite previous entrypoints on parallel imports on an
 	// empty graph
-	initialInsertOnce *sync.Once
+	//initialInsertOnce *sync.Once
 
 	// Each node should not have more edges than this number
 	maximumConnections int
@@ -156,6 +155,7 @@ type hnsw struct {
 type CommitLogger interface {
 	ID() string
 	AddNode(node *vertex) error
+	SetEntryPointWithMaxLayer(id uint64, level int) error
 	SetEntryPointWithMaxLayerPerFilter(id uint64, filter int, level int) error
 	AddLinkAtLevel(nodeid uint64, level int, target uint64) error
 	ReplaceLinksAtLevel(nodeid uint64, level int, targets []uint64) error
@@ -243,13 +243,16 @@ func New(cfg Config, uc ent.UserConfig, tombstoneCleanupCycle cyclemanager.Cycle
 		resetLock:              &sync.Mutex{},
 		resetCtx:               resetCtx,
 		resetCtxCancel:         resetCtxCancel,
-		initialInsertOnce:      &sync.Once{},
+		//initialInsertOnce:      &sync.Once{},
 		// cleanupInterval:        time.Duration(uc.CleanupIntervalSeconds) * time.Second,
 
 		ef:       int64(uc.EF),
 		efMin:    int64(uc.DynamicEFMin),
 		efMax:    int64(uc.DynamicEFMax),
 		efFactor: int64(uc.DynamicEFFactor),
+
+		entryPointIDperFilter:        map[int]uint64{},
+		currentMaximumLayerPerFilter: make(map[int]int),
 
 		metrics:   NewMetrics(cfg.PrometheusMetrics, cfg.ClassName, cfg.ShardName),
 		shardName: cfg.ShardName,
@@ -370,7 +373,7 @@ func New(cfg Config, uc ent.UserConfig, tombstoneCleanupCycle cyclemanager.Cycle
 // }
 
 func (h *hnsw) findBestEntrypointForNode(currentMaxLevel, targetLevel int,
-	entryPointID uint64, nodeVec []float32, allowList helpers.AllowList,
+	entryPointID uint64, nodeVec []float32, filter int,
 ) (uint64, error) {
 	// in case the new target is lower than the current max, we need to search
 	// each layer for a better candidate and update the candidate
@@ -386,7 +389,7 @@ func (h *hnsw) findBestEntrypointForNode(currentMaxLevel, targetLevel int,
 		}
 
 		eps.Insert(entryPointID, dist)
-		res, err := h.searchLayerByVector(nodeVec, eps, 1, level, allowList)
+		res, err := h.searchLayerByVector(nodeVec, eps, 1, level, true, filter, nil)
 		if err != nil {
 			return 0,
 				errors.Wrapf(err, "update candidate: search layer at level %d", level)

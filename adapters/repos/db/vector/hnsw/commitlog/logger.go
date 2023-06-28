@@ -31,6 +31,7 @@ type HnswCommitType uint8 // 256 options, plenty of room for future extensions
 const (
 	AddNode HnswCommitType = iota
 	SetEntryPointMaxLevel
+	SetEntryPointMaxLevelPerFilter
 	AddLinkAtLevel
 	ReplaceLinksAtLevel
 	AddTombstone
@@ -57,6 +58,15 @@ func NewLoggerWithFile(file *os.File) *Logger {
 }
 
 func (l *Logger) SetEntryPointWithMaxLayer(id uint64, level int) error {
+	toWrite := make([]byte, 11)
+	toWrite[0] = byte(SetEntryPointMaxLevel)
+	binary.LittleEndian.PutUint64(toWrite[1:9], id)
+	binary.LittleEndian.PutUint16(toWrite[9:11], uint16(level))
+	_, err := l.bufw.Write(toWrite)
+	return err
+}
+
+func (l *Logger) SetEntryPointWithMaxLayerPerFilter(id uint64, filter int, level int) error {
 	toWrite := make([]byte, 11)
 	toWrite[0] = byte(SetEntryPointMaxLevel)
 	binary.LittleEndian.PutUint64(toWrite[1:9], id)

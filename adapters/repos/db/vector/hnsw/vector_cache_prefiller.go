@@ -143,5 +143,5 @@ func (pf *vectorCachePrefiller[T]) maxLevel() int {
 	pf.index.Lock()
 	defer pf.index.Unlock()
 
-	return pf.index.currentMaximumLayer
+	return pf.index.currentMaximumLayerPerFilter[0]
 }
