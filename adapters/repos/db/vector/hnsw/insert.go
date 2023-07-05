@@ -42,6 +42,7 @@ func (h *hnsw) ValidateBeforeInsert(vector []float32) error {
 }
 
 func (h *hnsw) Add(id uint64, vector []float32) error {
+	h.Dump("BEFORE ADDING", fmt.Sprintf("%v", id))
 	before := time.Now()
 	if len(vector) == 0 {
 		return errors.Errorf("insert called with nil-vector")
@@ -62,7 +63,15 @@ func (h *hnsw) Add(id uint64, vector []float32) error {
 
 	h.compressActionLock.RLock()
 	defer h.compressActionLock.RUnlock()
-	return h.insert(node, vector)
+	err := h.insert(node, vector)
+
+	if err == nil {
+		h.Dump("AFTER ADDING", fmt.Sprintf("%v", id))
+	} else {
+		h.Dump("AFTER ADDING ERR", fmt.Sprintf("%v", id), err.Error())
+	}
+
+	return err
 }
 
 func (h *hnsw) insertInitialElement(node *vertex, nodeVec []float32) error {

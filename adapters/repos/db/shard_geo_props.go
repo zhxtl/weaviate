@@ -24,13 +24,13 @@ import (
 	"github.com/weaviate/weaviate/entities/schema"
 	"github.com/weaviate/weaviate/entities/storagestate"
 	"github.com/weaviate/weaviate/entities/storobj"
-	"github.com/weaviate/weaviate/entities/vectorindex/hnsw"
+	// "github.com/weaviate/weaviate/entities/vectorindex/hnsw"
 )
 
 func (s *Shard) initGeoProp(prop *models.Property) error {
 	s.geoPropsCycles.Init(
 		cyclemanager.GeoCommitLoggerCycleTicker(),
-		cyclemanager.NewFixedIntervalTicker(hnsw.DefaultCleanupIntervalSeconds*time.Second))
+		cyclemanager.NewFixedIntervalTicker(5*time.Hour))
 
 	idx, err := geo.NewIndex(geo.Config{
 		ID:                 geoPropID(s.ID(), prop.Name),

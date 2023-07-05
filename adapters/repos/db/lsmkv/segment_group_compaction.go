@@ -304,9 +304,9 @@ func (sg *SegmentGroup) compactIfLevelsMatch(shouldBreak cyclemanager.ShouldBrea
 		return true
 	}
 
-	sg.logger.WithField("action", "lsm_compaction").
-		WithField("path", sg.dir).
-		Trace("no segment eligible for compaction")
+	// sg.logger.WithField("action", "lsm_compaction").
+	// 	WithField("path", sg.dir).
+	// 	Trace("no segment eligible for compaction")
 	return false
 }
 

@@ -55,16 +55,16 @@ func (s *segment) initBloomFilter() error {
 		// now continue re-calculating
 	}
 
-	before := time.Now()
+	// before := time.Now()
 	if err := s.computeAndStoreBloomFilter(path); err != nil {
 		return err
 	}
 
-	took := time.Since(before)
-	s.logger.WithField("action", "lsm_init_disk_segment_build_bloom_filter_primary").
-		WithField("path", s.path).
-		WithField("took", took).
-		Debugf("building bloom filter took %s\n", took)
+	// took := time.Since(before)
+	// s.logger.WithField("action", "lsm_init_disk_segment_build_bloom_filter_primary").
+	// 	WithField("path", s.path).
+	// 	WithField("took", took).
+	// 	Debugf("building bloom filter took %s\n", took)
 	return nil
 }
 
@@ -87,7 +87,7 @@ func (s *segment) computeAndStoreBloomFilter(path string) error {
 }
 
 func (s *segment) precomputeBloomFilter() error {
-	before := time.Now()
+	// before := time.Now()
 
 	path := fmt.Sprintf("%s.tmp", s.bloomFilterPath())
 	ok, err := fileExists(path)
@@ -103,11 +103,11 @@ func (s *segment) precomputeBloomFilter() error {
 		return err
 	}
 
-	took := time.Since(before)
-	s.logger.WithField("action", "lsm_precompute_disk_segment_build_bloom_filter_primary").
-		WithField("path", s.path).
-		WithField("took", took).
-		Debugf("building bloom filter took %s\n", took)
+	// took := time.Since(before)
+	// s.logger.WithField("action", "lsm_precompute_disk_segment_build_bloom_filter_primary").
+	// 	WithField("path", s.path).
+	// 	WithField("took", took).
+	// 	Debugf("building bloom filter took %s\n", took)
 
 	return nil
 }

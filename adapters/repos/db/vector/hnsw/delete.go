@@ -28,6 +28,7 @@ type breakCleanUpTombstonedNodesFunc func() bool
 // Delete attaches a tombstone to an item so it can be periodically cleaned up
 // later and the edges reassigned
 func (h *hnsw) Delete(ids ...uint64) error {
+	h.Dump("BEFORE DELETING", fmt.Sprintf("%v", ids))
 	h.compressActionLock.RLock()
 	defer h.compressActionLock.RUnlock()
 
@@ -71,15 +72,18 @@ func (h *hnsw) Delete(ids ...uint64) error {
 
 			denyList := h.tombstonesAsDenyList()
 			if onlyNode, err := h.resetIfOnlyNode(node, denyList); err != nil {
+				h.Dump("AFTER DELETING ERR", fmt.Sprintf("%v", ids), fmt.Sprintf("%s", errors.Wrap(err, "reset index")))
 				return errors.Wrap(err, "reset index")
 			} else if !onlyNode {
 				if err := h.deleteEntrypoint(node, denyList); err != nil {
+					h.Dump("AFTER DELETING ERR", fmt.Sprintf("%v", ids), fmt.Sprintf("%s", errors.Wrap(err, "delete entrypoint")))
 					return errors.Wrap(err, "delete entrypoint")
 				}
 			}
 		}
 	}
 
+	h.Dump("AFTER DELETING", fmt.Sprintf("%v", ids))
 	return nil
 }
 
@@ -181,6 +185,7 @@ func (h *hnsw) CleanUpTombstonedNodes(shouldBreak cyclemanager.ShouldBreakFunc) 
 }
 
 func (h *hnsw) cleanUpTombstonedNodes(shouldBreak cyclemanager.ShouldBreakFunc) (bool, error) {
+	fmt.Printf("  ==> [%s] starting cleanUpTombstonedNodes\n", h.id)
 	h.metrics.StartCleanup(1)
 	defer h.metrics.EndCleanup(1)
 
@@ -195,8 +200,10 @@ func (h *hnsw) cleanUpTombstonedNodes(shouldBreak cyclemanager.ShouldBreakFunc) 
 	executed := false
 	ok, deleteList := h.copyTombstonesToAllowList(breakCleanUpTombstonedNodes)
 	if !ok {
+		fmt.Printf("  ==> [%s] nothing to cleanup\n", h.id)
 		return executed, nil
 	}
+	fmt.Printf("  ==> [%s] delete list [%v]\n", h.id, deleteList.Slice())
 
 	executed = true
 	if ok, err := h.reassignNeighborsOf(deleteList, breakCleanUpTombstonedNodes); err != nil {
@@ -475,8 +482,8 @@ func (h *hnsw) findNewGlobalEntrypoint(denyList helpers.AllowList, targetLevel i
 	// the way down to level 0. This can only mean the graph is empty, which is
 	// unexpected. This situation should have been prevented by the deleteLock.
 	panic(fmt.Sprintf(
-		"class %s: shard %s: findNewEntrypoint called on an empty hnsw graph",
-		h.className, h.shardName))
+		"class %s: shard %s: id %s: findNewEntrypoint called on an empty hnsw graph",
+		h.className, h.shardName, h.id))
 }
 
 // returns entryPointID, level and whether a change occurred
@@ -527,8 +534,8 @@ func (h *hnsw) findNewLocalEntrypoint(denyList helpers.AllowList, targetLevel in
 	}
 
 	panic(fmt.Sprintf(
-		"class %s: shard %s: findNewLocalEntrypoint called on an empty hnsw graph",
-		h.className, h.shardName))
+		"class %s: shard %s: id %s: findNewLocalEntrypoint called on an empty hnsw graph",
+		h.className, h.shardName, h.id))
 }
 
 func (h *hnsw) isOnlyNode(needle *vertex, denyList helpers.AllowList) bool {

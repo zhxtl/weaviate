@@ -23,28 +23,30 @@ import (
 
 // Dump to stdout for debugging purposes
 func (h *hnsw) Dump(labels ...string) {
+	var s string
 	if len(labels) > 0 {
-		fmt.Printf("--------------------------------------------------\n")
-		fmt.Printf("--  %s\n", strings.Join(labels, ", "))
+		s += fmt.Sprintf("==================================================\n")
+		s += fmt.Sprintf("--  %s\n", strings.Join(labels, ", "))
 	}
-	fmt.Printf("--------------------------------------------------\n")
-	fmt.Printf("ID: %s\n", h.id)
-	fmt.Printf("Entrypoint: %d\n", h.entryPointID)
-	fmt.Printf("Max Level: %d\n", h.currentMaximumLayer)
-	fmt.Printf("Tombstones %v\n", h.tombstones)
-	fmt.Printf("\nNodes and Connections:\n")
+	s += fmt.Sprintf("--------------------------------------------------\n")
+	s += fmt.Sprintf("ID: %s\n", h.id)
+	s += fmt.Sprintf("Entrypoint: %d\n", h.entryPointID)
+	s += fmt.Sprintf("Max Level: %d\n", h.currentMaximumLayer)
+	s += fmt.Sprintf("Tombstones %v\n", h.tombstones)
+	s += fmt.Sprintf("\nNodes and Connections:\n")
 	for _, node := range h.nodes {
 		if node == nil {
 			continue
 		}
 
-		fmt.Printf("  Node %d (level %d)\n", node.id, node.level)
+		s += fmt.Sprintf("  Node %d (level %d)\n", node.id, node.level)
 		for level, conns := range node.connections {
-			fmt.Printf("    Level %d: Connections: %v\n", level, conns)
+			s += fmt.Sprintf("    Level %d: Connections: %v\n", level, conns)
 		}
 	}
 
-	fmt.Printf("--------------------------------------------------\n")
+	s += fmt.Sprintf("==================================================\n\n\n")
+	fmt.Print(s)
 }
 
 // DumpJSON to stdout for debugging purposes

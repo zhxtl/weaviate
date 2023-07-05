@@ -169,7 +169,7 @@ func (s *Shard) initVectorIndex(
 		// update: switched to dynamic intervals with values between 500ms and 10s
 		// introduced to address https://github.com/weaviate/weaviate/issues/2783
 		cyclemanager.HnswCommitLoggerCycleTicker(),
-		cyclemanager.NewFixedIntervalTicker(time.Duration(hnswUserConfig.CleanupIntervalSeconds)*time.Second))
+		cyclemanager.NewFixedIntervalTicker(10*time.Hour))
 
 	vi, err := hnsw.New(hnsw.Config{
 		Logger:               s.index.logger,

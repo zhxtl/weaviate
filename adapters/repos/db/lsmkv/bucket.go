@@ -819,11 +819,11 @@ func (b *Bucket) isReadOnly() bool {
 // calling, but there are some situations where this might be intended, such as
 // in test scenarios or when a force flush is desired.
 func (b *Bucket) FlushAndSwitch() error {
-	before := time.Now()
+	// before := time.Now()
 
-	b.logger.WithField("action", "lsm_memtable_flush_start").
-		WithField("path", b.dir).
-		Trace("start flush and switch")
+	// b.logger.WithField("action", "lsm_memtable_flush_start").
+	// 	WithField("path", b.dir).
+	// 	Trace("start flush and switch")
 	if err := b.atomicallySwitchMemtable(); err != nil {
 		return errors.Wrap(err, "switch active memtable")
 	}
@@ -836,15 +836,15 @@ func (b *Bucket) FlushAndSwitch() error {
 		return errors.Wrap(err, "add segment and remove flushing")
 	}
 
-	took := time.Since(before)
-	b.logger.WithField("action", "lsm_memtable_flush_complete").
-		WithField("path", b.dir).
-		Trace("finish flush and switch")
+	// took := time.Since(before)
+	// b.logger.WithField("action", "lsm_memtable_flush_complete").
+	// 	WithField("path", b.dir).
+	// 	Trace("finish flush and switch")
 
-	b.logger.WithField("action", "lsm_memtable_flush_complete").
-		WithField("path", b.dir).
-		WithField("took", took).
-		Debugf("flush and switch took %s\n", took)
+	// b.logger.WithField("action", "lsm_memtable_flush_complete").
+	// 	WithField("path", b.dir).
+	// 	WithField("took", took).
+	// 	Debugf("flush and switch took %s\n", took)
 
 	return nil
 }
