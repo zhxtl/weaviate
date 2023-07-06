@@ -146,24 +146,34 @@ func (h *hnsw) filteredInsert(node *vertex, nodeVec []float32, filter int) error
 		}
 	*/
 	// REPLACING WITH
-	h.RLock()
+	/*
+		Only one filter at a time can create it's initial elements.
+		I will only lock the other threads if they are modifying the same filter.
+
+		Can create a map of mutexes,
+		I can have a map that will associate a filter per mutex
+
+		`lockPerFilter` achieves better parallelization for different filters.
+	*/
+	h.Lock()
 	entryPointID, ok := h.entryPointIDperFilter[filter]
-	h.RUnlock()
 	if !ok {
 		firstInsertError = h.insertInitialElementPerFilter(node, nodeVec, filter)
+		h.Unlock()
 		return firstInsertError
 	}
+	h.Unlock()
 
 	node.markAsMaintenance()
 
-	h.RLock()
+	h.Lock() // optimize to RLock() once you are sure how this works, more of an optimization.
 	// initially use the "global" entrypoint which is guaranteed to be on the
 	// currently highest layer
 	//entryPointID := h.entryPointIDperFilter[node.filter]
 	// initially use the level of the entrypoint which is the highest level of
 	// the h-graph in the first iteration
 	currentMaximumLayer := h.currentMaximumLayerPerFilter[filter]
-	h.RUnlock()
+	h.Unlock()
 
 	targetLevel := int(math.Floor(-math.Log(h.randFunc()) * h.levelNormalizer))
 
@@ -215,7 +225,7 @@ func (h *hnsw) filteredInsert(node *vertex, nodeVec []float32, filter int) error
 	before = time.Now()
 
 	entryPointID, err = h.findBestEntrypointForNode(currentMaximumLayer, targetLevel,
-		entryPointID, nodeVec, filter) // still need to change all this lmao...
+		entryPointID, nodeVec, filter)
 	if err != nil {
 		return errors.Wrap(err, "find best entrypoint")
 	}

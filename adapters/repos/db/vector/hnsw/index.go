@@ -71,6 +71,8 @@ type hnsw struct {
 	// this point is always currentMaximumLayer
 	entryPointIDperFilter map[int]uint64 // not sure if uint64 is the right type for the filters, but this will be super obvious in a second
 
+	// IDEA -- lockPerFilter map[int]mutex
+
 	// ef parameter used in construction phases, should be higher than ef during querying
 	efConstruction int
 
