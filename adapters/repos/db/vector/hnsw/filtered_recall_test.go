@@ -143,7 +143,7 @@ func TestFilteredRecall(t *testing.T) {
 
 		fmt.Printf("With k=20")
 
-		k := 20
+		k := 100
 
 		var relevant_retrieved int
 		var recall float32
@@ -160,16 +160,18 @@ func TestFilteredRecall(t *testing.T) {
 
 			require.Nil(t, err)
 
-			relevant_retrieved += matchesInLists(truths[i], results)
-			recall += float32(relevant_retrieved) / float32(len(truths[i]))
+			relevant_retrieved = matchesInLists(truths[i], results)
+			fmt.Print(float32(relevant_retrieved) / 100)
+			fmt.Print("\n")
+			recall += float32(relevant_retrieved) / 100
 
 			// Would I want to see a histogram of recalls per query?
 
-			fmt.Print("\n")
+			fmt.Print("LABEL \n")
 			fmt.Print(queries[i].Label)
-			fmt.Print("\n")
+			fmt.Print("\n RESULTS \n")
 			fmt.Print(results)
-			fmt.Print("\n")
+			fmt.Print("\n TRUTHS \n")
 			fmt.Print(truths[i])
 			fmt.Print("\n")
 		}
