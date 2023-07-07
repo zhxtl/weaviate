@@ -24,6 +24,9 @@ import (
 	"testing"
 	"time"
 
+	"net/http"
+	_ "net/http/pprof"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaviate/weaviate/adapters/repos/db/helpers"
@@ -33,6 +36,13 @@ import (
 )
 
 //"github.com/weaviate/weaviate/adapters/repos/db/helpers"
+
+func init() {
+	go func() {
+		runtime.SetBlockProfileRate(1)
+		http.ListenAndServe("localhost:6060", nil)
+	}()
+}
 
 func TestFilteredRecall(t *testing.T) {
 	efConstruction := 256
@@ -135,8 +145,8 @@ func TestFilteredRecall(t *testing.T) {
 
 		k := 20
 
-		var relevant int
-		var retrieved int
+		var relevant_retrieved int
+		var recall float32
 
 		for i := 0; i < len(queries); i++ {
 			queryFilter := queries[i].Label
@@ -150,8 +160,10 @@ func TestFilteredRecall(t *testing.T) {
 
 			require.Nil(t, err)
 
-			retrieved += len(truths[i])
-			relevant += matchesInLists(truths[i], results)
+			relevant_retrieved += matchesInLists(truths[i], results)
+			recall += float32(relevant_retrieved) / float32(len(truths[i]))
+
+			// Would I want to see a histogram of recalls per query?
 
 			fmt.Print("\n")
 			fmt.Print(queries[i].Label)
@@ -162,7 +174,7 @@ func TestFilteredRecall(t *testing.T) {
 			fmt.Print("\n")
 		}
 
-		recall := float32(relevant) / float32(retrieved)
+		recall = float32(recall) / float32(len(queries))
 		fmt.Printf("recall is %f\n", recall)
 		assert.True(t, recall >= 0.09)
 	})

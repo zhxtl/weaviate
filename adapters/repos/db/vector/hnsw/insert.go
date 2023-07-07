@@ -155,25 +155,25 @@ func (h *hnsw) filteredInsert(node *vertex, nodeVec []float32, filter int) error
 
 		`lockPerFilter` achieves better parallelization for different filters.
 	*/
-	h.Lock()
+	h.RLock()
 	entryPointID, ok := h.entryPointIDperFilter[filter]
+	h.RUnlock()
 	if !ok {
+		//h.Lock()
 		firstInsertError = h.insertInitialElementPerFilter(node, nodeVec, filter)
-		h.Unlock()
+		// Locking is already nested within `insertInitialElementPerFilter`
+		//h.Unlock()
 		return firstInsertError
 	}
-	h.Unlock()
-
 	node.markAsMaintenance()
-
-	h.Lock() // optimize to RLock() once you are sure how this works, more of an optimization.
+	h.RLock() // optimize to RLock() once you are sure how this works, more of an optimization.
 	// initially use the "global" entrypoint which is guaranteed to be on the
 	// currently highest layer
 	//entryPointID := h.entryPointIDperFilter[node.filter]
 	// initially use the level of the entrypoint which is the highest level of
 	// the h-graph in the first iteration
 	currentMaximumLayer := h.currentMaximumLayerPerFilter[filter]
-	h.Unlock()
+	h.RUnlock()
 
 	targetLevel := int(math.Floor(-math.Log(h.randFunc()) * h.levelNormalizer))
 
