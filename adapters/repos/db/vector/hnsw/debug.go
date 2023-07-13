@@ -23,6 +23,7 @@ import (
 
 // Dump to stdout for debugging purposes
 func (h *hnsw) Dump(labels ...string) {
+	return
 	var s string
 	if len(labels) > 0 {
 		s += fmt.Sprintf("==================================================\n")

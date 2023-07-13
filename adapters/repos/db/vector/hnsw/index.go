@@ -547,6 +547,56 @@ func (h *hnsw) distBetweenNodeAndVec(node uint64, vecB []float32) (float32, bool
 	return h.distancerProvider.SingleDist(vecA, vecB)
 }
 
+func (h *hnsw) distBetweenNodeAndVec2(node uint64, vecB []float32, nodeId uint64) (float32, bool, error) {
+	if h.compressed.Load() {
+		v1, err := h.compressedVectorsCache.get(context.Background(), node)
+		if err != nil {
+			var e storobj.ErrNotFound
+			if errors.As(err, &e) {
+				h.handleDeletedNode(e.DocID)
+				fmt.Printf("  ==> [%v] distBetweenNodeAndVec2 1 not found [%v]\n\n", nodeId, node)
+				return 0, false, nil
+			} else {
+				// not a typed error, we can recover from, return with err
+				return 0, false, errors.Wrapf(err,
+					"could not get vector of object at docID %d", node)
+			}
+		}
+		if len(v1) == 0 {
+			return 0, false, fmt.Errorf("got a nil or zero-length vector at docID %d", node)
+		}
+
+		return h.pq.DistanceBetweenCompressedAndUncompressedVectors(vecB, v1), true, nil
+	}
+	// TODO: introduce single search/transaction context instead of spawning new
+	// ones
+	vecA, err := h.vectorForID(context.Background(), node)
+	if err != nil {
+		var e storobj.ErrNotFound
+		if errors.As(err, &e) {
+			h.handleDeletedNode(e.DocID)
+			fmt.Printf("  ==> [%v] distBetweenNodeAndVec2 2 not found [%v]\n\n", nodeId, node)
+			return 0, false, nil
+		} else {
+			// not a typed error, we can recover from, return with err
+			return 0, false, errors.Wrapf(err,
+				"could not get vector of object at docID %d", node)
+		}
+	}
+
+	if len(vecA) == 0 {
+		return 0, false, fmt.Errorf(
+			"got a nil or zero-length vector at docID %d", node)
+	}
+
+	if len(vecB) == 0 {
+		return 0, false, fmt.Errorf(
+			"got a nil or zero-length vector as search vector")
+	}
+
+	return h.distancerProvider.SingleDist(vecA, vecB)
+}
+
 func (h *hnsw) Stats() {
 	fmt.Printf("levels: %d\n", h.currentMaximumLayer)
 

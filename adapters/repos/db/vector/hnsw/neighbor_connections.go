@@ -13,6 +13,7 @@ package hnsw
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/pkg/errors"
@@ -248,6 +249,8 @@ func (n *neighborFinderConnector) pickEntrypoint() error {
 	localDeny := n.denyList.DeepCopy()
 	candidate := n.entryPointID
 
+	fmt.Printf("  ==> [%v] pickEntrypoint starting, denylist [%v], target [%v], entrypoint [%v]\n\n", n.node.id, localDeny.Slice(), n.targetLevel, candidate)
+
 	// make sure the loop cannot block forever. In most cases, results should be
 	// found within micro to milliseconds, this is just a last resort to handle
 	// the unknown somewhat gracefully, for example if there is a bug in the
@@ -261,6 +264,7 @@ func (n *neighborFinderConnector) pickEntrypoint() error {
 		}
 
 		success, err := n.tryEpCandidate(candidate)
+		fmt.Printf("  ==> [%v] pickEntrypoint tried candiadate [%v], success [%v], err [%v]\n\n", n.node.id, candidate, success, err)
 		if err != nil {
 			return err
 		}
@@ -272,10 +276,11 @@ func (n *neighborFinderConnector) pickEntrypoint() error {
 		// no success so far, we need to keep going and find a better candidate
 		// make sure we never visit this candidate again
 		localDeny.Insert(candidate)
+		fmt.Printf("  ==> [%v] pickEntrypoint denied candiadate [%v]\n\n", n.node.id, candidate)
 		// now find a new one
 
 		alternative, _ := n.graph.findNewLocalEntrypoint(localDeny,
-			n.graph.currentMaximumLayer, candidate)
+			n.graph.currentMaximumLayer, candidate, n.node.id)
 		candidate = alternative
 	}
 }
@@ -283,25 +288,29 @@ func (n *neighborFinderConnector) pickEntrypoint() error {
 func (n *neighborFinderConnector) tryEpCandidate(candidate uint64) (bool, error) {
 	node := n.graph.nodeByID(candidate)
 	if node == nil {
+		fmt.Printf("  ==> [%v] tryEpCandidate node == nil [%v]\n\n", n.node.id, candidate)
 		return false, nil
 	}
 
 	if node.isUnderMaintenance() {
+		fmt.Printf("  ==> [%v] tryEpCandidate node.isUnderMaintenance() [%v]\n\n", n.node.id, candidate)
 		return false, nil
 	}
 
-	dist, ok, err := n.graph.distBetweenNodeAndVec(candidate, n.nodeVec)
+	dist, ok, err := n.graph.distBetweenNodeAndVec2(candidate, n.nodeVec, n.node.id)
 	if err != nil {
 		// not an error we could recover from - fail!
 		return false, errors.Wrapf(err,
 			"calculate distance between insert node and entrypoint")
 	}
 	if !ok {
+		fmt.Printf("  ==> [%v] tryEpCandidate !ok [%v]\n\n", n.node.id, candidate)
 		return false, nil
 	}
 
 	// we were able to calculate a distance, we're good
 	n.entryPointDist = dist
 	n.entryPointID = candidate
+	fmt.Printf("  ==> [%v] tryEpCandidate changed entrypoint to [%v]\n\n", n.node.id, candidate)
 	return true, nil
 }

@@ -127,11 +127,13 @@ func (s *Shard) updateGeoIndex(propName string, index propertyspecific.Index,
 	}
 
 	if status.docIDChanged {
+		fmt.Printf("  ==> [%v] updateGeoIndex / deleteFromGeoIndex [%v]\n\n", status.docID, status.oldDocID)
 		if err := s.deleteFromGeoIndex(index, status.oldDocID); err != nil {
 			return errors.Wrap(err, "delete old doc id from geo index")
 		}
 	}
 
+	fmt.Printf("  ==> [%v] updateGeoIndex / addToGeoIndex\n\n", status.docID)
 	return s.addToGeoIndex(propName, index, obj, status)
 }
 

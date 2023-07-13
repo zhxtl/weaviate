@@ -351,7 +351,7 @@ func (h *hnsw) reassignNeighbor(neighbor uint64, deleteList helpers.AllowList, b
 		tmpDenyList.Insert(entryPointID)
 
 		alternative, level := h.findNewLocalEntrypoint(tmpDenyList, currentMaximumLayer,
-			entryPointID)
+			entryPointID, 100000)
 		if level > neighborLevel {
 			neighborNode.Lock()
 			// reset connections according to level
@@ -488,9 +488,12 @@ func (h *hnsw) findNewGlobalEntrypoint(denyList helpers.AllowList, targetLevel i
 
 // returns entryPointID, level and whether a change occurred
 func (h *hnsw) findNewLocalEntrypoint(denyList helpers.AllowList, targetLevel int,
-	oldEntrypoint uint64,
+	oldEntrypoint uint64, nodeId uint64,
 ) (uint64, int) {
+	fmt.Printf("  ==> [%v] findNewLocalEntrypoint starting, denylist [%v], target [%v], old entrypoint [%v]\n\n", nodeId, denyList.Slice(), targetLevel, oldEntrypoint)
+
 	if h.getEntrypoint() != oldEntrypoint {
+		fmt.Printf("  ==> [%v] findNewLocalEntrypoint finished: h.getEntrypoint() != oldEntrypoint [%v] [%v]\n\n", nodeId, h.getEntrypoint(), oldEntrypoint)
 		// the current global entrypoint is different from our local entrypoint, so
 		// we can just use the global one, as the global one is guaranteed to be
 		// present on every level, i.e. it is always chosen from the highest
@@ -503,12 +506,15 @@ func (h *hnsw) findNewLocalEntrypoint(denyList helpers.AllowList, targetLevel in
 	h.RUnlock()
 
 	for l := targetLevel; l >= 0; l-- {
+		fmt.Printf("  ==> [%v] findNewLocalEntrypoint loop 1 targetLevel [%v] l [%v]\n\n", nodeId, targetLevel, l)
 		// ideally we can find a new entrypoint at the same level of the
 		// to-be-deleted node. However, there is a chance it was the only node on
 		// that level, in that case we need to look at the next lower level for a
 		// better candidate
 		for i := 0; i < maxNodes; i++ {
+			fmt.Printf("  ==> [%v] findNewLocalEntrypoint loop 2 maxNodes [%v] i [%v]\n\n", nodeId, maxNodes, i)
 			if denyList.Contains(uint64(i)) {
+				fmt.Printf("  ==> [%v] findNewLocalEntrypoint loop 2 continue (denyList.Contains)\n\n", nodeId)
 				continue
 			}
 			h.RLock()
@@ -516,6 +522,7 @@ func (h *hnsw) findNewLocalEntrypoint(denyList helpers.AllowList, targetLevel in
 			h.RUnlock()
 
 			if candidate == nil {
+				fmt.Printf("  ==> [%v] findNewLocalEntrypoint loop 2 continue (candidate == nil)\n\n", nodeId)
 				continue
 			}
 
@@ -525,10 +532,12 @@ func (h *hnsw) findNewLocalEntrypoint(denyList helpers.AllowList, targetLevel in
 
 			if candidateLevel != l {
 				// not reaching up to the current level, skip in hope of finding another candidate
+				fmt.Printf("  ==> [%v] findNewLocalEntrypoint loop 2 continue (candidateLevel != l) [%v] [%v]\n\n", nodeId, candidateLevel, l)
 				continue
 			}
 
 			// we have a node that matches
+			fmt.Printf("  ==> [%v] findNewLocalEntrypoint finished: candidateLevel == l [%v] [%v] i [%v]\n\n", nodeId, candidateLevel, l, i)
 			return uint64(i), l
 		}
 	}
