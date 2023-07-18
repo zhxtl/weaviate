@@ -80,6 +80,10 @@ func (h *hnsw) selectNeighborsHeuristic(input *priorityqueue.Queue,
 
 		vecs, errs := h.multiVectorForID(context.TODO(), ids)
 
+		/* loop through ids and get the filters
+		node_filters := make([]map[int]int, len(vecs))
+		*/
+
 		returnList = h.pools.pqItemSlice.Get().([]priorityqueue.ItemWithIndex)
 
 		for closestFirst.Len() > 0 && len(returnList) < max {
@@ -105,7 +109,10 @@ func (h *hnsw) selectNeighborsHeuristic(input *priorityqueue.Queue,
 			for _, item := range returnList {
 				peerDist, _, _ := h.distancerProvider.SingleDist(currVec,
 					vecs[item.Index])
+				/*
+					peerFilter := h.nodes[item.Index]
 
+				*/
 				if peerDist < distToQuery {
 					good = false
 					break
