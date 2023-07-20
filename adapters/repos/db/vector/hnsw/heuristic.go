@@ -21,7 +21,7 @@ import (
 )
 
 func (h *hnsw) selectNeighborsHeuristic(input *priorityqueue.Queue,
-	max int, denyList helpers.AllowList,
+	max int, filter int, denyList helpers.AllowList,
 ) error {
 	if input.Len() < max {
 		return nil
@@ -80,14 +80,19 @@ func (h *hnsw) selectNeighborsHeuristic(input *priorityqueue.Queue,
 
 		vecs, errs := h.multiVectorForID(context.TODO(), ids)
 
-		/* loop through ids and get the filters
-		node_filters := make([]map[int]int, len(vecs))
+		// Future --> node_filters := make([]map[int]int, len(vecs))
+		// peerFilters := make([]map[int]int, len(vecs))
+		/*
+			for _, id := range ids {
+				filters = append(filters, h.nodes[id].filter)
+			}
 		*/
 
 		returnList = h.pools.pqItemSlice.Get().([]priorityqueue.ItemWithIndex)
 
 		for closestFirst.Len() > 0 && len(returnList) < max {
 			curr := closestFirst.Pop()
+			currFilter := h.nodes[curr.ID].filter
 			if denyList != nil && denyList.Contains(curr.ID) {
 				continue
 			}
@@ -106,16 +111,22 @@ func (h *hnsw) selectNeighborsHeuristic(input *priorityqueue.Queue,
 				}
 			}
 			good := true
-			for _, item := range returnList {
-				peerDist, _, _ := h.distancerProvider.SingleDist(currVec,
-					vecs[item.Index])
-				/*
-					peerFilter := h.nodes[item.Index]
 
-				*/
-				if peerDist < distToQuery {
-					good = false
-					break
+			// if currFilter == filter, good to add to returnList
+			if currFilter != filter {
+				for _, item := range returnList {
+					peerDist, _, _ := h.distancerProvider.SingleDist(currVec,
+						vecs[item.Index])
+
+					/*
+						Will need more logic for the currFilter / candidateFilter overlap for more filters
+						peerFilter := peerFilters[item.Index] // this vs. var peerFilter int somewhere else
+					*/
+
+					if peerDist < distToQuery {
+						good = false
+						break
+					}
 				}
 			}
 

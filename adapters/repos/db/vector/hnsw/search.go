@@ -162,7 +162,7 @@ func (h *hnsw) shouldRescore() bool {
 }
 
 func (h *hnsw) searchLayerByVector(queryVector []float32,
-	entrypoints *priorityqueue.Queue, ef int, level int,
+	entrypoints *priorityqueue.Queue, ef int, level int, filter int, filteredInsert bool,
 	allowList helpers.AllowList) (*priorityqueue.Queue, error,
 ) {
 	var byteDistancer *ssdhelpers.PQDistancer
@@ -170,11 +170,11 @@ func (h *hnsw) searchLayerByVector(queryVector []float32,
 		byteDistancer = h.pq.NewDistancer(queryVector)
 		defer h.pq.ReturnDistancer(byteDistancer)
 	}
-	return h.searchLayerByVectorWithDistancer(queryVector, entrypoints, ef, level, allowList, byteDistancer)
+	return h.searchLayerByVectorWithDistancer(queryVector, entrypoints, ef, level, filter, filteredInsert, allowList, byteDistancer)
 }
 
 func (h *hnsw) searchLayerByVectorWithDistancer(queryVector []float32,
-	entrypoints *priorityqueue.Queue, ef int, level int,
+	entrypoints *priorityqueue.Queue, ef int, level int, filter int, filteredInsert bool,
 	allowList helpers.AllowList, byteDistancer *ssdhelpers.PQDistancer) (*priorityqueue.Queue, error,
 ) {
 	h.pools.visitedListsLock.Lock()
@@ -263,6 +263,8 @@ func (h *hnsw) searchLayerByVectorWithDistancer(queryVector []float32,
 			// make sure we never visit this neighbor again
 			visited.Visit(neighborID)
 			var distance float32
+			var neighborFilter int
+			neighborFilter = 99_999 // initialize it
 			var ok bool
 			var err error
 			if h.compressed.Load() {
@@ -286,6 +288,12 @@ func (h *hnsw) searchLayerByVectorWithDistancer(queryVector []float32,
 					// have an allow list (i.e. the user has probably set some sort of a
 					// filter restricting this search further. As a result we have to
 					// ignore items not on the list
+					if filteredInsert == true {
+						neighborFilter = h.nodes[neighborID].filter
+						if filter != neighborFilter {
+							continue
+						}
+					}
 					if !allowList.Contains(neighborID) {
 						continue
 					}

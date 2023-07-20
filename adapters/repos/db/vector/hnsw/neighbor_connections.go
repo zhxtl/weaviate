@@ -21,11 +21,11 @@ import (
 )
 
 func (h *hnsw) findAndConnectNeighbors(node *vertex,
-	entryPointID uint64, nodeVec []float32, targetLevel, currentMaxLevel int,
+	entryPointID uint64, nodeVec []float32, targetLevel, currentMaxLevel int, filter int,
 	denyList helpers.AllowList,
 ) error {
 	nfc := newNeighborFinderConnector(h, node, entryPointID, nodeVec, targetLevel,
-		currentMaxLevel, denyList)
+		currentMaxLevel, filter, denyList)
 
 	return nfc.Do()
 }
@@ -36,6 +36,7 @@ type neighborFinderConnector struct {
 	entryPointID    uint64
 	entryPointDist  float32
 	nodeVec         []float32
+	filter          int
 	targetLevel     int
 	currentMaxLevel int
 	denyList        helpers.AllowList
@@ -43,7 +44,7 @@ type neighborFinderConnector struct {
 }
 
 func newNeighborFinderConnector(graph *hnsw, node *vertex, entryPointID uint64,
-	nodeVec []float32, targetLevel, currentMaxLevel int,
+	nodeVec []float32, filter int, targetLevel, currentMaxLevel int,
 	denyList helpers.AllowList,
 ) *neighborFinderConnector {
 	return &neighborFinderConnector{
@@ -51,6 +52,7 @@ func newNeighborFinderConnector(graph *hnsw, node *vertex, entryPointID uint64,
 		node:            node,
 		entryPointID:    entryPointID,
 		nodeVec:         nodeVec,
+		filter:          filter,
 		targetLevel:     targetLevel,
 		currentMaxLevel: currentMaxLevel,
 		denyList:        denyList,
@@ -59,7 +61,7 @@ func newNeighborFinderConnector(graph *hnsw, node *vertex, entryPointID uint64,
 
 func (n *neighborFinderConnector) Do() error {
 	for level := min(n.targetLevel, n.currentMaxLevel); level >= 0; level-- {
-		err := n.doAtLevel(level)
+		err := n.doAtLevel(level, n.filter)
 		if err != nil {
 			return errors.Wrapf(err, "at level %d", level)
 		}
@@ -68,7 +70,7 @@ func (n *neighborFinderConnector) Do() error {
 	return nil
 }
 
-func (n *neighborFinderConnector) doAtLevel(level int) error {
+func (n *neighborFinderConnector) doAtLevel(level int, filter int) error {
 	before := time.Now()
 	if err := n.pickEntrypoint(); err != nil {
 		return errors.Wrap(err, "pick entrypoint at level beginning")
@@ -78,7 +80,7 @@ func (n *neighborFinderConnector) doAtLevel(level int) error {
 	eps.Insert(n.entryPointID, n.entryPointDist)
 
 	results, err := n.graph.searchLayerByVector(n.nodeVec, eps, n.graph.efConstruction,
-		level, nil)
+		level, filter, true, nil) // filter = 0 doesn't matter because it checks if filteredInsert
 	if err != nil {
 		return errors.Wrapf(err, "search layer at level %d", level)
 	}
@@ -88,7 +90,7 @@ func (n *neighborFinderConnector) doAtLevel(level int) error {
 
 	// max := n.maximumConnections(level)
 	max := n.graph.maximumConnections
-	if err := n.graph.selectNeighborsHeuristic(results, max, n.denyList); err != nil {
+	if err := n.graph.selectNeighborsHeuristic(results, max, n.filter, n.denyList); err != nil {
 		return errors.Wrap(err, "heuristic")
 	}
 
