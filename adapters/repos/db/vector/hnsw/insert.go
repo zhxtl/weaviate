@@ -183,7 +183,7 @@ func (h *hnsw) insert(node *vertex, nodeVec []float32) error {
 	before = time.Now()
 
 	entryPointID, err = h.findBestEntrypointForNode(currentMaximumLayer, targetLevel,
-		entryPointID, nodeVec)
+		entryPointID, nodeVec, 0, false)
 	if err != nil {
 		return errors.Wrap(err, "find best entrypoint")
 	}
@@ -192,7 +192,7 @@ func (h *hnsw) insert(node *vertex, nodeVec []float32) error {
 	before = time.Now()
 
 	if err := h.findAndConnectNeighbors(node, entryPointID, nodeVec,
-		targetLevel, currentMaximumLayer, helpers.NewAllowList()); err != nil {
+		targetLevel, currentMaximumLayer, node.filter, helpers.NewAllowList()); err != nil {
 		return errors.Wrap(err, "find and connect neighbors")
 	}
 
@@ -243,7 +243,7 @@ func (h *hnsw) filteredAdd(id uint64, vector []float32, filter int) error {
 
 	h.compressActionLock.RLock()
 	defer h.compressActionLock.RUnlock()
-	return h.insert(node, vector)
+	return h.filteredInsert(node, vector)
 }
 func (h *hnsw) insertInitialElementPerFilter(node *vertex, nodeVec []float32) error {
 	h.Lock()

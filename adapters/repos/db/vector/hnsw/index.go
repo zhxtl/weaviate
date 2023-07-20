@@ -259,6 +259,9 @@ func New(cfg Config, uc ent.UserConfig, tombstoneCleanupCycle cyclemanager.Cycle
 		efMax:    int64(uc.DynamicEFMax),
 		efFactor: int64(uc.DynamicEFFactor),
 
+		entryPointIDperFilterValue:        map[int]uint64{},
+		currentMaximumLayerPerFilterValue: make(map[int]int),
+
 		metrics:   NewMetrics(cfg.PrometheusMetrics, cfg.ClassName, cfg.ShardName),
 		shardName: cfg.ShardName,
 

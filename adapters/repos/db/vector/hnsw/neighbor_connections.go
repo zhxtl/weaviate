@@ -188,7 +188,7 @@ func (n *neighborFinderConnector) connectNeighborAtLevel(neighborID uint64,
 			candidates.Insert(existingConnection, dist)
 		}
 
-		err = n.graph.selectNeighborsHeuristic(candidates, maximumConnections, n.denyList)
+		err = n.graph.selectNeighborsHeuristic(candidates, maximumConnections, n.filter, n.denyList)
 		if err != nil {
 			return errors.Wrap(err, "connect neighbors")
 		}

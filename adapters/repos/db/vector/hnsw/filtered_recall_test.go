@@ -116,7 +116,7 @@ func TestFilteredRecall(t *testing.T) {
 				for i, vec := range myJobs {
 					originalIndex := (i * workerCount) + workerID
 					nodeId := uint64(originalIndex)
-					err := vectorIndex.filteredAdd(nodeId, vec.Label, vec.Vector) // change signature to add vec.Label
+					err := vectorIndex.filteredAdd(nodeId, vec.Vector, vec.Label) // change signature to add vec.Label
 					/* Looks good
 					// e.g. map[0:40 1:1 2:2 3:3 4:4 5:5 6:366 7:7 8:448 9:369 10:10 11:11 12:12 13:13 14:54 15:15 16:16 17:17 18:18 19:19]
 					mutex.Lock()
@@ -152,7 +152,7 @@ func TestFilteredRecall(t *testing.T) {
 			queryFilter := queries[i].Label
 			//construct an allowList from the []uint64 of ids that match the filter
 			queryAllowList := helpers.NewAllowList(filterToIDs[queryFilter]...)
-			results, _, err := vectorIndex.SearchByVector(queries[i].Vector, k, queryFilter, queryAllowList)
+			results, _, err := vectorIndex.SearchByVector(queries[i].Vector, k, queryAllowList)
 			//results, _, err := vectorIndex.SearchByVector(queries[i].Vector, k, nil)
 			// it shouldn't matter if it has the allowList or not
 			// ^ because it's only connected to nodes that share the same filter
@@ -180,4 +180,21 @@ func TestFilteredRecall(t *testing.T) {
 		fmt.Printf("recall is %f\n", recall)
 		assert.True(t, recall >= 0.09)
 	})
+}
+
+func matchesInLists(control []uint64, results []uint64) int {
+	desired := map[uint64]struct{}{}
+	for _, relevant := range control {
+		desired[relevant] = struct{}{}
+	}
+
+	var matches int
+	for _, candidate := range results {
+		_, ok := desired[candidate]
+		if ok {
+			matches++
+		}
+	}
+
+	return matches
 }

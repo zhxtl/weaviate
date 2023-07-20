@@ -317,7 +317,7 @@ func (h *hnsw) reassignNeighbor(neighbor uint64, deleteList helpers.AllowList, b
 	neighborNode.Unlock()
 
 	entryPointID, err := h.findBestEntrypointForNode(currentMaximumLayer,
-		neighborLevel, currentEntrypoint, neighborVec)
+		neighborLevel, currentEntrypoint, neighborVec, 0, false)
 	if err != nil {
 		return false, errors.Wrap(err, "find best entrypoint")
 	}
@@ -367,7 +367,7 @@ func (h *hnsw) reassignNeighbor(neighbor uint64, deleteList helpers.AllowList, b
 	}
 
 	if err := h.findAndConnectNeighbors(neighborNode, entryPointID, neighborVec,
-		neighborLevel, currentMaximumLayer, deleteList); err != nil {
+		neighborLevel, currentMaximumLayer, 0, deleteList); err != nil {
 		return false, errors.Wrap(err, "find and connect neighbors")
 	}
 	neighborNode.unmarkAsMaintenance()

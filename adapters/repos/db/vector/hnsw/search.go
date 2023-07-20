@@ -516,7 +516,7 @@ func (h *hnsw) knnSearchByVector(searchVec []float32, k int,
 		eps := priorityqueue.NewMin(10)
 		eps.Insert(entryPointID, entryPointDistance)
 
-		res, err := h.searchLayerByVectorWithDistancer(searchVec, eps, 1, level, nil, byteDistancer)
+		res, err := h.searchLayerByVectorWithDistancer(searchVec, eps, 1, level, 0, false, nil, byteDistancer)
 		if err != nil {
 			return nil, nil, errors.Wrapf(err, "knn search: search layer at level %d", level)
 		}
@@ -559,7 +559,7 @@ func (h *hnsw) knnSearchByVector(searchVec []float32, k int,
 
 	eps := priorityqueue.NewMin(10)
 	eps.Insert(entryPointID, entryPointDistance)
-	res, err := h.searchLayerByVectorWithDistancer(searchVec, eps, ef, 0, allowList, byteDistancer)
+	res, err := h.searchLayerByVectorWithDistancer(searchVec, eps, ef, 0, 0, false, allowList, byteDistancer)
 	if err != nil {
 		return nil, nil, errors.Wrapf(err, "knn search: search layer at level %d", 0)
 	}
