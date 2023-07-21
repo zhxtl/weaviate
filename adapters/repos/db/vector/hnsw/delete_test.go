@@ -83,7 +83,7 @@ func TestDelete_WithoutCleaningUpTombstones(t *testing.T) {
 			allowList.Insert(uint64(i))
 		}
 
-		res, _, err := vectorIndex.SearchByVector([]float32{0.1, 0.1, 0.1}, 20, allowList)
+		res, _, err := vectorIndex.SearchByVector([]float32{0.1, 0.1, 0.1}, 20, 0, allowList)
 		require.Nil(t, err)
 		require.True(t, len(res) > 0)
 		control = res
@@ -106,7 +106,7 @@ func TestDelete_WithoutCleaningUpTombstones(t *testing.T) {
 	})
 
 	t.Run("start a search that should only contain the remaining elements", func(t *testing.T) {
-		res, _, err := vectorIndex.SearchByVector([]float32{0.1, 0.1, 0.1}, 20, nil)
+		res, _, err := vectorIndex.SearchByVector([]float32{0.1, 0.1, 0.1}, 20, 0, nil)
 		require.Nil(t, err)
 		require.True(t, len(res) > 0)
 
@@ -174,7 +174,7 @@ func TestDelete_WithCleaningUpTombstonesOnce(t *testing.T) {
 			allowList.Insert(uint64(i))
 		}
 
-		res, _, err := vectorIndex.SearchByVector([]float32{0.1, 0.1, 0.1}, 20, allowList)
+		res, _, err := vectorIndex.SearchByVector([]float32{0.1, 0.1, 0.1}, 20, 0, allowList)
 		require.Nil(t, err)
 		require.True(t, len(res) > 0)
 		require.Len(t, res, 20)
@@ -220,7 +220,7 @@ func TestDelete_WithCleaningUpTombstonesOnce(t *testing.T) {
 	})
 
 	t.Run("start a search that should only contain the remaining elements", func(t *testing.T) {
-		res, _, err := vectorIndex.SearchByVector([]float32{0.1, 0.1, 0.1}, 20, nil)
+		res, _, err := vectorIndex.SearchByVector([]float32{0.1, 0.1, 0.1}, 20, 0, nil)
 		require.Nil(t, err)
 		require.True(t, len(res) > 0)
 
@@ -290,7 +290,7 @@ func TestDelete_WithCleaningUpTombstonesInBetween(t *testing.T) {
 			allowList.Insert(uint64(i))
 		}
 
-		res, _, err := vectorIndex.SearchByVector([]float32{0.1, 0.1, 0.1}, 20, allowList)
+		res, _, err := vectorIndex.SearchByVector([]float32{0.1, 0.1, 0.1}, 20, 0, allowList)
 		require.Nil(t, err)
 		require.True(t, len(res) > 0)
 
@@ -319,7 +319,7 @@ func TestDelete_WithCleaningUpTombstonesInBetween(t *testing.T) {
 	})
 
 	t.Run("start a search that should only contain the remaining elements", func(t *testing.T) {
-		res, _, err := vectorIndex.SearchByVector([]float32{0.1, 0.1, 0.1}, 20, nil)
+		res, _, err := vectorIndex.SearchByVector([]float32{0.1, 0.1, 0.1}, 20, 0, nil)
 		require.Nil(t, err)
 		require.True(t, len(res) > 0)
 
@@ -356,7 +356,7 @@ func TestDelete_WithCleaningUpTombstonesInBetween(t *testing.T) {
 			require.Nil(t, err)
 		}
 
-		res, _, err := vectorIndex.SearchByVector([]float32{0.1, 0.1, 0.1}, 20, nil)
+		res, _, err := vectorIndex.SearchByVector([]float32{0.1, 0.1, 0.1}, 20, 0, nil)
 		require.Nil(t, err)
 		assert.ElementsMatch(t, []uint64{0, 1, 2, 3, 4}, res)
 	})
@@ -407,7 +407,7 @@ func createIndexImportAllVectorsAndDeleteEven(t *testing.T, vectors [][]float32)
 		require.Nil(t, err)
 	}
 
-	res, _, err := index.SearchByVector([]float32{0.1, 0.1, 0.1}, len(vectors), nil)
+	res, _, err := index.SearchByVector([]float32{0.1, 0.1, 0.1}, len(vectors), 0, nil)
 	require.Nil(t, err)
 	require.True(t, len(res) > 0)
 
@@ -465,7 +465,7 @@ func TestDelete_WithCleaningUpTombstonesStopped(t *testing.T) {
 	})
 
 	t.Run("search remaining elements after cleanup", func(t *testing.T) {
-		res, _, err := index.SearchByVector([]float32{0.1, 0.1, 0.1}, len(vectors), nil)
+		res, _, err := index.SearchByVector([]float32{0.1, 0.1, 0.1}, len(vectors), 0, nil)
 		require.Nil(t, err)
 		require.True(t, len(res) > 0)
 
@@ -489,7 +489,7 @@ func TestDelete_WithCleaningUpTombstonesStopped(t *testing.T) {
 		})
 
 		t.Run("search remaining elements after partial cleanup", func(t *testing.T) {
-			res, _, err := index.SearchByVector([]float32{0.1, 0.1, 0.1}, len(vectors), nil)
+			res, _, err := index.SearchByVector([]float32{0.1, 0.1, 0.1}, len(vectors), 0, nil)
 			require.Nil(t, err)
 			require.Subset(t, controlRemainingResult, res)
 			require.Subset(t, res, controlRemainingResultAfterCleanup)
@@ -500,7 +500,7 @@ func TestDelete_WithCleaningUpTombstonesStopped(t *testing.T) {
 		})
 
 		t.Run("search remaining elements after complete cleanup", func(t *testing.T) {
-			res, _, err := index.SearchByVector([]float32{0.1, 0.1, 0.1}, len(vectors), nil)
+			res, _, err := index.SearchByVector([]float32{0.1, 0.1, 0.1}, len(vectors), 0, nil)
 			require.Nil(t, err)
 			require.Subset(t, controlRemainingResult, res)
 			require.Subset(t, res, controlRemainingResultAfterCleanup)
@@ -584,7 +584,7 @@ func TestDelete_InCompressedIndex_WithCleaningUpTombstonesOnce(t *testing.T) {
 			allowList.Insert(uint64(i))
 		}
 
-		res, _, err := vectorIndex.SearchByVector([]float32{0.1, 0.1, 0.1}, 20, allowList)
+		res, _, err := vectorIndex.SearchByVector([]float32{0.1, 0.1, 0.1}, 20, 0, allowList)
 		require.Nil(t, err)
 		require.True(t, len(res) > 0)
 		require.Len(t, res, 20)
@@ -632,7 +632,7 @@ func TestDelete_InCompressedIndex_WithCleaningUpTombstonesOnce(t *testing.T) {
 	})
 
 	t.Run("start a search that should only contain the remaining elements", func(t *testing.T) {
-		res, _, err := vectorIndex.SearchByVector([]float32{0.1, 0.1, 0.1}, 20, nil)
+		res, _, err := vectorIndex.SearchByVector([]float32{0.1, 0.1, 0.1}, 20, 0, nil)
 		require.Nil(t, err)
 		require.True(t, len(res) > 0)
 
@@ -973,7 +973,7 @@ func TestDelete_EntrypointIssues(t *testing.T) {
 
 	t.Run("verify that the results are correct", func(t *testing.T) {
 		position := 3
-		res, _, err := index.knnSearchByVector(testVectors[position], 50, 36, nil)
+		res, _, err := index.knnSearchByVector(testVectors[position], 50, 36, 0, nil)
 		require.Nil(t, err)
 		assert.Equal(t, expectedResults, res)
 	})
@@ -1072,7 +1072,7 @@ func TestDelete_MoreEntrypointIssues(t *testing.T) {
 
 	t.Run("verify that the results are correct", func(t *testing.T) {
 		position := 3
-		res, _, err := index.knnSearchByVector(testVectors[position], 50, 36, nil)
+		res, _, err := index.knnSearchByVector(testVectors[position], 50, 36, 0, nil)
 		require.Nil(t, err)
 		assert.Equal(t, expectedResults, res)
 	})
@@ -1114,7 +1114,7 @@ func TestDelete_TombstonedEntrypoint(t *testing.T) {
 	require.Nil(t, index.Delete(0))
 	require.Nil(t, index.Add(1, objVec))
 
-	res, _, err := index.SearchByVector(searchVec, 100, nil)
+	res, _, err := index.SearchByVector(searchVec, 100, 0, nil)
 	require.Nil(t, err)
 	assert.Equal(t, []uint64{1}, res, "should contain the only result")
 
@@ -1148,7 +1148,7 @@ func TestDelete_Flakyness_gh_1369(t *testing.T) {
 			allowList.Insert(uint64(i))
 		}
 
-		res, _, err := index.SearchByVector([]float32{0.1, 0.1, 0.1}, 20, allowList)
+		res, _, err := index.SearchByVector([]float32{0.1, 0.1, 0.1}, 20, 0, allowList)
 		require.Nil(t, err)
 		require.True(t, len(res) > 0)
 
@@ -1163,7 +1163,7 @@ func TestDelete_Flakyness_gh_1369(t *testing.T) {
 	})
 
 	t.Run("verify against control BEFORE Tombstone Cleanup", func(t *testing.T) {
-		res, _, err := index.SearchByVector([]float32{0.1, 0.1, 0.1}, 20, nil)
+		res, _, err := index.SearchByVector([]float32{0.1, 0.1, 0.1}, 20, 0, nil)
 		require.Nil(t, err)
 		require.True(t, len(res) > 0)
 		assert.Equal(t, control, res)
@@ -1174,7 +1174,7 @@ func TestDelete_Flakyness_gh_1369(t *testing.T) {
 	})
 
 	t.Run("verify against control AFTER Tombstone Cleanup", func(t *testing.T) {
-		res, _, err := index.SearchByVector([]float32{0.1, 0.1, 0.1}, 20, nil)
+		res, _, err := index.SearchByVector([]float32{0.1, 0.1, 0.1}, 20, 0, nil)
 		require.Nil(t, err)
 		require.True(t, len(res) > 0)
 		assert.Equal(t, control, res)

@@ -61,7 +61,7 @@ func (h *hnsw) autoEfFromK(k int) int {
 	return ef
 }
 
-func (h *hnsw) SearchByVector(vector []float32, k int, allowList helpers.AllowList) ([]uint64, []float32, error) {
+func (h *hnsw) SearchByVector(vector []float32, k int, filter int, allowList helpers.AllowList) ([]uint64, []float32, error) {
 	h.compressActionLock.RLock()
 	defer h.compressActionLock.RUnlock()
 
@@ -75,7 +75,7 @@ func (h *hnsw) SearchByVector(vector []float32, k int, allowList helpers.AllowLi
 	if allowList != nil && !h.forbidFlat && allowList.Len() < flatSearchCutoff {
 		return h.flatSearch(vector, k, allowList)
 	}
-	return h.knnSearchByVector(vector, k, h.searchTimeEF(k), allowList)
+	return h.knnSearchByVector(vector, k, h.searchTimeEF(k), filter, allowList)
 }
 
 // SearchByVectorDistance wraps SearchByVector, and calls it recursively until
@@ -100,7 +100,7 @@ func (h *hnsw) SearchByVectorDistance(vector []float32, targetDistance float32, 
 	recursiveSearch := func() (bool, error) {
 		shouldContinue := false
 
-		ids, dist, err := h.SearchByVector(vector, searchParams.totalLimit, allowList)
+		ids, dist, err := h.SearchByVector(vector, searchParams.totalLimit, 0, allowList)
 		if err != nil {
 			return false, errors.Wrap(err, "vector search")
 		}
@@ -491,13 +491,16 @@ func (h *hnsw) handleDeletedNode(docID uint64) {
 }
 
 func (h *hnsw) knnSearchByVector(searchVec []float32, k int,
-	ef int, allowList helpers.AllowList,
+	ef int, filter int, allowList helpers.AllowList,
 ) ([]uint64, []float32, error) {
 	if h.isEmpty() {
 		return nil, nil, nil
 	}
 
-	entryPointID := h.entryPointID
+	// Need to do something about the entryPointID here
+	entryPointID := h.entryPointIDperFilterValue[filter]
+	// ^ Will need to add a check that the filter is in the graph, findMedoid will go here as well
+	//entryPointID := h.entryPointID
 	entryPointDistance, ok, err := h.distBetweenNodeAndVec(entryPointID, searchVec)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "knn search: distance between entrypoint and query node")
@@ -518,6 +521,7 @@ func (h *hnsw) knnSearchByVector(searchVec []float32, k int,
 		eps := priorityqueue.NewMin(10)
 		eps.Insert(entryPointID, entryPointDistance)
 
+		// Ok so the thing about this is we can either search with the allowList or give it the filter + toggle on filteredInsert
 		res, err := h.searchLayerByVectorWithDistancer(searchVec, eps, 1, level, 0, false, allowList, byteDistancer)
 		if err != nil {
 			return nil, nil, errors.Wrapf(err, "knn search: search layer at level %d", level)

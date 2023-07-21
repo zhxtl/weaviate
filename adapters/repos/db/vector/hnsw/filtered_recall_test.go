@@ -152,8 +152,12 @@ func TestFilteredRecall(t *testing.T) {
 			queryFilter := queries[i].Label
 			//construct an allowList from the []uint64 of ids that match the filter
 			queryAllowList := helpers.NewAllowList(filterToIDs[queryFilter]...)
-			fmt.Print(queryAllowList)
-			results, _, err := vectorIndex.SearchByVector(queries[i].Vector, k, queryAllowList)
+			// ok hard to test just searchLayerByVector
+			/*
+				h.searchLayerByVectorWithDistancer(searchVec, eps, 1, level, 0, false, allowList, byteDistancer)
+			*/
+
+			results, _, err := vectorIndex.SearchByVector(queries[i].Vector, k, queryFilter, queryAllowList)
 			//results, _, err := vectorIndex.SearchByVector(queries[i].Vector, k, nil)
 			// it shouldn't matter if it has the allowList or not
 			// ^ because it's only connected to nodes that share the same filter
