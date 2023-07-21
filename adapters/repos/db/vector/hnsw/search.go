@@ -293,9 +293,11 @@ func (h *hnsw) searchLayerByVectorWithDistancer(queryVector []float32,
 						if filter != neighborFilter {
 							continue
 						}
-					}
-					if !allowList.Contains(neighborID) {
-						continue
+					} else {
+						// searching with an allowList
+						if !allowList.Contains(neighborID) {
+							continue
+						}
 					}
 				}
 
@@ -516,7 +518,7 @@ func (h *hnsw) knnSearchByVector(searchVec []float32, k int,
 		eps := priorityqueue.NewMin(10)
 		eps.Insert(entryPointID, entryPointDistance)
 
-		res, err := h.searchLayerByVectorWithDistancer(searchVec, eps, 1, level, 0, false, nil, byteDistancer)
+		res, err := h.searchLayerByVectorWithDistancer(searchVec, eps, 1, level, 0, false, allowList, byteDistancer)
 		if err != nil {
 			return nil, nil, errors.Wrapf(err, "knn search: search layer at level %d", level)
 		}
