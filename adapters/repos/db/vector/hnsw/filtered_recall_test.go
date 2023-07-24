@@ -149,6 +149,7 @@ func TestFilteredRecall(t *testing.T) {
 		var recall float32
 
 		for i := 0; i < len(queries); i++ {
+			// change to queryFilters
 			queryFilter := queries[i].Label
 			//construct an allowList from the []uint64 of ids that match the filter
 			queryAllowList := helpers.NewAllowList(filterToIDs[queryFilter]...)
