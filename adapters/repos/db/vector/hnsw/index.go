@@ -64,14 +64,14 @@ type hnsw struct {
 	// the current maximum can be smaller than the configured maximum because of
 	// the exponentially decaying layer function. The initial entry is started at
 	// layer 0, but this has the chance to grow with every subsequent entry
-	currentMaximumLayer               int
-	currentMaximumLayerPerFilterValue map[int]int
+	currentMaximumLayer                  int
+	currentMaximumLayerPerFilterPerValue map[int]map[int]int
 
 	// this is a point on the highest level, if we insert a new point with a
 	// higher level it will become the new entry point. Note tat the level of
 	// this point is always currentMaximumLayer
-	entryPointID               uint64
-	entryPointIDperFilterValue map[int]uint64
+	entryPointID                  uint64
+	entryPointIDperFilterPerValue map[int]map[int]uint64
 
 	// ef parameter used in construction phases, should be higher than ef during querying
 	efConstruction int
@@ -259,8 +259,8 @@ func New(cfg Config, uc ent.UserConfig, tombstoneCleanupCycle cyclemanager.Cycle
 		efMax:    int64(uc.DynamicEFMax),
 		efFactor: int64(uc.DynamicEFFactor),
 
-		entryPointIDperFilterValue:        map[int]uint64{},
-		currentMaximumLayerPerFilterValue: make(map[int]int),
+		entryPointIDperFilterPerValue:        make(map[int]map[int]uint64),
+		currentMaximumLayerPerFilterPerValue: make(map[int]map[int]int),
 
 		metrics:   NewMetrics(cfg.PrometheusMetrics, cfg.ClassName, cfg.ShardName),
 		shardName: cfg.ShardName,
@@ -384,7 +384,7 @@ func New(cfg Config, uc ent.UserConfig, tombstoneCleanupCycle cyclemanager.Cycle
 // }
 
 func (h *hnsw) findBestEntrypointForNode(currentMaxLevel, targetLevel int,
-	entryPointID uint64, nodeVec []float32, filter int, filteredInsert bool,
+	entryPointID uint64, nodeVec []float32, filters map[int]int, filteredInsert bool,
 ) (uint64, error) {
 	// in case the new target is lower than the current max, we need to search
 	// each layer for a better candidate and update the candidate
@@ -400,7 +400,7 @@ func (h *hnsw) findBestEntrypointForNode(currentMaxLevel, targetLevel int,
 		}
 
 		eps.Insert(entryPointID, dist)
-		res, err := h.searchLayerByVector(nodeVec, eps, 1, level, filter, filteredInsert, nil)
+		res, err := h.searchLayerByVector(nodeVec, eps, 1, level, filters, filteredInsert, nil)
 		if err != nil {
 			return 0,
 				errors.Wrapf(err, "update candidate: search layer at level %d", level)

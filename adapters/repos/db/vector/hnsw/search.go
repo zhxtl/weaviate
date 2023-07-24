@@ -15,6 +15,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"math/rand"
 	"sync/atomic"
 
 	"github.com/pkg/errors"
@@ -61,7 +62,7 @@ func (h *hnsw) autoEfFromK(k int) int {
 	return ef
 }
 
-func (h *hnsw) SearchByVector(vector []float32, k int, filter int, allowList helpers.AllowList) ([]uint64, []float32, error) {
+func (h *hnsw) SearchByVector(vector []float32, k int, filters map[int]int, allowList helpers.AllowList) ([]uint64, []float32, error) {
 	h.compressActionLock.RLock()
 	defer h.compressActionLock.RUnlock()
 
@@ -75,7 +76,7 @@ func (h *hnsw) SearchByVector(vector []float32, k int, filter int, allowList hel
 	if allowList != nil && !h.forbidFlat && allowList.Len() < flatSearchCutoff {
 		return h.flatSearch(vector, k, allowList)
 	}
-	return h.knnSearchByVector(vector, k, h.searchTimeEF(k), filter, allowList)
+	return h.knnSearchByVector(vector, k, h.searchTimeEF(k), filters, allowList)
 }
 
 // SearchByVectorDistance wraps SearchByVector, and calls it recursively until
@@ -88,7 +89,7 @@ func (h *hnsw) SearchByVector(vector []float32, k int, filter int, allowList hel
 // needs ids for sake of something like aggregation, a maxLimit of -1 can be
 // passed in to truly obtain all results from the vector index.
 func (h *hnsw) SearchByVectorDistance(vector []float32, targetDistance float32, maxLimit int64,
-	allowList helpers.AllowList,
+	filters map[int]int, allowList helpers.AllowList,
 ) ([]uint64, []float32, error) {
 	var (
 		searchParams = newSearchByDistParams(maxLimit)
@@ -100,7 +101,7 @@ func (h *hnsw) SearchByVectorDistance(vector []float32, targetDistance float32, 
 	recursiveSearch := func() (bool, error) {
 		shouldContinue := false
 
-		ids, dist, err := h.SearchByVector(vector, searchParams.totalLimit, 0, allowList)
+		ids, dist, err := h.SearchByVector(vector, searchParams.totalLimit, filters, allowList)
 		if err != nil {
 			return false, errors.Wrap(err, "vector search")
 		}
@@ -162,7 +163,7 @@ func (h *hnsw) shouldRescore() bool {
 }
 
 func (h *hnsw) searchLayerByVector(queryVector []float32,
-	entrypoints *priorityqueue.Queue, ef int, level int, filter int, filteredInsert bool,
+	entrypoints *priorityqueue.Queue, ef int, level int, filters map[int]int, filteredInsert bool,
 	allowList helpers.AllowList) (*priorityqueue.Queue, error,
 ) {
 	var byteDistancer *ssdhelpers.PQDistancer
@@ -170,11 +171,11 @@ func (h *hnsw) searchLayerByVector(queryVector []float32,
 		byteDistancer = h.pq.NewDistancer(queryVector)
 		defer h.pq.ReturnDistancer(byteDistancer)
 	}
-	return h.searchLayerByVectorWithDistancer(queryVector, entrypoints, ef, level, filter, filteredInsert, allowList, byteDistancer)
+	return h.searchLayerByVectorWithDistancer(queryVector, entrypoints, ef, level, filters, filteredInsert, allowList, byteDistancer)
 }
 
 func (h *hnsw) searchLayerByVectorWithDistancer(queryVector []float32,
-	entrypoints *priorityqueue.Queue, ef int, level int, filter int, filteredInsert bool,
+	entrypoints *priorityqueue.Queue, ef int, level int, filters map[int]int, filteredInsert bool,
 	allowList helpers.AllowList, byteDistancer *ssdhelpers.PQDistancer) (*priorityqueue.Queue, error,
 ) {
 	h.pools.visitedListsLock.Lock()
@@ -263,8 +264,7 @@ func (h *hnsw) searchLayerByVectorWithDistancer(queryVector []float32,
 			// make sure we never visit this neighbor again
 			visited.Visit(neighborID)
 			var distance float32
-			var neighborFilter int
-			neighborFilter = 99_999 // initialize it
+			//TODO - var neighborFilters = make(map[int]int)
 			var ok bool
 			var err error
 			if h.compressed.Load() {
@@ -289,10 +289,13 @@ func (h *hnsw) searchLayerByVectorWithDistancer(queryVector []float32,
 					// filter restricting this search further. As a result we have to
 					// ignore items not on the list
 					if filteredInsert == true {
-						neighborFilter = h.nodes[neighborID].filter
-						if filter != neighborFilter {
-							continue
-						}
+						fmt.Print("Not yet implemented.")
+						/*
+							neighborFilters = h.nodes[neighborID].filters
+							if filter != neighborFilter {
+								continue
+							}
+						*/
 					} else {
 						// searching with an allowList
 						if !allowList.Contains(neighborID) {
@@ -491,14 +494,16 @@ func (h *hnsw) handleDeletedNode(docID uint64) {
 }
 
 func (h *hnsw) knnSearchByVector(searchVec []float32, k int,
-	ef int, filter int, allowList helpers.AllowList,
+	ef int, filters map[int]int, allowList helpers.AllowList,
 ) ([]uint64, []float32, error) {
 	if h.isEmpty() {
 		return nil, nil, nil
 	}
 
-	// Need to do something about the entryPointID here
-	entryPointID := h.entryPointIDperFilterValue[filter]
+	// Need to change this so you can search normally as well..
+	randomIndex := rand.Intn(len(filters))
+	epFilter := filters[randomIndex]
+	entryPointID := h.entryPointIDperFilterPerValue[epFilter][filters[epFilter]]
 	// ^ Will need to add a check that the filter is in the graph, findMedoid will go here as well
 	//entryPointID := h.entryPointID
 	entryPointDistance, ok, err := h.distBetweenNodeAndVec(entryPointID, searchVec)
@@ -522,7 +527,7 @@ func (h *hnsw) knnSearchByVector(searchVec []float32, k int,
 		eps.Insert(entryPointID, entryPointDistance)
 
 		// Ok so the thing about this is we can either search with the allowList or give it the filter + toggle on filteredInsert
-		res, err := h.searchLayerByVectorWithDistancer(searchVec, eps, 1, level, 0, false, allowList, byteDistancer)
+		res, err := h.searchLayerByVectorWithDistancer(searchVec, eps, 1, level, filters, false, allowList, byteDistancer)
 		if err != nil {
 			return nil, nil, errors.Wrapf(err, "knn search: search layer at level %d", level)
 		}
@@ -565,7 +570,7 @@ func (h *hnsw) knnSearchByVector(searchVec []float32, k int,
 
 	eps := priorityqueue.NewMin(10)
 	eps.Insert(entryPointID, entryPointDistance)
-	res, err := h.searchLayerByVectorWithDistancer(searchVec, eps, ef, 0, 0, false, allowList, byteDistancer)
+	res, err := h.searchLayerByVectorWithDistancer(searchVec, eps, ef, 0, filters, false, allowList, byteDistancer)
 	if err != nil {
 		return nil, nil, errors.Wrapf(err, "knn search: search layer at level %d", 0)
 	}

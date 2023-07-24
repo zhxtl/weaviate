@@ -82,7 +82,8 @@ func Test_NoRaceCompressDoesNotCrash(t *testing.T) {
 	}
 	index.Compress(cfg)
 	for _, v := range queries {
-		_, _, err := index.SearchByVector(v, k, 0, nil)
+		m := make(map[int]int)
+		_, _, err := index.SearchByVector(v, k, m, nil)
 		assert.Nil(t, err)
 	}
 }

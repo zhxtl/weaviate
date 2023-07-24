@@ -21,7 +21,7 @@ type vertex struct {
 	level       int
 	connections [][]uint64
 	maintenance bool
-	filter      int
+	filters     map[int]int
 }
 
 func (v *vertex) markAsMaintenance() {

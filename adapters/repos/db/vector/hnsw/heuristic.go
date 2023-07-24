@@ -21,7 +21,7 @@ import (
 )
 
 func (h *hnsw) selectNeighborsHeuristic(input *priorityqueue.Queue,
-	max int, filter int, denyList helpers.AllowList,
+	max int, nodeFilters map[int]int, denyList helpers.AllowList,
 ) error {
 	if input.Len() < max {
 		return nil
@@ -92,7 +92,7 @@ func (h *hnsw) selectNeighborsHeuristic(input *priorityqueue.Queue,
 
 		for closestFirst.Len() > 0 && len(returnList) < max {
 			curr := closestFirst.Pop()
-			currFilter := h.nodes[curr.ID].filter
+			currFilters := h.nodes[curr.ID].filters
 			if denyList != nil && denyList.Contains(curr.ID) {
 				continue
 			}
@@ -113,20 +113,22 @@ func (h *hnsw) selectNeighborsHeuristic(input *priorityqueue.Queue,
 			good := true
 
 			// if currFilter == filter, good to add to returnList
-			if currFilter != filter {
-				for _, item := range returnList {
-					peerDist, _, _ := h.distancerProvider.SingleDist(currVec,
-						vecs[item.Index])
 
-					/*
-						Will need more logic for the currFilter / candidateFilter overlap for more filters
-						peerFilter := peerFilters[item.Index] // this vs. var peerFilter int somewhere else
-					*/
+			for _, item := range returnList {
+				peerDist, _, _ := h.distancerProvider.SingleDist(currVec,
+					vecs[item.Index])
+				peerFilters := h.nodes[item.Index].filters
 
-					if peerDist < distToQuery {
-						good = false
-						break
-					}
+				// populate intersection
+				peer_query_intersection := computeIntersection(nodeFilters, currFilters)
+
+				if !intersectIsNull(peer_query_intersection, peerFilters) {
+					break // good remains true
+				}
+
+				if peerDist < distToQuery {
+					good = false
+					break
 				}
 			}
 
@@ -150,4 +152,27 @@ func (h *hnsw) selectNeighborsHeuristic(input *priorityqueue.Queue,
 	h.pools.pqItemSlice.Put(returnList)
 
 	return nil
+}
+
+func computeIntersection(a, b map[int]int) map[int]int {
+	intersection := make(map[int]int)
+	for k := range a {
+		if bVal, ok := b[k]; ok {
+			if bVal == a[k] {
+				intersection[k] = a[k]
+			}
+		}
+	}
+	return intersection
+}
+
+func intersectIsNull(a, b map[int]int) bool {
+	for k := range a {
+		if bVal, ok := b[k]; ok {
+			if bVal == a[k] {
+				return false
+			}
+		}
+	}
+	return true
 }
