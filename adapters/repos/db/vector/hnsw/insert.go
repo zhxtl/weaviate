@@ -315,12 +315,13 @@ func (h *hnsw) filteredInsert(node *vertex, nodeVec []float32) error {
 	}
 	*/
 	var firstInsertError error
-	h.RLock()
+	//h.RLock()
 	// initially use the "global" entrypoint which is guaranteed to be on the
 	// currently highest layer
 	// initially use the level of the entrypoint which is the highest level of
 	// the h-graph in the first iteration
 	emptyEPfound := false
+	h.Lock()
 	for filter := range node.filters {
 		if _, ok := h.entryPointIDperFilterPerValue[filter]; !ok {
 			emptyEPfound = true
@@ -332,7 +333,8 @@ func (h *hnsw) filteredInsert(node *vertex, nodeVec []float32) error {
 			}
 		}
 	}
-	h.RUnlock()
+	h.Unlock()
+	//h.RUnlock()
 	if emptyEPfound {
 		//h.Lock()
 		firstInsertError = h.insertInitialElementPerFilterPerValue(node, nodeVec)

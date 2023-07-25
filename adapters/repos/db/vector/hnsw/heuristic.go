@@ -111,13 +111,12 @@ func (h *hnsw) selectNeighborsHeuristic(input *priorityqueue.Queue,
 				}
 			}
 			good := true
-
 			// if currFilter == filter, good to add to returnList
-
 			for _, item := range returnList {
 				peerDist, _, _ := h.distancerProvider.SingleDist(currVec,
 					vecs[item.Index])
-				peerFilters := h.nodes[item.Index].filters
+				// do I need to lock this?
+				peerFilters := h.nodes[item.ID].filters
 
 				// populate intersection
 				peer_query_intersection := computeIntersection(nodeFilters, currFilters)

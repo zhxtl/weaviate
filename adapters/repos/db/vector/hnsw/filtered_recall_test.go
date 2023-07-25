@@ -109,7 +109,6 @@ func TestFilteredRecall(t *testing.T) {
 
 		wg := &sync.WaitGroup{}
 		mutex := &sync.Mutex{}
-		var labelMap = make(map[int]int)
 		for workerID, jobs := range jobsForWorker {
 			wg.Add(1)
 			go func(workerID int, myJobs []LabeledVector) {
@@ -117,6 +116,7 @@ func TestFilteredRecall(t *testing.T) {
 				for i, vec := range myJobs {
 					originalIndex := (i * workerCount) + workerID
 					nodeId := uint64(originalIndex)
+					labelMap := make(map[int]int)
 					labelMap[0] = vec.Label
 					err := vectorIndex.filteredAdd(nodeId, vec.Vector, labelMap) // change signature to add vec.Label
 					/* Looks good
@@ -150,7 +150,6 @@ func TestFilteredRecall(t *testing.T) {
 		var relevant_retrieved int
 		var recall float32
 
-		var queryFilterMap = make(map[int]int)
 		for i := 0; i < len(queries); i++ {
 			// change to queryFilters
 			queryFilter := queries[i].Label
@@ -160,6 +159,7 @@ func TestFilteredRecall(t *testing.T) {
 			/*
 				h.searchLayerByVectorWithDistancer(searchVec, eps, 1, level, 0, false, allowList, byteDistancer)
 			*/
+			queryFilterMap := make(map[int]int)
 			queryFilterMap[0] = queryFilter
 			results, _, err := vectorIndex.SearchByVector(queries[i].Vector, k, queryFilterMap, queryAllowList)
 			//results, _, err := vectorIndex.SearchByVector(queries[i].Vector, k, nil)
