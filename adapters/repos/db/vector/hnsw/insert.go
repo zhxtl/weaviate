@@ -259,6 +259,7 @@ func (h *hnsw) insertInitialElementPerFilterPerValue(node *vertex, nodeVec []flo
 		if _, ok := h.entryPointIDperFilterPerValue[filter]; !ok {
 			// then the filter map hasn't even been initialized, let alone the value
 			h.entryPointIDperFilterPerValue[filter] = make(map[int]uint64)
+			h.currentMaximumLayerPerFilterPerValue[filter] = make(map[int]int)
 		}
 		if _, ok := h.entryPointIDperFilterPerValue[filter][filterValue]; !ok {
 			h.entryPointIDperFilterPerValue[filter][filterValue] = node.id

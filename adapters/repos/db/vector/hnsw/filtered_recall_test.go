@@ -109,6 +109,7 @@ func TestFilteredRecall(t *testing.T) {
 
 		wg := &sync.WaitGroup{}
 		mutex := &sync.Mutex{}
+		var labelMap = make(map[int]int)
 		for workerID, jobs := range jobsForWorker {
 			wg.Add(1)
 			go func(workerID int, myJobs []LabeledVector) {
@@ -116,7 +117,8 @@ func TestFilteredRecall(t *testing.T) {
 				for i, vec := range myJobs {
 					originalIndex := (i * workerCount) + workerID
 					nodeId := uint64(originalIndex)
-					err := vectorIndex.filteredAdd(nodeId, vec.Vector, vec.Label) // change signature to add vec.Label
+					labelMap[0] = vec.Label
+					err := vectorIndex.filteredAdd(nodeId, vec.Vector, labelMap) // change signature to add vec.Label
 					/* Looks good
 					// e.g. map[0:40 1:1 2:2 3:3 4:4 5:5 6:366 7:7 8:448 9:369 10:10 11:11 12:12 13:13 14:54 15:15 16:16 17:17 18:18 19:19]
 					mutex.Lock()
@@ -148,6 +150,7 @@ func TestFilteredRecall(t *testing.T) {
 		var relevant_retrieved int
 		var recall float32
 
+		var queryFilterMap = make(map[int]int)
 		for i := 0; i < len(queries); i++ {
 			// change to queryFilters
 			queryFilter := queries[i].Label
@@ -157,8 +160,8 @@ func TestFilteredRecall(t *testing.T) {
 			/*
 				h.searchLayerByVectorWithDistancer(searchVec, eps, 1, level, 0, false, allowList, byteDistancer)
 			*/
-
-			results, _, err := vectorIndex.SearchByVector(queries[i].Vector, k, queryFilter, queryAllowList)
+			queryFilterMap[0] = queryFilter
+			results, _, err := vectorIndex.SearchByVector(queries[i].Vector, k, queryFilterMap, queryAllowList)
 			//results, _, err := vectorIndex.SearchByVector(queries[i].Vector, k, nil)
 			// it shouldn't matter if it has the allowList or not
 			// ^ because it's only connected to nodes that share the same filter
