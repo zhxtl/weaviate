@@ -65,42 +65,50 @@ func TestFilteredRecall(t *testing.T) {
 		FilterMap map[int]int `json:"filterMap"`
 	}
 
-	var vectors []LabeledVector
-	var queries []LabeledVector
+	var indexVectors []Vector
+	var indexFilters []Filters
+	var queryVectors []Vectors
+	var queryFilters []Filters
 	var truths [][]uint64
 	var vectorIndex *hnsw
 
 	t.Run("Loading vectors for testing...", func(t *testing.T) {
 		// vectors.json
 		/*
-			{id: [vec]},{id: [vec]},...
+			[{"id": 0, "vector": [0,15,35,...]},{"id": 0, "vector": [119,15,4,...]},...]
 		*/
-		vectorsJSON, err := ioutil.ReadFile("filtered_recall_vectors.json")
+		indexVectorsJSON, err := ioutil.ReadFile("indexVectors.json")
 		require.Nil(t, err)
-		err = json.Unmarshal(vectorsJSON, &vectors)
+		err = json.Unmarshal(vectorsJSON, &indexVectors)
 		require.Nil(t, err)
 		// vectorFilters.json
 		/*
-			[{"id": 0, "vector": [0,15,35,...]},{"id": 0, "vector": [119,15,4,...]},...]
+			[{"id": 0, "filterMap": {0: 1, 1: 3, ...}}, {"id": 1, "filterMap": {0: 2, 1: 4}}, ...]
+		
+			For now, running one test at a time, future - loop through filter paths
 		*/
+		indexFiltersJSON, err := ioutil.ReadFile("indexFilters.json")
+		require.Nil(t, err)
+		err = json.Unmarshal(indexFiltersJSON, &filters)
+		require.Nil(t, err)
 
+		indexVectorsWithFilters := mergeData(indexVectorsJSON, indexFiltersJSON) // returns []vecWithFilters
+		
 		/* =================================================
 			SAME JOINING OF VECTORS AND FILTERS FOR QUERIES
 		   =================================================
 		*/
 
-		// queries.json
-		/*
-			[{"id": 0, "filterMap": {0: 1, 1: 3, ...}}, {"id": 1, "filterMap": {0: 2, 1: 4}}, ...]
-		*/
-		queriesJSON, err := ioutil.ReadFile("filtered_recall_queries.json")
+		queryVectorsJSON, err := ioutil.ReadFile("queryVectors.json")
 		require.Nil(t, err)
-		err = json.Unmarshal(queriesJSON, &queries)
+		err = json.Unmarshal(queryJSON, &queries)
 		require.Nil(t, err)
-		// queryFilters.json
-		/*
-			{id: {filter: filterValue, filter: filterValue, ...}}, {id: {filter: filterValue, filter: filterValue, ...}}
-		*/
+		
+		queryFiltersJSON, err := ioutil.ReadFile("queryFilters.json")
+		require.Nil(t, err)
+		err = json.Unmarshal(queryFiltersJSON, &filters)
+
+		queryVectorsWithFilters := mergeData(queryVectorsJSON, queryFiltersJSON)
 
 		truthsJSON, err := ioutil.ReadFile("filtered_recall_truths.json")
 		require.Nil(t, err)
@@ -131,12 +139,12 @@ func TestFilteredRecall(t *testing.T) {
 		vectorIndex = index
 
 		workerCount := runtime.GOMAXPROCS(0)
-		jobsForWorker := make([][]LabeledVector, workerCount)
+		jobsForWorker := make([][]vecWithFilters, workerCount)
 
 		before := time.Now()
-		for i, vec := range vectors {
+		for i, vecWithFilters := range indexVectorsWithFilters {
 			workerID := i % workerCount
-			jobsForWorker[workerID] = append(jobsForWorker[workerID], vec)
+			jobsForWorker[workerID] = append(jobsForWorker[workerID], vecWithFilters)
 		}
 
 		wg := &sync.WaitGroup{}
@@ -148,17 +156,7 @@ func TestFilteredRecall(t *testing.T) {
 				for i, vec := range myJobs {
 					originalIndex := (i * workerCount) + workerID
 					nodeId := uint64(originalIndex)
-					labelMap := make(map[int]int)
-					labelMap[0] = vec.Label
-					err := vectorIndex.filteredAdd(nodeId, vec.Vector, labelMap) // change signature to add vec.Label
-					/* Looks good
-					// e.g. map[0:40 1:1 2:2 3:3 4:4 5:5 6:366 7:7 8:448 9:369 10:10 11:11 12:12 13:13 14:54 15:15 16:16 17:17 18:18 19:19]
-					mutex.Lock()
-					fmt.Print("\n")
-					fmt.Print(vectorIndex.entryPointIDperFilter)
-					fmt.Print("\n")
-					mutex.Unlock()
-					*/
+					err := vectorIndex.filteredAdd(nodeId, vec.Vector, vec.FilterMap) // change signature to add vec.Label
 					require.Nil(t, err)
 					mutex.Lock()
 					if _, ok := filterToIDs[vec.Label]; !ok {
@@ -184,15 +182,13 @@ func TestFilteredRecall(t *testing.T) {
 
 		for i := 0; i < len(queries); i++ {
 			// change to queryFilters
-			queryFilter := queries[i].Label
+			queryFilter := queries[i].filterMap
 			//construct an allowList from the []uint64 of ids that match the filter
 			queryAllowList := helpers.NewAllowList(filterToIDs[queryFilter]...)
 			// ok hard to test just searchLayerByVector
 			/*
 				h.searchLayerByVectorWithDistancer(searchVec, eps, 1, level, 0, false, allowList, byteDistancer)
 			*/
-			queryFilterMap := make(map[int]int)
-			queryFilterMap[0] = queryFilter
 			results, _, err := vectorIndex.SearchByVector(queries[i].Vector, k, queryFilterMap, queryAllowList)
 			//results, _, err := vectorIndex.SearchByVector(queries[i].Vector, k, nil)
 			// it shouldn't matter if it has the allowList or not
