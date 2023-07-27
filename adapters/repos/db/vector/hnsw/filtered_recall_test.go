@@ -67,7 +67,7 @@ func TestFilteredRecall(t *testing.T) {
 
 	var indexVectors []Vector
 	var indexFilters []Filters
-	var queryVectors []Vectors
+	var queryVectors []Vector
 	var queryFilters []Filters
 	var truths [][]uint64
 	var vectorIndex *hnsw
@@ -79,21 +79,21 @@ func TestFilteredRecall(t *testing.T) {
 		*/
 		indexVectorsJSON, err := ioutil.ReadFile("indexVectors.json")
 		require.Nil(t, err)
-		err = json.Unmarshal(vectorsJSON, &indexVectors)
+		err = json.Unmarshal(indexVectorsJSON, &indexVectors)
 		require.Nil(t, err)
 		// vectorFilters.json
 		/*
 			[{"id": 0, "filterMap": {0: 1, 1: 3, ...}}, {"id": 1, "filterMap": {0: 2, 1: 4}}, ...]
-		
+
 			For now, running one test at a time, future - loop through filter paths
 		*/
 		indexFiltersJSON, err := ioutil.ReadFile("indexFilters.json")
 		require.Nil(t, err)
-		err = json.Unmarshal(indexFiltersJSON, &filters)
+		err = json.Unmarshal(indexFiltersJSON, &indexFilters)
 		require.Nil(t, err)
 
-		indexVectorsWithFilters := mergeData(indexVectorsJSON, indexFiltersJSON) // returns []vecWithFilters
-		
+		indexVectorsWithFilters := mergeData(indexVectors, indexFilters) // returns []vecWithFilters
+
 		/* =================================================
 			SAME JOINING OF VECTORS AND FILTERS FOR QUERIES
 		   =================================================
@@ -101,22 +101,20 @@ func TestFilteredRecall(t *testing.T) {
 
 		queryVectorsJSON, err := ioutil.ReadFile("queryVectors.json")
 		require.Nil(t, err)
-		err = json.Unmarshal(queryJSON, &queries)
+		err = json.Unmarshal(queryVectorsJSON, &queryVectors)
 		require.Nil(t, err)
-		
+
 		queryFiltersJSON, err := ioutil.ReadFile("queryFilters.json")
 		require.Nil(t, err)
-		err = json.Unmarshal(queryFiltersJSON, &filters)
+		err = json.Unmarshal(queryFiltersJSON, &queryFilters)
 
-		queryVectorsWithFilters := mergeData(queryVectorsJSON, queryFiltersJSON)
+		queryVectorsWithFilters := mergeData(queryVectors, queryFilters)
 
 		truthsJSON, err := ioutil.ReadFile("filtered_recall_truths.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(truthsJSON, &truths)
 		require.Nil(t, err)
-	})
 
-	t.Run("importing into hnsw", func(t *testing.T) {
 		fmt.Printf("importing into hnsw\n")
 
 		index, err := New(Config{
@@ -125,7 +123,7 @@ func TestFilteredRecall(t *testing.T) {
 			MakeCommitLoggerThunk: MakeNoopCommitLogger,
 			DistanceProvider:      distancer.NewCosineDistanceProvider(),
 			VectorForIDThunk: func(ctx context.Context, id uint64) ([]float32, error) {
-				return vectors[int(id)].Vector, nil
+				return indexVectorsWithFilters[int(id)].Vector, nil
 			},
 		}, ent.UserConfig{
 			MaxConnections: maxNeighbors,
@@ -151,7 +149,7 @@ func TestFilteredRecall(t *testing.T) {
 		mutex := &sync.Mutex{}
 		for workerID, jobs := range jobsForWorker {
 			wg.Add(1)
-			go func(workerID int, myJobs []LabeledVector) {
+			go func(workerID int, myJobs []vecWithFilters) {
 				defer wg.Done()
 				for i, vec := range myJobs {
 					originalIndex := (i * workerCount) + workerID
@@ -219,39 +217,7 @@ func TestFilteredRecall(t *testing.T) {
 	})
 }
 
-func loadVectors(filename string) []Vector {
-	var vectors []Vector
-
-	data, err := ioutil.ReadFile(filename)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	err = json.Unmarshal(data, &vectors)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	return vectors
-}
-
-func loadFilters(filename string) []Filter {
-	var filters []Filters
-
-	data, err := ioutil.ReadFile(filename)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	err = json.Unmarshal(data, &filters)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	return filters
-}
-
-func mergeData(vectors []Vector, filters []Filter) []Result {
+func mergeData(vectors []Vector, filters []Filters) []vecWithFilters {
 	// Create a map for quick lookup of filters
 	IDtoFilterMap := make(map[int]map[int]int)
 	for _, filter := range filters {
@@ -263,7 +229,7 @@ func mergeData(vectors []Vector, filters []Filter) []Result {
 		result := vecWithFilters{
 			ID:        vector.ID,
 			Vector:    vector.Vector,
-			FilterMap: IDtoFilterMap[vector.ID]
+			FilterMap: IDtoFilterMap[vector.ID],
 		}
 		results = append(results, result)
 	}
