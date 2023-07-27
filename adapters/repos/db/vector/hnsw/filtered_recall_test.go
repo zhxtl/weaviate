@@ -49,9 +49,20 @@ func TestFilteredRecall(t *testing.T) {
 	ef := 256
 	maxNeighbors := 64
 
-	type LabeledVector struct {
-		Label  int       `json:"label"`
-		Vector []float32 `json:"vector"`
+	type Vector struct {
+		ID     int   `json:"id"`
+		Vector []int `json:"vector"`
+	}
+
+	type Filters struct {
+		ID        int         `json:"id"`
+		FilterMap map[int]int `json:"filterMap"`
+	}
+
+	type vecWithFilters struct {
+		ID        int         `json:"id"`
+		Vector    []int       `json:"vector"`
+		FilterMap map[int]int `json:"filterMap"`
 	}
 
 	var vectors []LabeledVector
@@ -59,16 +70,37 @@ func TestFilteredRecall(t *testing.T) {
 	var truths [][]uint64
 	var vectorIndex *hnsw
 
-	t.Run("generate random vectors", func(t *testing.T) {
+	t.Run("Loading vectors for testing...", func(t *testing.T) {
+		// vectors.json
+		/*
+			{id: [vec]},{id: [vec]},...
+		*/
 		vectorsJSON, err := ioutil.ReadFile("filtered_recall_vectors.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(vectorsJSON, &vectors)
 		require.Nil(t, err)
+		// vectorFilters.json
+		/*
+			[{"id": 0, "vector": [0,15,35,...]},{"id": 0, "vector": [119,15,4,...]},...]
+		*/
 
+		/* =================================================
+			SAME JOINING OF VECTORS AND FILTERS FOR QUERIES
+		   =================================================
+		*/
+
+		// queries.json
+		/*
+			[{"id": 0, "filterMap": {0: 1, 1: 3, ...}}, {"id": 1, "filterMap": {0: 2, 1: 4}}, ...]
+		*/
 		queriesJSON, err := ioutil.ReadFile("filtered_recall_queries.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(queriesJSON, &queries)
 		require.Nil(t, err)
+		// queryFilters.json
+		/*
+			{id: {filter: filterValue, filter: filterValue, ...}}, {id: {filter: filterValue, filter: filterValue, ...}}
+		*/
 
 		truthsJSON, err := ioutil.ReadFile("filtered_recall_truths.json")
 		require.Nil(t, err)
@@ -189,6 +221,58 @@ func TestFilteredRecall(t *testing.T) {
 		fmt.Printf("recall is %f\n", recall)
 		assert.True(t, recall >= 0.09)
 	})
+}
+
+func loadVectors(filename string) []Vector {
+	var vectors []Vector
+
+	data, err := ioutil.ReadFile(filename)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = json.Unmarshal(data, &vectors)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return vectors
+}
+
+func loadFilters(filename string) []Filter {
+	var filters []Filters
+
+	data, err := ioutil.ReadFile(filename)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = json.Unmarshal(data, &filters)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return filters
+}
+
+func mergeData(vectors []Vector, filters []Filter) []Result {
+	// Create a map for quick lookup of filters
+	IDtoFilterMap := make(map[int]map[int]int)
+	for _, filter := range filters {
+		IDtoFilterMap[filter.ID] = filter.FilterMap
+	}
+	// Merge vectors and filters
+	var results []vecWithFilters
+	for _, vector := range vectors {
+		result := vecWithFilters{
+			ID:        vector.ID,
+			Vector:    vector.Vector,
+			FilterMap: IDtoFilterMap[vector.ID]
+		}
+		results = append(results, result)
+	}
+
+	return results
 }
 
 func matchesInLists(control []uint64, results []uint64) int {
