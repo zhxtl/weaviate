@@ -44,26 +44,26 @@ func init() {
 	}()
 }
 
+type Vector struct {
+	ID     int       `json:"id"`
+	Vector []float32 `json:"vector"`
+}
+
+type Filters struct {
+	ID        int         `json:"id"`
+	FilterMap map[int]int `json:"filterMap"`
+}
+
+type vecWithFilters struct {
+	ID        int         `json:"id"`
+	Vector    []float32   `json:"vector"`
+	FilterMap map[int]int `json:"filterMap"`
+}
+
 func TestFilteredRecall(t *testing.T) {
 	efConstruction := 256
 	ef := 256
 	maxNeighbors := 64
-
-	type Vector struct {
-		ID     int   `json:"id"`
-		Vector []int `json:"vector"`
-	}
-
-	type Filters struct {
-		ID        int         `json:"id"`
-		FilterMap map[int]int `json:"filterMap"`
-	}
-
-	type vecWithFilters struct {
-		ID        int         `json:"id"`
-		Vector    []int       `json:"vector"`
-		FilterMap map[int]int `json:"filterMap"`
-	}
 
 	var indexVectors []Vector
 	var indexFilters []Filters
@@ -131,7 +131,7 @@ func TestFilteredRecall(t *testing.T) {
 			EF:             ef,
 		}, cyclemanager.NewNoop())
 
-		filterToIDs := make(map[int][]uint64)
+		filterToIDs := make(map[int]map[int][]uint64)
 
 		require.Nil(t, err)
 		vectorIndex = index
@@ -157,10 +157,18 @@ func TestFilteredRecall(t *testing.T) {
 					err := vectorIndex.filteredAdd(nodeId, vec.Vector, vec.FilterMap) // change signature to add vec.Label
 					require.Nil(t, err)
 					mutex.Lock()
-					if _, ok := filterToIDs[vec.Label]; !ok {
-						filterToIDs[vec.Label] = []uint64{nodeId}
-					} else {
-						filterToIDs[vec.Label] = append(filterToIDs[vec.Label], nodeId)
+					// filterToIDs is now a map[int]map[int][]uint64
+					for _, filter := range vec.FilterMap {
+						if _, ok := filterToIDs[filter]; !ok {
+							filterToIDs[filter] = make(map[int][]uint64)
+							filterToIDs[filter][vec.FilterMap[filter]] = []uint64{nodeId} // assuming 'someKey' is a valid key of type 'filter'
+						} else {
+							if _, ok := filterToIDs[filter][vec.FilterMap[filter]]; !ok {
+								filterToIDs[filter][vec.FilterMap[filter]] = []uint64{nodeId}
+							} else {
+								filterToIDs[filter][vec.FilterMap[filter]] = append(filterToIDs[filter][vec.FilterMap[filter]], nodeId)
+							}
+						}
 					}
 					mutex.Unlock()
 					require.Nil(t, err)
@@ -173,21 +181,27 @@ func TestFilteredRecall(t *testing.T) {
 
 		fmt.Printf("With k=20")
 
+		fmt.Print(filterToIDs[0][3])
+
 		k := 100
 
 		var relevant_retrieved int
 		var recall float32
 
-		for i := 0; i < len(queries); i++ {
+		for i := 0; i < len(queryVectorsWithFilters); i++ {
 			// change to queryFilters
-			queryFilter := queries[i].filterMap
+			queryFilters := queryVectorsWithFilters[i].FilterMap
+			allowListIDs := []uint64{}
+			for _, filter := range queryFilters {
+				allowListIDs = append(allowListIDs, filterToIDs[filter][queryFilters[filter]]...)
+			}
 			//construct an allowList from the []uint64 of ids that match the filter
-			queryAllowList := helpers.NewAllowList(filterToIDs[queryFilter]...)
+			queryAllowList := helpers.NewAllowList(allowListIDs...)
 			// ok hard to test just searchLayerByVector
 			/*
 				h.searchLayerByVectorWithDistancer(searchVec, eps, 1, level, 0, false, allowList, byteDistancer)
 			*/
-			results, _, err := vectorIndex.SearchByVector(queries[i].Vector, k, queryFilterMap, queryAllowList)
+			results, _, err := vectorIndex.SearchByVector(queryVectorsWithFilters[i].Vector, k, queryFilters, queryAllowList)
 			//results, _, err := vectorIndex.SearchByVector(queries[i].Vector, k, nil)
 			// it shouldn't matter if it has the allowList or not
 			// ^ because it's only connected to nodes that share the same filter
@@ -203,7 +217,7 @@ func TestFilteredRecall(t *testing.T) {
 			// Would I want to see a histogram of recalls per query?
 
 			fmt.Print("LABEL \n")
-			fmt.Print(queries[i].Label)
+			fmt.Print(queryVectorsWithFilters[i].FilterMap)
 			fmt.Print("\n RESULTS \n")
 			fmt.Print(results)
 			fmt.Print("\n TRUTHS \n")
@@ -211,7 +225,7 @@ func TestFilteredRecall(t *testing.T) {
 			fmt.Print("\n")
 		}
 
-		recall = float32(recall) / float32(len(queries))
+		recall = float32(recall) / float32(len(queryVectorsWithFilters))
 		fmt.Printf("recall is %f\n", recall)
 		assert.True(t, recall >= 0.09)
 	})
