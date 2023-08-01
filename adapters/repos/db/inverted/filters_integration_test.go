@@ -79,7 +79,8 @@ func Test_Filters_String(t *testing.T) {
 	})
 
 	searcher := NewSearcher(logger, store, createSchema(),
-		nil, nil, nil, fakeStopwordDetector{}, 2, func() bool { return false }, "")
+		nil, nil, nil, fakeStopwordDetector{}, 2, func() bool { return false }, "",
+		newFakeMaxIDGetter(200))
 
 	type test struct {
 		name                     string
@@ -343,7 +344,8 @@ func Test_Filters_Int(t *testing.T) {
 	})
 
 	searcher := NewSearcher(logger, store, createSchema(),
-		nil, nil, nil, fakeStopwordDetector{}, 2, func() bool { return false }, "")
+		nil, nil, nil, fakeStopwordDetector{}, 2, func() bool { return false }, "",
+		newFakeMaxIDGetter(200))
 
 	type test struct {
 		name                     string
@@ -524,7 +526,8 @@ func Test_Filters_String_DuplicateEntriesInAnd(t *testing.T) {
 	})
 
 	searcher := NewSearcher(logger, store, createSchema(),
-		nil, nil, nil, fakeStopwordDetector{}, 2, func() bool { return false }, "")
+		nil, nil, nil, fakeStopwordDetector{}, 2, func() bool { return false }, "",
+		newFakeMaxIDGetter(200))
 
 	type test struct {
 		name                     string
@@ -664,4 +667,8 @@ func createSchema() schema.Schema {
 			},
 		},
 	}
+}
+
+func newFakeMaxIDGetter(maxID uint64) func() uint64 {
+	return func() uint64 { return maxID }
 }

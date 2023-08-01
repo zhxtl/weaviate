@@ -47,6 +47,7 @@ type Searcher struct {
 	shardVersion           uint16
 	isFallbackToSearchable IsFallbackToSearchable
 	tenant                 string
+	maxIDGetter            maxIDGetterFunc
 }
 
 type DeletedDocIDChecker interface {
@@ -58,7 +59,7 @@ func NewSearcher(logger logrus.FieldLogger, store *lsmkv.Store,
 	propIndices propertyspecific.Indices, classSearcher ClassSearcher,
 	deletedDocIDs DeletedDocIDChecker, stopwords stopwords.StopwordDetector,
 	shardVersion uint16, isFallbackToSearchable IsFallbackToSearchable,
-	tenant string,
+	tenant string, maxIDGetter maxIDGetterFunc,
 ) *Searcher {
 	return &Searcher{
 		logger:                 logger,
@@ -71,6 +72,7 @@ func NewSearcher(logger logrus.FieldLogger, store *lsmkv.Store,
 		shardVersion:           shardVersion,
 		isFallbackToSearchable: isFallbackToSearchable,
 		tenant:                 tenant,
+		maxIDGetter:            maxIDGetter,
 	}
 }
 
