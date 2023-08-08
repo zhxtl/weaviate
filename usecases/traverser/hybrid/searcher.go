@@ -99,22 +99,16 @@ func Search(ctx context.Context, params *Params, logger logrus.FieldLogger, spar
 		}
 
 		if alpha > 0 {
-<<<<<<< HEAD
 			res, err := processDenseSearch(ctx, denseSearch, params, modules)
 			if err != nil {
 				return nil, err
 			}
-=======
-			res, err := s.denseSearch(ctx)
-			if err == nil {
->>>>>>> eaec6f894 (Revert "hybrid search exposes error (#2922)")
 
 				found = append(found, res)
 				weights = append(weights, alpha)
 			}
 		}
 	} else {
-<<<<<<< HEAD
 		ss := params.SubSearches
 
 		// To catch error if ss is empty
@@ -128,12 +122,6 @@ func Search(ctx context.Context, params *Params, logger logrus.FieldLogger, spar
 			if err != nil {
 				return nil, err
 			}
-=======
-		ss := s.params.SubSearches
-		for _, subsearch := range ss.([]searchparams.WeightedSearchResult) {
-			res, weight, err := s.handleSubSearch(ctx, &subsearch)
-			if err == nil {
->>>>>>> eaec6f894 (Revert "hybrid search exposes error (#2922)")
 
 				if res == nil {
 					continue
