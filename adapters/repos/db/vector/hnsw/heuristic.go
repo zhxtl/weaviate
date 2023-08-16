@@ -104,9 +104,10 @@ func (h *hnsw) selectNeighborsHeuristic(input *priorityqueue.Queue,
 			good := true
 			for _, item := range returnList {
 				peerDist, _, _ := h.distancerProvider.SingleDist(currVec,
-					vecs[item.Index]) // d(p, p')
+					vecs[item.Index]) // d(p*, p')
 
 				if peerDist < distToQuery {
+					// d(p*, p') < d(p*, p)
 					good = false
 					break
 				}
