@@ -167,8 +167,14 @@ func (h *hnsw) filteredRobustPrune(input *priorityqueue.Queue,
 
 		returnList = h.pools.pqItemSlice.Get().([]priorityqueue.ItemWithIndex)
 
+		removedIds := make(map[int]bool)
+
 		for closestFirst.Len() > 0 && len(returnList) < max {
 			curr := closestFirst.Pop()
+			if _, exists := removedIds[int(curr.ID)]; exists {
+				continue
+			}
+			returnList = append(returnList, curr)
 			currFilters := h.nodes[curr.ID].filters
 			if denyList != nil && denyList.Contains(curr.ID) {
 				continue
@@ -176,28 +182,19 @@ func (h *hnsw) filteredRobustPrune(input *priorityqueue.Queue,
 			distToQuery := curr.Dist
 
 			currVec := vecs[curr.Index]
-			good := true
+
 			for _, item := range returnList {
 				peerDist := h.pq.DistanceBetweenCompressedVectors(currVec, vecs[item.Index])
 				peerFilters := h.nodes[item.ID].filters
 
-				// populate intersection
-				peer_query_intersection := computeIntersection(nodeFilters, currFilters)
-
-				if !intersectIsNull(peer_query_intersection, peerFilters) {
-					continue // good remains true
-				}
-
-				if peerDist < distToQuery {
-					good = false
-					break
+				query_peer_intersection := computeIntersection(nodeFilters, peerFilters)
+				// only check distance if the peerFilter has a unique filter not contained in the query closest intersection
+				if !intersectIsNull(query_peer_intersection, currFilters) {
+					if peerDist < distToQuery {
+						removedIds[int(item.ID)] = true
+					}
 				}
 			}
-
-			if good {
-				returnList = append(returnList, curr)
-			}
-
 		}
 	} else {
 
@@ -212,9 +209,14 @@ func (h *hnsw) filteredRobustPrune(input *priorityqueue.Queue,
 		*/
 
 		returnList = h.pools.pqItemSlice.Get().([]priorityqueue.ItemWithIndex)
+		removedIds := make(map[int]bool)
 
 		for closestFirst.Len() > 0 && len(returnList) < max {
 			curr := closestFirst.Pop()
+			if _, exists := removedIds[int(curr.ID)]; exists {
+				continue
+			}
+			returnList = append(returnList, curr)
 			currFilters := h.nodes[curr.ID].filters
 			if denyList != nil && denyList.Contains(curr.ID) {
 				continue
@@ -233,28 +235,21 @@ func (h *hnsw) filteredRobustPrune(input *priorityqueue.Queue,
 						"unrecoverable error for docID %d", curr.ID)
 				}
 			}
-			good := true
 
 			// populate intersection
-			peer_query_intersection := computeIntersection(nodeFilters, currFilters)
+			query_closest_intersection := computeIntersection(nodeFilters, currFilters)
 			for _, item := range returnList {
 				peerDist, _, _ := h.distancerProvider.SingleDist(currVec,
 					vecs[item.Index])
 				// do I need to lock this?
 				peerFilters := h.nodes[item.ID].filters
 
-				if !intersectIsNull(peer_query_intersection, peerFilters) {
-					continue // good remains true
+				// only check distance if the peerFilter has a unique filter not contained in the query closest intersection
+				if !intersectIsNull(query_closest_intersection, peerFilters) {
+					if peerDist < distToQuery {
+						removedIds[int(item.ID)] = true
+					}
 				}
-
-				if peerDist < distToQuery {
-					good = false
-					break
-				}
-			}
-
-			if good {
-				returnList = append(returnList, curr)
 			}
 		}
 	}

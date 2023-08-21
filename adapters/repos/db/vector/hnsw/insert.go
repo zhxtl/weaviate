@@ -414,7 +414,7 @@ func (h *hnsw) hybridInsert(node *vertex, nodeVec []float32, lambda float32) err
 	// go h.insertHook(nodeId, targetLevel, neighborsAtLevel)
 	node.unmarkAsMaintenance()
 
-	// This might be wonky
+	// This might be wonky, not sure if the lock should be each time we change this map or not
 	h.Lock()
 	for filter, filterValue := range node.filters {
 		if targetLevel > h.currentMaximumLayerPerFilterPerValue[filter][filterValue] {

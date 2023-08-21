@@ -35,7 +35,7 @@ import (
 	ent "github.com/weaviate/weaviate/entities/vectorindex/hnsw"
 )
 
-//"github.com/weaviate/weaviate/adapters/repos/db/helpers"
+//"github.com/weaviate/weaviate/adapters/repos/db/helpers" <-- For allowList, not using now.
 
 func init() {
 	go func() {
@@ -99,6 +99,14 @@ func TestFilteredRecall(t *testing.T) {
 
 		indexVectorsWithFilters := mergeData(indexVectors, indexFilters) // returns []vecWithFilters
 
+		// Shuffle Index Vectors
+		/*
+			rand.Seed(42) // 42 = meaning of life
+			rand.Shuffle(len(indexVectorsWithFilters), func(i, j int) {
+				indexVectorsWithFilters[i], indexVectorsWithFilters[j] = indexVectorsWithFilters[j], indexVectorsWithFilters[i]
+			})
+		*/
+
 		/* =================================================
 			SAME JOINING OF VECTORS AND FILTERS FOR QUERIES
 		   =================================================
@@ -157,17 +165,16 @@ func TestFilteredRecall(t *testing.T) {
 			go func(workerID int, myJobs []vecWithFilters) {
 				defer wg.Done()
 				for i, vec := range myJobs {
-					/*
-						if i > 1000 {
-							break
-						}
-					*/
+					if i%10_000 == 9_999 {
+						fmt.Printf("\n Imported %d in %v \n", i, time.Since(before))
+					}
 					originalIndex := (i * workerCount) + workerID
 					nodeId := uint64(originalIndex)
 					/* TEST FILTERED HNSW */
 					err := vectorIndex.HybridAdd(nodeId, vec.Vector, vec.FilterMap, 1) // change signature to add vec.Label
 					/* TEST HNSW */
 					//err := vectorIndex.Add(nodeId, vec.Vector)
+
 					require.Nil(t, err)
 					mutex.Lock()
 					// filterToIDs is now a map[int]map[int][]uint64
@@ -184,6 +191,7 @@ func TestFilteredRecall(t *testing.T) {
 						}
 					}
 					mutex.Unlock()
+
 					require.Nil(t, err)
 				}
 			}(workerID, jobs)
@@ -212,18 +220,20 @@ func TestFilteredRecall(t *testing.T) {
 		for i := 0; i < len(queryVectorsWithFilters); i++ {
 			// change to queryFilters
 			queryFilters := queryVectorsWithFilters[i].FilterMap
+
 			allowListIDs := []uint64{}
 			for _, filter := range queryFilters {
 				allowListIDs = append(allowListIDs, filterToIDs[filter][queryFilters[filter]]...)
 			}
 			//construct an allowList from the []uint64 of ids that match the filter
 			queryAllowList := helpers.NewAllowList(allowListIDs...)
+
 			/* TEST FILTERED HNSW */
 
 			// THIS COULD BE CONFOUNDING LATENCY MEASUREMENT, TRY SEARCH WITH ALLOWLIST AS WELL! IN THE SAME INDEX TEST!
 
 			queryStart := time.Now()
-			//results, _, err := vectorIndex.SearchByVectorWithFilters(queryVectorsWithFilters[i].Vector, k, queryFilters, queryAllowList)
+			//results, _, err := vectorIndex.SearchByVectorWithFilters(queryVectorsWithFilters[i].Vector, k, queryFilters, nil)
 			results, _, err := vectorIndex.SearchByVector(queryVectorsWithFilters[i].Vector, k, queryAllowList)
 			local_latency := float32(time.Now().Sub(queryStart).Seconds())
 			/* TEST HNSW */
