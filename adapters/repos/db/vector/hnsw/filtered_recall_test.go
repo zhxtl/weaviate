@@ -325,90 +325,84 @@ func matchesInLists(control []uint64, results []uint64) int {
 }
 
 func AverageMatchingFiltersPerNode(vectorIndex *hnsw, level int) map[int]float32 {
-	results := make(map[int]float32)
-	resultsCount := make(map[int]float32)
+	results, resultsCount, nodeCount := initializeMaps()
 	resultsMutex := &sync.Mutex{}
-	resultsCountMutex := &sync.Mutex{}
-	results[0] = 0
-	results[1] = 0
-	resultsCount[0] = 0
-	resultsCount[1] = 0
-
-	totalNeighbors := 0
-
-	nonNilnodes := 0
 
 	for _, node := range vectorIndex.nodes {
 		if node == nil {
-			continue // Weaviate allocates a larger array than we may insert
+			continue
 		}
 
 		node.Lock()
-		count := 0 // might want to plot a distribution of this
-		localTotalNeighbors := 0
-
 		if len(node.connections[level]) == 0 {
 			fmt.Printf("nodeId %v has 0 neighbors \n", node)
 			node.Unlock()
 			continue
 		}
 
-		//fmt.Printf("\n Here are the neighbors of node %v \n", node.id)
-		//fmt.Printf("\n With Filters %v \n", node.filters)
-		for _, connectionID := range node.connections[level] {
-			neighbor := vectorIndex.nodes[connectionID]
-			if neighbor == nil {
-				continue
-			}
-			//fmt.Printf("Neighbor ID: %v \n", neighbor.id)
-			//fmt.Printf("Neighbor filters: %v \n", neighbor.filters)
-			localTotalNeighbors += 1
+		count, localTotalNeighbors := processNeighbors(node, vectorIndex, level)
 
-			neighbor.Lock()
-			if filtersEqual(node.filters, neighbor.filters) {
-				count += 1.0
-			}
-			neighbor.Unlock()
-		}
-		//fmt.Printf("Count: %v \n", count)
-		//fmt.Printf("totalNeighbors: %v \n", totalNeighbors)
 		resultsMutex.Lock()
-		results[node.filters[0]] += float32(count)
+		updateResults(results, resultsCount, nodeCount, node.filters[0], count, localTotalNeighbors)
 		resultsMutex.Unlock()
 
-		resultsCountMutex.Lock()
-		resultsCount[node.filters[0]] += float32(localTotalNeighbors)
-		resultsCountMutex.Unlock()
-
-		totalNeighbors += localTotalNeighbors
-
-		nonNilnodes += 1
 		node.Unlock()
 	}
-	fmt.Print("\n")
-	fmt.Print(results)
-	fmt.Print("\n")
-	fmt.Print(resultsCount)
-	fmt.Print("\n")
 
-	results[0] /= resultsCount[0]
-	results[1] /= resultsCount[1]
+	finalizeResults(results, resultsCount)
+	calculateAverageNeighbors(resultsCount, nodeCount)
 
-	fmt.Printf("\n \n Average Neighbors per Node %d \n \n", totalNeighbors/len(vectorIndex.nodes))
-	fmt.Printf("\n \n Number of nonNilnodes %d \n \n", nonNilnodes)
 	return results
 }
 
-/* Moved this to heuristic.go
-func filtersEqual(a, b map[int]int) bool {
-	if len(a) != len(b) {
-		return false
+func initializeMaps() (map[int]float32, map[int]float32, map[int]int) {
+	results := make(map[int]float32)
+	resultsCount := make(map[int]float32)
+	nodeCount := make(map[int]int)
+	return results, resultsCount, nodeCount
+}
+
+func processNeighbors(node *Node, vectorIndex *hnsw, level int) (float32, int) {
+	count := float32(0)
+	localTotalNeighbors := 0
+
+	for _, connectionID := range node.connections[level] {
+		neighbor := vectorIndex.nodes[connectionID]
+		if neighbor == nil {
+			continue
+		}
+
+		neighbor.Lock()
+		if filtersEqual(node.filters, neighbor.filters) {
+			count++
+		}
+		neighbor.Unlock()
+
+		localTotalNeighbors++
 	}
-	for k, v := range a {
-		if b[k] != v {
-			return false
+
+	return count, localTotalNeighbors
+}
+
+func updateResults(results, resultsCount map[int]float32, nodeCount map[int]int, filter int, count float32, localTotalNeighbors int) {
+	results[filter] += count
+	resultsCount[filter] += float32(localTotalNeighbors)
+	nodeCount[filter]++
+}
+
+func finalizeResults(results, resultsCount map[int]float32) {
+	for k, v := range results {
+		if total, exists := resultsCount[k]; exists && total != 0 {
+			results[k] = v / total
 		}
 	}
-	return true
 }
-*/
+
+func calculateAverageNeighbors(resultsCount map[int]float32, nodeCount map[int]int) {
+	for filter, totalNeighbors := range resultsCount {
+		if totalNodes, exists := nodeCount[filter]; exists && totalNodes > 0 {
+			averageNeighbors := totalNeighbors / float32(totalNodes)
+			fmt.Printf("Average neighbors for filter %d: %f\n", filter, averageNeighbors)
+		}
+	}
+}
