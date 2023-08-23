@@ -24,6 +24,8 @@ type vertex struct {
 	filters     map[int]int
 }
 
+// Need to extend this to support multiple filters for the same type
+
 func (v *vertex) markAsMaintenance() {
 	v.Lock()
 	v.maintenance = true

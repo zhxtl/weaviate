@@ -399,6 +399,7 @@ func AverageMatchingFiltersPerNode(vectorIndex *hnsw, level int) map[int]float32
 	return results
 }
 
+/* Moved this to heuristic.go
 func filtersEqual(a, b map[int]int) bool {
 	if len(a) != len(b) {
 		return false
@@ -410,3 +411,4 @@ func filtersEqual(a, b map[int]int) bool {
 	}
 	return true
 }
+*/
