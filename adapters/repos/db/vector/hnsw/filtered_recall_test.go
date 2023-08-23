@@ -362,7 +362,7 @@ func initializeMaps() (map[int]float32, map[int]float32, map[int]int) {
 	return results, resultsCount, nodeCount
 }
 
-func processNeighbors(node *Node, vectorIndex *hnsw, level int) (float32, int) {
+func processNeighbors(node *vertex, vectorIndex *hnsw, level int) (float32, int) {
 	count := float32(0)
 	localTotalNeighbors := 0
 
