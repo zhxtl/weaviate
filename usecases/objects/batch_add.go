@@ -71,6 +71,12 @@ func (b *BatchManager) addObjects(ctx context.Context, principal *models.Princip
 		return nil, NewErrInternal("batch objects: %#v", err)
 	}
 
+	for i := range res {
+		res[i].Object = &models.Object{
+			ID: res[i].Object.ID,
+		}
+	}
+
 	return res, nil
 }
 

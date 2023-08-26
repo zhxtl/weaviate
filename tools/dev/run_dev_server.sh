@@ -339,12 +339,10 @@ case $CONFIG in
     ;;
 
   local-all-openai)
-      CONTEXTIONARY_URL=localhost:9999 \
       AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED=true \
-      DEFAULT_VECTORIZER_MODULE=text2vec-contextionary \
-      QNA_INFERENCE_API="http://localhost:8001" \
-      CLUSTER_HOSTNAME="node1" \
-      ENABLE_MODULES="text2vec-contextionary,qna-openai,generative-openai,text2vec-openai" \
+      DEFAULT_VECTORIZER_MODULE=text2vec-openai \
+      CLUSTER_HOSTNAME="weaviate-de-ah-testing" \
+      ENABLE_MODULES="qna-openai,generative-openai,text2vec-openai" \
       go_run ./cmd/weaviate-server \
         --scheme http \
         --host "127.0.0.1" \
