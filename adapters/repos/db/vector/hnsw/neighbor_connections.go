@@ -309,10 +309,10 @@ func (n *neighborFinderConnector) tryEpCandidate(candidate uint64) (bool, error)
 
 func (h *hnsw) findAndConnectNeighborsHybrid(node *vertex,
 	entryPointID uint64, nodeVec []float32, targetLevel, currentMaxLevel int,
-	filters map[int]int, lambda float32, denyList helpers.AllowList,
+	filters map[int]int, lambda float32, filterAllowList helpers.AllowList, denyList helpers.AllowList,
 ) error {
 	nfc := newNeighborFinderConnectorHybrid(h, node, entryPointID, nodeVec, targetLevel,
-		currentMaxLevel, filters, lambda, denyList)
+		currentMaxLevel, filters, lambda, filterAllowList, denyList)
 
 	return nfc.Do()
 }
@@ -327,6 +327,7 @@ type neighborFinderConnectorHybrid struct {
 	currentMaxLevel int
 	filters         map[int]int
 	lambda          float32
+	filterAllowList helpers.AllowList
 	denyList        helpers.AllowList
 	// bufLinksLog     BufferedLinksLogger
 }
@@ -334,7 +335,7 @@ type neighborFinderConnectorHybrid struct {
 // Change with Filters to Hybrid, lambda = 1 recreates filtered inserts
 func newNeighborFinderConnectorHybrid(graph *hnsw, node *vertex, entryPointID uint64,
 	nodeVec []float32, targetLevel, currentMaxLevel int,
-	filters map[int]int, lambda float32, denyList helpers.AllowList,
+	filters map[int]int, lambda float32, filterAllowList helpers.AllowList, denyList helpers.AllowList,
 ) *neighborFinderConnectorHybrid {
 	return &neighborFinderConnectorHybrid{
 		graph:           graph,
@@ -345,6 +346,7 @@ func newNeighborFinderConnectorHybrid(graph *hnsw, node *vertex, entryPointID ui
 		currentMaxLevel: currentMaxLevel,
 		filters:         filters,
 		lambda:          lambda,
+		filterAllowList: filterAllowList,
 		denyList:        denyList,
 	}
 }
@@ -389,8 +391,8 @@ func (n *neighborFinderConnectorHybrid) doAtLevelHybrid(level int, lambda float3
 		eps.Insert(n.entryPointID, n.entryPointDist)
 		n.graph.Unlock()
 	*/
-	results, err := n.graph.searchLayerByVectorWithFilters(n.nodeVec, eps, num_filter_candidates,
-		level, n.filters, nil)
+	results, err := n.graph.searchLayerByVector(n.nodeVec, eps, num_filter_candidates,
+		level, n.filterAllowList)
 	if err != nil {
 		return errors.Wrapf(err, "search layer at level %d", level)
 	}
@@ -510,7 +512,6 @@ func (n *neighborFinderConnectorHybrid) connectNeighborAtLevelHybrid(neighborID 
 
 			candidates.Insert(existingConnection, dist)
 		}
-
 		err = n.graph.filteredRobustPrune(candidates, maximumConnections, n.filters, n.denyList)
 		if err != nil {
 			return errors.Wrap(err, "connect neighbors")
@@ -571,6 +572,12 @@ func (n *neighborFinderConnectorHybrid) pickEntrypoint() error {
 	// 3. we need to be able to obtain a vector for it
 
 	localDeny := n.denyList.DeepCopy()
+	/*
+		var localDeny helpers.AllowList
+		if n.denyList != nil {
+			localDeny = n.denyList.DeepCopy()
+		}
+	*/
 	candidate := n.entryPointID
 
 	// make sure the loop cannot block forever. In most cases, results should be

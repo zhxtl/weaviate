@@ -444,7 +444,7 @@ func (h *hnsw) findBestEntrypointForNodeWithFilter(currentMaxLevel, targetLevel 
 		}
 
 		eps.Insert(entryPointID, dist)
-		res, err := h.searchLayerByVectorWithFilters(nodeVec, eps, 1, level, filter, nil)
+		res, err := h.searchLayerByVectorWithFilter(nodeVec, eps, 1, level, filter)
 		// k  = 0 means 0 distance neighbors
 		if err != nil {
 			return 0,

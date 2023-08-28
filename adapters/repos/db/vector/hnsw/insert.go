@@ -15,7 +15,6 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"math/rand"
 	"sync/atomic"
 	"time"
 
@@ -221,7 +220,7 @@ func (h *hnsw) insert(node *vertex, nodeVec []float32) error {
 	return nil
 }
 
-func (h *hnsw) HybridAdd(id uint64, vector []float32, filters map[int]int, lambda float32) error {
+func (h *hnsw) HybridAdd(id uint64, vector []float32, filters map[int]int, lambda float32, filterAllowList helpers.AllowList) error {
 	before := time.Now()
 	if len(vector) == 0 {
 		return errors.Errorf("insert called with nil-vector")
@@ -243,7 +242,7 @@ func (h *hnsw) HybridAdd(id uint64, vector []float32, filters map[int]int, lambd
 
 	h.compressActionLock.RLock()
 	defer h.compressActionLock.RUnlock()
-	return h.hybridInsert(node, vector, lambda)
+	return h.hybridInsert(node, vector, lambda, filterAllowList)
 }
 
 func (h *hnsw) insertInitialElementPerFilterPerValue(node *vertex, nodeVec []float32) error {
@@ -293,7 +292,7 @@ func (h *hnsw) insertInitialElementPerFilterPerValue(node *vertex, nodeVec []flo
 	return nil
 }
 
-func (h *hnsw) hybridInsert(node *vertex, nodeVec []float32, lambda float32) error {
+func (h *hnsw) hybridInsert(node *vertex, nodeVec []float32, lambda float32, filterAllowList helpers.AllowList) error {
 	h.trackDimensionsOnce.Do(func() {
 		atomic.StoreInt32(&h.dims, int32(len(nodeVec)))
 	})
@@ -305,12 +304,12 @@ func (h *hnsw) hybridInsert(node *vertex, nodeVec []float32, lambda float32) err
 	var firstInsertError error
 	emptyEPfound := false
 	h.Lock()
-	for filter := range node.filters {
-		if _, ok := h.entryPointIDperFilterPerValue[filter]; !ok {
+	for filterKey, filterValue := range node.filters {
+		if _, ok := h.entryPointIDperFilterPerValue[filterKey]; !ok {
 			emptyEPfound = true
 			break
 		} else {
-			if _, ok := h.entryPointIDperFilterPerValue[filter][node.filters[filter]]; !ok {
+			if _, ok := h.entryPointIDperFilterPerValue[filterKey][filterValue]; !ok {
 				emptyEPfound = true
 				break
 			}
@@ -334,10 +333,11 @@ func (h *hnsw) hybridInsert(node *vertex, nodeVec []float32, lambda float32) err
 	h.RLock()
 	// select filter for insert entrypoint
 	// loop through each filter and set the maxLayerPerFilterValue to
-	randomIndex := rand.Intn(len(node.filters))
+	//randomIndex := rand.Intn(len(node.filters))
+	randomIndex := 0 // only testing 1 filter so far
 	epFilter := node.filters[randomIndex]
-	entryPointID := h.entryPointIDperFilterPerValue[epFilter][node.filters[epFilter]]
-	currentMaximumLayer := h.currentMaximumLayerPerFilterPerValue[epFilter][node.filters[epFilter]]
+	entryPointID := h.entryPointIDperFilterPerValue[randomIndex][epFilter]
+	currentMaximumLayer := h.currentMaximumLayerPerFilterPerValue[randomIndex][epFilter]
 	h.RUnlock()
 
 	targetLevel := int(math.Floor(-math.Log(h.randFunc()) * h.levelNormalizer))
@@ -391,9 +391,11 @@ func (h *hnsw) hybridInsert(node *vertex, nodeVec []float32, lambda float32) err
 	before = time.Now()
 
 	epFilterMap := make(map[int]int)
-	epFilterMap[epFilter] = node.filters[epFilter]
+	// hardcoded 0 for now because only testing 1 filter
+	epFilterMap[0] = node.filters[epFilter]
 	entryPointID, err = h.findBestEntrypointForNodeWithFilter(currentMaximumLayer, targetLevel,
 		entryPointID, nodeVec, epFilterMap)
+
 	if err != nil {
 		return errors.Wrap(err, "find best entrypoint")
 	}
@@ -403,7 +405,7 @@ func (h *hnsw) hybridInsert(node *vertex, nodeVec []float32, lambda float32) err
 
 	// Add Lambda Here
 	if err := h.findAndConnectNeighborsHybrid(node, entryPointID, nodeVec,
-		targetLevel, currentMaximumLayer, node.filters, lambda, helpers.NewAllowList()); err != nil {
+		targetLevel, currentMaximumLayer, node.filters, lambda, filterAllowList, helpers.NewAllowList()); err != nil {
 		return errors.Wrap(err, "find and connect neighbors")
 	}
 

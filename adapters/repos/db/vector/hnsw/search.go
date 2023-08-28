@@ -15,7 +15,6 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"math/rand"
 	"sync/atomic"
 
 	"github.com/pkg/errors"
@@ -79,7 +78,7 @@ func (h *hnsw) SearchByVector(vector []float32, k int, allowList helpers.AllowLi
 	return h.knnSearchByVector(vector, k, h.searchTimeEF(k), allowList)
 }
 
-func (h *hnsw) SearchByVectorWithFilters(vector []float32, k int, filters map[int]int, allowList helpers.AllowList) ([]uint64, []float32, error) {
+func (h *hnsw) SearchByVectorWithEPFilter(vector []float32, filterKey int, filterValue int, k int, allowList helpers.AllowList) ([]uint64, []float32, error) {
 	h.compressActionLock.RLock()
 	defer h.compressActionLock.RUnlock()
 
@@ -93,7 +92,7 @@ func (h *hnsw) SearchByVectorWithFilters(vector []float32, k int, filters map[in
 	if allowList != nil && !h.forbidFlat && allowList.Len() < flatSearchCutoff {
 		return h.flatSearch(vector, k, allowList)
 	}
-	return h.knnSearchByVectorWithFilters(vector, k, h.searchTimeEF(k), filters, allowList)
+	return h.knnSearchByVectorWithFilter(vector, filterKey, filterValue, k, h.searchTimeEF(k), allowList)
 }
 
 // SearchByVectorDistance wraps SearchByVector, and calls it recursively until
@@ -342,21 +341,24 @@ func (h *hnsw) searchLayerByVectorWithDistancer(queryVector []float32,
 	return results, nil
 }
 
-func (h *hnsw) searchLayerByVectorWithFilters(queryVector []float32,
-	entrypoints *priorityqueue.Queue, ef int, level int, filters map[int]int,
-	allowList helpers.AllowList) (*priorityqueue.Queue, error,
+/*
+These are used in findBestEntrypointPerNodeWithFilter
+*/
+func (h *hnsw) searchLayerByVectorWithFilter(queryVector []float32,
+	entrypoints *priorityqueue.Queue, ef int, level int,
+	filter map[int]int) (*priorityqueue.Queue, error,
 ) {
 	var byteDistancer *ssdhelpers.PQDistancer
 	if h.compressed.Load() {
 		byteDistancer = h.pq.NewDistancer(queryVector)
 		defer h.pq.ReturnDistancer(byteDistancer)
 	}
-	return h.searchLayerByVectorWithDistancerWithFilters(queryVector, entrypoints, ef, level, filters, allowList, byteDistancer)
+	return h.searchLayerByVectorWithDistancerWithFilter(queryVector, entrypoints, ef, level, filter, byteDistancer)
 }
 
-func (h *hnsw) searchLayerByVectorWithDistancerWithFilters(queryVector []float32,
-	entrypoints *priorityqueue.Queue, ef int, level int, filters map[int]int,
-	allowList helpers.AllowList, byteDistancer *ssdhelpers.PQDistancer) (*priorityqueue.Queue, error,
+func (h *hnsw) searchLayerByVectorWithDistancerWithFilter(queryVector []float32,
+	entrypoints *priorityqueue.Queue, ef int, level int,
+	filter map[int]int, byteDistancer *ssdhelpers.PQDistancer) (*priorityqueue.Queue, error,
 ) {
 	h.pools.visitedListsLock.Lock()
 	visited := h.pools.visitedLists.Borrow()
@@ -373,7 +375,7 @@ func (h *hnsw) searchLayerByVectorWithDistancerWithFilters(queryVector []float32
 	}
 
 	h.insertViableEntrypointsAsCandidatesAndResults(entrypoints, candidates,
-		results, level, visited, allowList)
+		results, level, visited, nil)
 
 	var worstResultDistance float32
 	var err error
@@ -462,31 +464,15 @@ func (h *hnsw) searchLayerByVectorWithDistancerWithFilters(queryVector []float32
 
 			if distance < worstResultDistance || results.Len() < ef {
 				candidates.Insert(neighborID, distance)
-				if level == 0 && allowList != nil {
-					// we are on the lowest level containing the actual candidates and we
-					// have an allow list (i.e. the user has probably set some sort of a
-					// filter restricting this search further. As a result we have to
-					// ignore items not on the list
 
-					// Instead of the allowList, we are going to use the filters
-					/*
-						if !allowList.Contains(neighborID) {
+				neighborFilters := h.nodes[neighborID].filters
+				for filterKey, filterValue := range filter {
+					if neighborFilterValue, ok := neighborFilters[filterKey]; !ok {
+						continue
+					} else {
+						if filterValue != neighborFilterValue {
 							continue
 						}
-					*/
-					good := true
-					neighborFilters := h.nodes[neighborID].filters
-					for _, filter := range filters {
-						if neighborFilterValue, ok := neighborFilters[filter]; !ok {
-							good = false
-						} else {
-							if filters[filter] != neighborFilterValue {
-								good = false
-							}
-						}
-					}
-					if !good {
-						continue
 					}
 				}
 
@@ -794,17 +780,14 @@ func (h *hnsw) knnSearchByVector(searchVec []float32, k int,
 	return ids, dists, nil
 }
 
-func (h *hnsw) knnSearchByVectorWithFilters(searchVec []float32, k int,
-	ef int, filters map[int]int, allowList helpers.AllowList,
+func (h *hnsw) knnSearchByVectorWithFilter(searchVec []float32, EPfilterKey int, EPfilterValue int, k int,
+	ef int, allowList helpers.AllowList,
 ) ([]uint64, []float32, error) {
 	if h.isEmpty() {
 		return nil, nil, nil
 	}
 
-	/* Select random filter for EP */
-	randomIndex := rand.Intn(len(filters))
-	epFilter := filters[randomIndex]
-	entryPointID := h.entryPointIDperFilterPerValue[epFilter][filters[epFilter]]
+	entryPointID := h.entryPointIDperFilterPerValue[EPfilterKey][EPfilterValue]
 	entryPointDistance, ok, err := h.distBetweenNodeAndVec(entryPointID, searchVec)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "knn search: distance between entrypoint and query node")
@@ -825,7 +808,7 @@ func (h *hnsw) knnSearchByVectorWithFilters(searchVec []float32, k int,
 		eps := priorityqueue.NewMin(10)
 		eps.Insert(entryPointID, entryPointDistance)
 
-		res, err := h.searchLayerByVectorWithDistancerWithFilters(searchVec, eps, 1, level, filters, nil, byteDistancer)
+		res, err := h.searchLayerByVectorWithDistancer(searchVec, eps, 1, level, nil, byteDistancer)
 		if err != nil {
 			return nil, nil, errors.Wrapf(err, "knn search: search layer at level %d", level)
 		}
@@ -868,7 +851,7 @@ func (h *hnsw) knnSearchByVectorWithFilters(searchVec []float32, k int,
 
 	eps := priorityqueue.NewMin(10)
 	eps.Insert(entryPointID, entryPointDistance)
-	res, err := h.searchLayerByVectorWithDistancerWithFilters(searchVec, eps, ef, 0, filters, nil, byteDistancer)
+	res, err := h.searchLayerByVectorWithDistancer(searchVec, eps, ef, 0, allowList, byteDistancer)
 	if err != nil {
 		return nil, nil, errors.Wrapf(err, "knn search: search layer at level %d", 0)
 	}

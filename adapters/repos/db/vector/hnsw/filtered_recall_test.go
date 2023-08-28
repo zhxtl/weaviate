@@ -82,7 +82,7 @@ func TestFilteredRecall(t *testing.T) {
 		/*
 			[{"id": 0, "vector": [0,15,35,...]},{"id": 0, "vector": [119,15,4,...]},...]
 		*/
-		indexVectorsJSON, err := ioutil.ReadFile("indexVectors.json")
+		indexVectorsJSON, err := ioutil.ReadFile("indexVectors100K.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(indexVectorsJSON, &indexVectors)
 		require.Nil(t, err)
@@ -92,7 +92,7 @@ func TestFilteredRecall(t *testing.T) {
 
 			For now, running one test at a time, future - loop through filter paths
 		*/
-		indexFiltersJSON, err := ioutil.ReadFile("indexFilters.json")
+		indexFiltersJSON, err := ioutil.ReadFile("indexFilters100K.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(indexFiltersJSON, &indexFilters)
 		require.Nil(t, err)
@@ -112,18 +112,18 @@ func TestFilteredRecall(t *testing.T) {
 		   =================================================
 		*/
 
-		queryVectorsJSON, err := ioutil.ReadFile("queryVectors.json")
+		queryVectorsJSON, err := ioutil.ReadFile("queryVectors100K.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(queryVectorsJSON, &queryVectors)
 		require.Nil(t, err)
 
-		queryFiltersJSON, err := ioutil.ReadFile("queryFilters.json")
+		queryFiltersJSON, err := ioutil.ReadFile("queryFilters100K.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(queryFiltersJSON, &queryFilters)
 
 		queryVectorsWithFilters := mergeData(queryVectors, queryFilters)
 
-		truthsJSON, err := ioutil.ReadFile("filtered_recall_truths.json")
+		truthsJSON, err := ioutil.ReadFile("filtered_recall_truths100K.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(truthsJSON, &truths)
 		require.Nil(t, err)
@@ -170,27 +170,31 @@ func TestFilteredRecall(t *testing.T) {
 					}
 					originalIndex := (i * workerCount) + workerID
 					nodeId := uint64(originalIndex)
-					/* TEST FILTERED HNSW */
-					err := vectorIndex.HybridAdd(nodeId, vec.Vector, vec.FilterMap, 1) // change signature to add vec.Label
+
 					/* TEST HNSW */
 					//err := vectorIndex.Add(nodeId, vec.Vector)
 
 					require.Nil(t, err)
 					mutex.Lock()
 					// filterToIDs is now a map[int]map[int][]uint64
-					for _, filter := range vec.FilterMap {
+					for filter, filterValue := range vec.FilterMap {
 						if _, ok := filterToIDs[filter]; !ok {
 							filterToIDs[filter] = make(map[int][]uint64)
-							filterToIDs[filter][vec.FilterMap[filter]] = []uint64{nodeId}
+							filterToIDs[filter][filterValue] = []uint64{nodeId}
 						} else {
-							if _, ok := filterToIDs[filter][vec.FilterMap[filter]]; !ok {
-								filterToIDs[filter][vec.FilterMap[filter]] = []uint64{nodeId}
+							if _, ok := filterToIDs[filter][filterValue]; !ok {
+								filterToIDs[filter][filterValue] = []uint64{nodeId}
 							} else {
-								filterToIDs[filter][vec.FilterMap[filter]] = append(filterToIDs[filter][vec.FilterMap[filter]], nodeId)
+								filterToIDs[filter][filterValue] = append(filterToIDs[filter][filterValue], nodeId)
 							}
 						}
 					}
 					mutex.Unlock()
+
+					/* TEST FILTERED HNSW */
+					filterIdx := 0 // need to change the loop through the filters in the future, POC testing now
+					insertAllowList := helpers.NewAllowList(filterToIDs[filterIdx][vec.FilterMap[filterIdx]]...)
+					err := vectorIndex.HybridAdd(nodeId, vec.Vector, vec.FilterMap, 1, insertAllowList) // change signature to add vec.Label
 
 					require.Nil(t, err)
 				}
@@ -202,9 +206,7 @@ func TestFilteredRecall(t *testing.T) {
 
 		fmt.Printf("importing took %s\n", time.Since(before))
 
-		fmt.Printf("With k=100")
-
-		fmt.Print(filterToIDs[0][3])
+		fmt.Printf("With k=100 \n")
 
 		k := 100
 
@@ -222,19 +224,19 @@ func TestFilteredRecall(t *testing.T) {
 			queryFilters := queryVectorsWithFilters[i].FilterMap
 
 			allowListIDs := []uint64{}
-			for _, filter := range queryFilters {
-				allowListIDs = append(allowListIDs, filterToIDs[filter][queryFilters[filter]]...)
+			for filterKey, filterValue := range queryFilters {
+				allowListIDs = append(allowListIDs, filterToIDs[filterKey][filterValue]...)
 			}
 			//construct an allowList from the []uint64 of ids that match the filter
 			queryAllowList := helpers.NewAllowList(allowListIDs...)
-
 			/* TEST FILTERED HNSW */
 
-			// THIS COULD BE CONFOUNDING LATENCY MEASUREMENT, TRY SEARCH WITH ALLOWLIST AS WELL! IN THE SAME INDEX TEST!
+			// select a single filter for the entrypoint
+			queryFilterKey := 0
 
 			queryStart := time.Now()
-			//results, _, err := vectorIndex.SearchByVectorWithFilters(queryVectorsWithFilters[i].Vector, k, queryFilters, nil)
-			results, _, err := vectorIndex.SearchByVector(queryVectorsWithFilters[i].Vector, k, queryAllowList)
+			results, _, err := vectorIndex.SearchByVectorWithEPFilter(queryVectorsWithFilters[i].Vector, queryFilterKey, queryFilters[queryFilterKey], k, queryAllowList)
+			//results, _, err := vectorIndex.SearchByVector(queryVectorsWithFilters[i].Vector, k, queryAllowList)
 			local_latency := float32(time.Now().Sub(queryStart).Seconds())
 			/* TEST HNSW */
 			/*
@@ -265,15 +267,6 @@ func TestFilteredRecall(t *testing.T) {
 		fmt.Printf("Average Recall for all filters = %f\n", average_recall)
 		average_latency := float32(total_latency) / float32(len(queryVectorsWithFilters))
 		fmt.Printf("Average Latency for all filters = %f\n", average_latency)
-
-		fmt.Print("\n =========== \n")
-		fmt.Print("\n DEBUGGING \n")
-		fmt.Print(totalRecallPerFilter)
-		fmt.Print("\n DEBUGGING \n")
-		fmt.Print(totalLatencyPerFilter)
-		fmt.Print("\n DEBUGGING \n")
-		fmt.Print(totalCountPerFilter)
-		fmt.Print("\n =========== \n")
 
 		/* Loop through query filters, adding new recall score */
 		for filterKey, totalRecallValue := range totalRecallPerFilter {
