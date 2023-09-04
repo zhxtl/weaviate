@@ -104,9 +104,6 @@ func (m *Manager) RestoreClass(ctx context.Context, d *backup.ClassDescriptor) e
 		return err
 	}
 
-	semanticSchema := m.schemaCache.ObjectSchema
-	semanticSchema.Classes = append(semanticSchema.Classes, class)
-
 	shardingState.MigrateFromOldFormat()
 
 	payload, err := CreateClassPayload(class, &shardingState)
@@ -114,7 +111,10 @@ func (m *Manager) RestoreClass(ctx context.Context, d *backup.ClassDescriptor) e
 		return err
 	}
 	shardingState.SetLocalName(m.clusterState.LocalName())
-	m.schemaCache.LockGuard(func() { m.schemaCache.ShardingState[class.Class] = &shardingState })
+	m.schemaCache.LockGuard(func() {
+		m.schemaCache.ShardingState[class.Class] = &shardingState
+		m.schemaCache.ObjectSchema.Classes = append(m.schemaCache.ObjectSchema.Classes, class)
+	})
 
 	// payload.Shards
 	if err := m.repo.NewClass(ctx, payload); err != nil {
