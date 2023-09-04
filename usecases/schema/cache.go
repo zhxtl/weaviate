@@ -12,11 +12,17 @@
 package schema
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 
 	"github.com/weaviate/weaviate/entities/models"
 	"github.com/weaviate/weaviate/usecases/sharding"
+)
+
+var (
+	errClassNotFound = errors.New("class not found")
+	errShardNotFound = errors.New("shard not found")
 )
 
 // State is a cached copy of the schema that can also be saved into a remote
@@ -47,11 +53,11 @@ func (s *schemaCache) ShardOwner(class, shard string) (string, error) {
 	defer s.RUnlock()
 	cls := s.ShardingState[class]
 	if cls == nil {
-		return "", fmt.Errorf("class not found")
+		return "", errClassNotFound
 	}
 	x, ok := cls.Physical[shard]
 	if !ok {
-		return "", fmt.Errorf("shard not found")
+		return "", errShardNotFound
 	}
 	if len(x.BelongsToNodes) < 1 || x.BelongsToNodes[0] == "" {
 		return "", fmt.Errorf("owner node not found")
@@ -65,11 +71,11 @@ func (s *schemaCache) ShardReplicas(class, shard string) ([]string, error) {
 	defer s.RUnlock()
 	cls := s.ShardingState[class]
 	if cls == nil {
-		return nil, fmt.Errorf("class not found")
+		return nil, errClassNotFound
 	}
 	x, ok := cls.Physical[shard]
 	if !ok {
-		return nil, fmt.Errorf("shard not found")
+		return nil, errShardNotFound
 	}
 	return x.BelongsToNodes, nil
 }
@@ -158,4 +164,13 @@ func (s *schemaCache) deleteClassState(name string) {
 	s.Lock()
 	defer s.Unlock()
 	delete(s.ShardingState, name)
+}
+
+func (s *schemaCache) findClassIfUnsafe(pred func(*models.Class) bool) *models.Class {
+	for _, cls := range s.ObjectSchema.Classes {
+		if pred(cls) {
+			return cls
+		}
+	}
+	return nil
 }
