@@ -149,3 +149,33 @@ func (m *Schema) UnmarshalBinary(b []byte) error {
 	*m = res
 	return nil
 }
+
+// ShallowCopyClass creates a new class instance with a fresh property slice. 
+// This function assumes that class attributes are being overwritten. 
+// The properties attribute is the only one that might vary in size; 
+// therefore, we perform a shallow copy of the existing properties. 
+// This implementation assumes that individual properties are overwritten rather than partially updated
+func ShallowCopyClass(src *Class)  *Class{
+	if src == nil{
+		return nil
+	}
+	dest := *src
+	dest.Properties = make([]*Property, len(src.Properties))
+	copy(dest.Properties, src.Properties)
+	return &dest
+}
+
+// ShallowCopy creates a shallow copy of existing classes
+//
+// This function assumes that class attributes are being overwritten. 
+// The properties attribute is the only one that might vary in size; 
+// therefore, we perform a shallow copy of the existing properties. 
+// This implementation assumes that individual properties are overwritten rather than partially updated
+func (m *Schema) ShallowCopy() *Schema {
+	cp := *m
+	cp.Classes = make([]*Class, len(m.Classes))
+	for i := 0; i < len(m.Classes); i++{
+		cp.Classes[i] = ShallowCopyClass(m.Classes[i])
+	}
+	return &cp
+}
