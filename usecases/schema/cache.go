@@ -12,6 +12,7 @@
 package schema
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -153,10 +154,12 @@ func (s *schemaCache) detachClass(name string) bool {
 	if ci == -1 {
 		return false
 	}
-	nc := len(schema.Classes)
-	schema.Classes[ci] = schema.Classes[nc-1]
-	schema.Classes[nc-1] = nil // to prevent leaking this pointer.
-	schema.Classes = schema.Classes[:nc-1]
+
+	// update all at once to prevent race condition with concurrent readers
+	xs := make([]*models.Class, len(schema.Classes)-1)
+	copy(xs, schema.Classes[:ci])
+	copy(xs, schema.Classes[ci+1:])
+	schema.Classes = xs
 	return true
 }
 
@@ -166,11 +169,56 @@ func (s *schemaCache) deleteClassState(name string) {
 	delete(s.ShardingState, name)
 }
 
-func (s *schemaCache) findClassIfUnsafe(pred func(*models.Class) bool) *models.Class {
+func (s *schemaCache) unsafeFindClassIf(pred func(*models.Class) bool) *models.Class {
 	for _, cls := range s.ObjectSchema.Classes {
 		if pred(cls) {
 			return cls
 		}
 	}
 	return nil
+}
+
+func (s *schemaCache) unsafeFindClass(className string) *models.Class {
+	for _, c := range s.ObjectSchema.Classes {
+		if c.Class == className {
+			return c
+		}
+	}
+	return nil
+}
+
+func (s *schemaCache) AddClass(c *models.Class, ss *sharding.State) {
+	s.Lock()
+	defer s.Unlock()
+
+	// update all at once to prevent race condition with concurrent readers
+	cs := make([]*models.Class, len(s.ObjectSchema.Classes)+1)
+	copy(cs, s.ObjectSchema.Classes)
+	cs[len(s.ObjectSchema.Classes)] = c
+	s.ObjectSchema.Classes = cs
+
+	s.ShardingState[c.Class] = ss
+}
+
+func (s *schemaCache) AddProperty(class string, p *models.Property) ([]byte, error) {
+	s.Lock()
+	defer s.Unlock()
+
+	c := s.unsafeFindClass(class)
+	if c == nil {
+		return nil, errClassNotFound
+	}
+
+	// update all at once to prevent race condition with concurrent readers
+	src := c.Properties
+	dest := make([]*models.Property, len(src)+1)
+	copy(dest, src)
+	dest[len(src)] = p
+	c.Properties = dest
+	metadata, err := json.Marshal(&class)
+	if err != nil {
+		c.Properties = src
+		return nil, fmt.Errorf("marshal class %s: %w", class, err)
+	}
+	return metadata, nil
 }

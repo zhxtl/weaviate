@@ -28,7 +28,7 @@ func (m *Manager) validateClassNameUniqueness(name string) error {
 	}
 	exitingName := ""
 	m.schemaCache.RLockGuard(func() error {
-		if cls := m.schemaCache.findClassIfUnsafe(pred); cls != nil {
+		if cls := m.schemaCache.unsafeFindClassIf(pred); cls != nil {
 			exitingName = cls.Class
 		}
 		return nil

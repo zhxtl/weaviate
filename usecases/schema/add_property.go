@@ -13,7 +13,6 @@ package schema
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -122,15 +121,9 @@ func validateUserProp(class *models.Class, prop *models.Property) error {
 func (m *Manager) addClassPropertyApplyChanges(ctx context.Context,
 	className string, prop *models.Property,
 ) error {
-	class, err := schema.GetClassByName(m.schemaCache.ObjectSchema, className)
+	metadata, err := m.schemaCache.AddProperty(className, prop)
 	if err != nil {
 		return err
-	}
-
-	class.Properties = append(class.Properties, prop)
-	metadata, err := json.Marshal(&class)
-	if err != nil {
-		return fmt.Errorf("marshal class %s: %w", className, err)
 	}
 	m.logger.
 		WithField("action", "schema.add_property").
