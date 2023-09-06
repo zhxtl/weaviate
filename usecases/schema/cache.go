@@ -12,7 +12,6 @@
 package schema
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -186,7 +185,7 @@ func (s *schemaCache) unsafeFindClass(className string) *models.Class {
 	return nil
 }
 
-func (s *schemaCache) AddClass(c *models.Class, ss *sharding.State) {
+func (s *schemaCache) addClass(c *models.Class, ss *sharding.State) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -194,13 +193,28 @@ func (s *schemaCache) AddClass(c *models.Class, ss *sharding.State) {
 	s.ObjectSchema.Classes = append(s.ObjectSchema.Classes, c)
 }
 
-func (s *schemaCache) AddProperty(class string, p *models.Property) ([]byte, error) {
+func (s *schemaCache) updateClass(u *models.Class, ss *sharding.State) error {
+	s.Lock()
+	defer s.Unlock()
+
+	if c := s.unsafeFindClass(u.Class); c != nil {
+		*c = *u
+	} else {
+		return errClassNotFound
+	}
+	if ss != nil {
+		s.ShardingState[u.Class] = ss
+	}
+	return nil
+}
+
+func (s *schemaCache) addProperty(class string, p *models.Property) (models.Class, error) {
 	s.Lock()
 	defer s.Unlock()
 
 	c := s.unsafeFindClass(class)
 	if c == nil {
-		return nil, errClassNotFound
+		return models.Class{}, errClassNotFound
 	}
 
 	// update all at once to prevent race condition with concurrent readers
@@ -209,12 +223,7 @@ func (s *schemaCache) AddProperty(class string, p *models.Property) ([]byte, err
 	copy(dest, src)
 	dest[len(src)] = p
 	c.Properties = dest
-	metadata, err := json.Marshal(&class)
-	if err != nil {
-		c.Properties = src
-		return nil, fmt.Errorf("marshal class %s: %w", class, err)
-	}
-	return metadata, nil
+	return *c, nil
 }
 
 // readOnlySchema returns a read only schema
@@ -234,6 +243,12 @@ func (s *schemaCache) readOnlyClass(name string) (*models.Class, error) {
 	}
 	cp := *c
 	return &cp, nil
+}
+
+func (s *schemaCache) classExist(name string) bool {
+	s.RLock()
+	defer s.RUnlock()
+	return s.unsafeFindClass(name) != nil
 }
 
 // ShallowCopySchema creates a shallow copy of existing classes
