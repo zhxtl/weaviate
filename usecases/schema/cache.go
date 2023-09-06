@@ -155,11 +155,10 @@ func (s *schemaCache) detachClass(name string) bool {
 		return false
 	}
 
-	// update all at once to prevent race condition with concurrent readers
-	xs := make([]*models.Class, len(schema.Classes)-1)
-	copy(xs, schema.Classes[:ci])
-	copy(xs, schema.Classes[ci+1:])
-	schema.Classes = xs
+	nc := len(schema.Classes)
+	schema.Classes[ci] = schema.Classes[nc-1]
+	schema.Classes[nc-1] = nil // to prevent leaking this pointer.
+	schema.Classes = schema.Classes[:nc-1]
 	return true
 }
 
@@ -191,13 +190,8 @@ func (s *schemaCache) AddClass(c *models.Class, ss *sharding.State) {
 	s.Lock()
 	defer s.Unlock()
 
-	// update all at once to prevent race condition with concurrent readers
-	cs := make([]*models.Class, len(s.ObjectSchema.Classes)+1)
-	copy(cs, s.ObjectSchema.Classes)
-	cs[len(s.ObjectSchema.Classes)] = c
-	s.ObjectSchema.Classes = cs
-
 	s.ShardingState[c.Class] = ss
+	s.ObjectSchema.Classes = append(s.ObjectSchema.Classes, c)
 }
 
 func (s *schemaCache) AddProperty(class string, p *models.Property) ([]byte, error) {
@@ -221,4 +215,39 @@ func (s *schemaCache) AddProperty(class string, p *models.Property) ([]byte, err
 		return nil, fmt.Errorf("marshal class %s: %w", class, err)
 	}
 	return metadata, nil
+}
+
+// readOnlySchema returns a read only schema
+// Changing the schema outside this package might lead to undefined behavior.
+func (s *schemaCache) readOnlySchema() *models.Schema {
+	s.RLock()
+	defer s.RUnlock()
+	return shallowCopySchema(s.ObjectSchema)
+}
+
+func (s *schemaCache) readOnlyClass(name string) (*models.Class, error) {
+	s.RLock()
+	defer s.RUnlock()
+	c := s.unsafeFindClass(name)
+	if c == nil {
+		return nil, errClassNotFound
+	}
+	cp := *c
+	return &cp, nil
+}
+
+// ShallowCopySchema creates a shallow copy of existing classes
+//
+// This function assumes that class attributes are being overwritten.
+// The properties attribute is the only one that might vary in size;
+// therefore, we perform a shallow copy of the existing properties.
+// This implementation assumes that individual properties are overwritten rather than partially updated
+func shallowCopySchema(m *models.Schema) *models.Schema {
+	cp := *m
+	cp.Classes = make([]*models.Class, len(m.Classes))
+	for i := 0; i < len(m.Classes); i++ {
+		c := *m.Classes[i]
+		cp.Classes[i] = &c
+	}
+	return &cp
 }

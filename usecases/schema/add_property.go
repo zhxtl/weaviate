@@ -40,7 +40,7 @@ func (m *Manager) addClassProperty(ctx context.Context,
 	m.Lock()
 	defer m.Unlock()
 
-	class, err := schema.GetClassByName(m.schemaCache.ObjectSchema, className)
+	class, err := m.schemaCache.readOnlyClass(className)
 	if err != nil {
 		return err
 	}
