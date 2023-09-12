@@ -14,6 +14,8 @@ package hnsw
 import (
 	"context" // remove
 	"math"
+	"math/rand"
+	"sync"
 	"time"
 
 	"github.com/pkg/errors"
@@ -308,46 +310,49 @@ func (n *neighborFinderConnector) tryEpCandidate(candidate uint64) (bool, error)
 }
 
 func (h *hnsw) findAndConnectNeighborsHybrid(node *vertex,
-	entryPointID uint64, nodeVec []float32, targetLevel, currentMaxLevel int,
+	nodeVec []float32, filterEntryPointID uint64, globalEntryPointID uint64, targetLevel, currentMaxLevel int,
 	filters map[int]int, lambda float32, filterAllowList helpers.AllowList, denyList helpers.AllowList,
 ) error {
-	nfc := newNeighborFinderConnectorHybrid(h, node, entryPointID, nodeVec, targetLevel,
+	nfc := newNeighborFinderConnectorHybrid(h, node, filterEntryPointID, globalEntryPointID, nodeVec, targetLevel,
 		currentMaxLevel, filters, lambda, filterAllowList, denyList)
 
 	return nfc.Do()
 }
 
 type neighborFinderConnectorHybrid struct {
-	graph           *hnsw
-	node            *vertex
-	entryPointID    uint64
-	entryPointDist  float32
-	nodeVec         []float32
-	targetLevel     int
-	currentMaxLevel int
-	filters         map[int]int
-	lambda          float32
-	filterAllowList helpers.AllowList
-	denyList        helpers.AllowList
+	graph                *hnsw
+	node                 *vertex
+	filterEntryPointID   uint64
+	filterEntryPointDist float32
+	globalEntryPointID   uint64
+	globalEntryPointDist float32
+	nodeVec              []float32
+	targetLevel          int
+	currentMaxLevel      int
+	filters              map[int]int
+	lambda               float32
+	filterAllowList      helpers.AllowList
+	denyList             helpers.AllowList
 	// bufLinksLog     BufferedLinksLogger
 }
 
 // Change with Filters to Hybrid, lambda = 1 recreates filtered inserts
-func newNeighborFinderConnectorHybrid(graph *hnsw, node *vertex, entryPointID uint64,
+func newNeighborFinderConnectorHybrid(graph *hnsw, node *vertex, filterEntryPointID uint64, globalEntryPointID uint64,
 	nodeVec []float32, targetLevel, currentMaxLevel int,
 	filters map[int]int, lambda float32, filterAllowList helpers.AllowList, denyList helpers.AllowList,
 ) *neighborFinderConnectorHybrid {
 	return &neighborFinderConnectorHybrid{
-		graph:           graph,
-		node:            node,
-		entryPointID:    entryPointID,
-		nodeVec:         nodeVec,
-		targetLevel:     targetLevel,
-		currentMaxLevel: currentMaxLevel,
-		filters:         filters,
-		lambda:          lambda,
-		filterAllowList: filterAllowList,
-		denyList:        denyList,
+		graph:              graph,
+		node:               node,
+		filterEntryPointID: filterEntryPointID,
+		globalEntryPointID: globalEntryPointID,
+		nodeVec:            nodeVec,
+		targetLevel:        targetLevel,
+		currentMaxLevel:    currentMaxLevel,
+		filters:            filters,
+		lambda:             lambda,
+		filterAllowList:    filterAllowList,
+		denyList:           denyList,
 	}
 }
 
@@ -364,50 +369,70 @@ func (n *neighborFinderConnectorHybrid) Do() error {
 
 func (n *neighborFinderConnectorHybrid) doAtLevelHybrid(level int, lambda float32) error {
 	before := time.Now()
-	if err := n.pickEntrypoint(); err != nil {
+
+	// Could add a if lambda == 0 to separate this with normal vector search
+	// Hmm, idk might as well just merge it all then... but that would be at the cost of readability.
+	if err := n.pickFilterEntrypoint(); err != nil {
 		return errors.Wrap(err, "pick entrypoint at level beginning")
 	}
 	num_filter_candidates := int(math.Ceil(float64(float32(n.graph.efConstruction) * lambda)))
 	eps := priorityqueue.NewMin(1)
-	eps.Insert(n.entryPointID, n.entryPointDist)
-	/*
-		num_distance_candidates := n.graph.efConstruction - num_filter_candidates
-
-		eps := priorityqueue.NewMin(1)
-
-		if lambda != 1 {
-			eps.Insert(n.entryPointID, n.entryPointDist)
-		}
-		var waitForDistanceSearchLock sync.Mutex
-		// maybe want to add a if num_distance_candidates != 0
-		waitForDistanceSearchLock.Lock()
-		results, err := n.graph.searchLayerByVector(n.nodeVec, eps, num_distance_candidates,
-			level, nil)
-		if err != nil {
-			return errors.Wrapf(err, "search layer at level %d", level)
-		}
-		waitForDistanceSearchLock.Unlock()
-		n.graph.Lock()
-		eps.Insert(n.entryPointID, n.entryPointDist)
-		n.graph.Unlock()
-	*/
+	eps.Insert(n.filterEntryPointID, n.filterEntryPointDist)
 	results, err := n.graph.searchLayerByVector(n.nodeVec, eps, num_filter_candidates,
 		level, n.filterAllowList)
 	if err != nil {
 		return errors.Wrapf(err, "search layer at level %d", level)
 	}
-	//fmt.Printf("\n searchLayerByVector returned %d candidates", results.Len())
-	//fmt.Printf("\n searchLayerByVectorWithFilters returned %d candidates", filterResults.Len())
 
-	// merge them here
-	/*
-		for filterResults.Len() > 0 {
-			// check if it's a duplicate!
-			item := filterResults.Pop()
-			results.Insert(item.ID, item.Dist)
+	// If lambda == 1, we want to separate the graphs entirely
+	// However, I can't imagine a scenario where we would want to do that.
+
+	// Might also only want to do this at layer 0?
+	if level == 0 {
+		if lambda != 1 {
+			if n.graph.nodeCounter < 10_000 && n.graph.nodeCounter > 9_000 {
+				randomSelectionCounter := 0
+				for randomSelectionCounter < 32 {
+					randomIndex := uint64(rand.Intn(n.graph.nodeCounter))
+					randomCandidateDistance, _, _ := n.graph.distBetweenNodeAndVec(randomIndex, n.nodeVec)
+					results.Insert(randomIndex, randomCandidateDistance)
+					randomSelectionCounter++
+				}
+			} else {
+				// Make sure entrypoint queue is empty
+				for eps.Len() > 0 {
+					eps.Pop()
+				}
+
+				num_distance_candidates := n.graph.efConstruction - num_filter_candidates
+
+				eps.Insert(n.globalEntryPointID, n.globalEntryPointDist)
+
+				var waitForDistanceSearchLock sync.Mutex
+				// maybe want to add a if num_distance_candidates != 0
+				waitForDistanceSearchLock.Lock()
+				distanceSearchResults, err := n.graph.searchLayerByVector(n.nodeVec, eps, num_distance_candidates,
+					level, nil)
+				if err != nil {
+					return errors.Wrapf(err, "search layer at level %d", level)
+				}
+				waitForDistanceSearchLock.Unlock()
+				n.graph.Lock()
+				eps.Insert(n.globalEntryPointID, n.globalEntryPointDist)
+				n.graph.Unlock()
+
+				//fmt.Printf("\n searchLayerByVector returned %d candidates", results.Len())
+				//fmt.Printf("\n searchLayerByVectorWithFilters returned %d candidates", filterResults.Len())
+
+				// merge them here
+				for distanceSearchResults.Len() > 0 {
+					// ToDo - check if it's a duplicate!
+					item := distanceSearchResults.Pop()
+					results.Insert(item.ID, item.Dist)
+				}
+			}
 		}
-	*/
-	// loop through elements in filterResults and put them into the distanceResults queue
+	}
 
 	n.graph.insertMetrics.findAndConnectSearch(before)
 	before = time.Now()
@@ -436,22 +461,50 @@ func (n *neighborFinderConnectorHybrid) doAtLevelHybrid(level int, lambda float3
 	n.node.setConnectionsAtLevel(level, neighbors)
 	n.graph.commitLog.ReplaceLinksAtLevel(n.node.id, level, neighbors)
 
-	// CHECK THIS!!!
 	for _, neighborID := range neighbors {
 		if err := n.connectNeighborAtLevelHybrid(neighborID, level); err != nil {
 			return errors.Wrapf(err, "connect neighbor %d", neighborID)
 		}
 	}
 
+	/*
+		Ok, here's something tricky
+		====================================================
+		1. Why is the `nextEntryPointID` the last neighbor?
+		2. How do we pass the two EPs from level to level?
+	*/
 	if len(neighbors) > 0 {
 		// there could be no neighbors left, if all are marked deleted, in this
 		// case, don't change the entrypoint
+
+		// This is the next entrypoint for distance search
 		nextEntryPointID := neighbors[len(neighbors)-1]
+
+		// We need to check if it matches the filters,
+		// if not, we need to find the next entrypoint for filtered search
+
+		nextFilteredEntryPointID := nextEntryPointID
+
+		if len(neighbors) > 1 {
+			reverseIndexOffset := 2
+			for !n.filterAllowList.Contains(nextFilteredEntryPointID) {
+				if len(neighbors)-reverseIndexOffset < 0 {
+					break
+				}
+				nextFilteredEntryPointID = neighbors[len(neighbors)-reverseIndexOffset]
+				reverseIndexOffset++
+			}
+		}
+
 		if nextEntryPointID == n.node.id {
 			return nil
 		}
+		if nextFilteredEntryPointID == n.node.id {
+			return nil
+		}
 
-		n.entryPointID = nextEntryPointID
+		n.globalEntryPointID = nextEntryPointID
+		n.filterEntryPointID = nextFilteredEntryPointID
 	}
 
 	n.graph.insertMetrics.findAndConnectUpdateConnections(before)
@@ -560,7 +613,7 @@ func (n *neighborFinderConnectorHybrid) maximumConnections(level int) int {
 	return n.graph.maximumConnections
 }
 
-func (n *neighborFinderConnectorHybrid) pickEntrypoint() error {
+func (n *neighborFinderConnectorHybrid) pickFilterEntrypoint() error {
 	// the neighborFinderConnector always has a suggestion for an entrypoint that
 	// it got from the outside, most of the times we can use this, but in some
 	// cases we can't. To see if we can use it, three conditions need to be met:
@@ -578,7 +631,7 @@ func (n *neighborFinderConnectorHybrid) pickEntrypoint() error {
 			localDeny = n.denyList.DeepCopy()
 		}
 	*/
-	candidate := n.entryPointID
+	candidate := n.filterEntryPointID
 
 	// make sure the loop cannot block forever. In most cases, results should be
 	// found within micro to milliseconds, this is just a last resort to handle
@@ -592,7 +645,7 @@ func (n *neighborFinderConnectorHybrid) pickEntrypoint() error {
 			return err
 		}
 
-		success, err := n.tryEpCandidate(candidate)
+		success, err := n.tryFilterEpCandidate(candidate)
 		if err != nil {
 			return err
 		}
@@ -606,13 +659,15 @@ func (n *neighborFinderConnectorHybrid) pickEntrypoint() error {
 		localDeny.Insert(candidate)
 		// now find a new one
 
+		/* CHECK THIS FOR FILTERED CASE */
+		// Currently hoping it just doesn't come to this.
 		alternative, _ := n.graph.findNewLocalEntrypoint(localDeny,
 			n.graph.currentMaximumLayer, candidate)
 		candidate = alternative
 	}
 }
 
-func (n *neighborFinderConnectorHybrid) tryEpCandidate(candidate uint64) (bool, error) {
+func (n *neighborFinderConnectorHybrid) tryFilterEpCandidate(candidate uint64) (bool, error) {
 	node := n.graph.nodeByID(candidate)
 	if node == nil {
 		return false, nil
@@ -633,7 +688,85 @@ func (n *neighborFinderConnectorHybrid) tryEpCandidate(candidate uint64) (bool, 
 	}
 
 	// we were able to calculate a distance, we're good
-	n.entryPointDist = dist
-	n.entryPointID = candidate
+	n.filterEntryPointDist = dist
+	n.filterEntryPointID = candidate
+	return true, nil
+}
+
+func (n *neighborFinderConnectorHybrid) pickGlobalEntrypoint() error {
+	// the neighborFinderConnector always has a suggestion for an entrypoint that
+	// it got from the outside, most of the times we can use this, but in some
+	// cases we can't. To see if we can use it, three conditions need to be met:
+	//
+	// 1. it needs to exist in the graph, i.e. be not nil
+	//
+	// 2. it can't be under maintenance
+	//
+	// 3. we need to be able to obtain a vector for it
+
+	localDeny := n.denyList.DeepCopy()
+	/*
+		var localDeny helpers.AllowList
+		if n.denyList != nil {
+			localDeny = n.denyList.DeepCopy()
+		}
+	*/
+	candidate := n.globalEntryPointID
+
+	// make sure the loop cannot block forever. In most cases, results should be
+	// found within micro to milliseconds, this is just a last resort to handle
+	// the unknown somewhat gracefully, for example if there is a bug in the
+	// underlying object store and we cannot retrieve the vector in time, etc.
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		success, err := n.tryGlobalEpCandidate(candidate)
+		if err != nil {
+			return err
+		}
+
+		if success {
+			return nil
+		}
+
+		// no success so far, we need to keep going and find a better candidate
+		// make sure we never visit this candidate again
+		localDeny.Insert(candidate)
+		// now find a new one
+
+		alternative, _ := n.graph.findNewLocalEntrypoint(localDeny,
+			n.graph.currentMaximumLayer, candidate)
+		candidate = alternative
+	}
+}
+
+func (n *neighborFinderConnectorHybrid) tryGlobalEpCandidate(candidate uint64) (bool, error) {
+	node := n.graph.nodeByID(candidate)
+	if node == nil {
+		return false, nil
+	}
+
+	if node.isUnderMaintenance() {
+		return false, nil
+	}
+
+	dist, ok, err := n.graph.distBetweenNodeAndVec(candidate, n.nodeVec)
+	if err != nil {
+		// not an error we could recover from - fail!
+		return false, errors.Wrapf(err,
+			"calculate distance between insert node and entrypoint")
+	}
+	if !ok {
+		return false, nil
+	}
+
+	// we were able to calculate a distance, we're good
+	n.globalEntryPointDist = dist
+	n.globalEntryPointID = candidate
 	return true, nil
 }

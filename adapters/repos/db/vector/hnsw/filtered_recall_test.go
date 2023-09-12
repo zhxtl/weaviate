@@ -165,9 +165,11 @@ func TestFilteredRecall(t *testing.T) {
 			go func(workerID int, myJobs []vecWithFilters) {
 				defer wg.Done()
 				for i, vec := range myJobs {
-					if i%10_000 == 9_999 {
-						fmt.Printf("\n Imported %d in %v \n", i, time.Since(before))
-					}
+					/*
+						if i%1_000 == 999 {
+							fmt.Printf("\n Imported %d in %v \n", i, time.Since(before))
+						}
+					*/
 					originalIndex := (i * workerCount) + workerID
 					nodeId := uint64(originalIndex)
 
@@ -193,8 +195,11 @@ func TestFilteredRecall(t *testing.T) {
 
 					/* TEST FILTERED HNSW */
 					filterIdx := 0 // need to change the loop through the filters in the future, POC testing now
+					mutex.Lock()
 					insertAllowList := helpers.NewAllowList(filterToIDs[filterIdx][vec.FilterMap[filterIdx]]...)
-					err := vectorIndex.HybridAdd(nodeId, vec.Vector, vec.FilterMap, 1, insertAllowList) // change signature to add vec.Label
+					err := vectorIndex.HybridAdd(nodeId, vec.Vector, vec.FilterMap, 0.5, insertAllowList) // change signature to add vec.Label
+					mutex.Unlock()
+					fmt.Printf("\n Imported %d in %v \n", nodeId, time.Since(before))
 
 					require.Nil(t, err)
 				}
@@ -202,7 +207,9 @@ func TestFilteredRecall(t *testing.T) {
 		}
 		wg.Wait()
 
-		fmt.Printf("Average Matching Filters Per Node %v \n \n", AverageMatchingFiltersPerNode(vectorIndex, 0))
+		fmt.Print("\n HERE! \n")
+
+		//fmt.Printf("\n Average Matching Filters Per Node %v \n \n", AverageMatchingFiltersPerNode(vectorIndex, 0))
 
 		fmt.Printf("importing took %s\n", time.Since(before))
 
@@ -233,11 +240,11 @@ func TestFilteredRecall(t *testing.T) {
 
 			// select a single filter for the entrypoint
 			queryFilterKey := 0
-
 			queryStart := time.Now()
 			results, _, err := vectorIndex.SearchByVectorWithEPFilter(queryVectorsWithFilters[i].Vector, queryFilterKey, queryFilters[queryFilterKey], k, queryAllowList)
 			//results, _, err := vectorIndex.SearchByVector(queryVectorsWithFilters[i].Vector, k, queryAllowList)
 			local_latency := float32(time.Now().Sub(queryStart).Seconds())
+
 			/* TEST HNSW */
 			/*
 				queryStart := time.Now()

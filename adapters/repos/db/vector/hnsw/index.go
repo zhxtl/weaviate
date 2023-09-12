@@ -89,7 +89,8 @@ type hnsw struct {
 
 	levelNormalizer float64
 
-	nodes []*vertex
+	nodes       []*vertex
+	nodeCounter int
 
 	vectorForID          VectorForID
 	TempVectorForIDThunk TempVectorForID
@@ -237,6 +238,7 @@ func New(cfg Config, uc ent.UserConfig, tombstoneCleanupCycle cyclemanager.Cycle
 		efConstruction:         uc.EFConstruction,
 		flatSearchCutoff:       int64(uc.FlatSearchCutoff),
 		nodes:                  make([]*vertex, initialSize),
+		nodeCounter:            0,
 		cache:                  vectorCache,
 		vectorForID:            vectorCache.get,
 		multiVectorForID:       vectorCache.multiGet,
@@ -625,10 +627,17 @@ func (h *hnsw) Stats() {
 }
 
 func (h *hnsw) isEmpty() bool {
-	h.RLock()
-	defer h.RUnlock()
+	//h.RLock()
+	//defer h.RUnlock()
 
-	return h.isEmptyUnsecured()
+	for _, node := range h.nodes {
+		if node != nil {
+			return false
+		}
+	}
+	return true
+
+	//return h.isEmptyUnsecured()
 }
 
 func (h *hnsw) isEmptyUnsecured() bool {

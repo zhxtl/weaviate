@@ -302,8 +302,12 @@ func (h *hnsw) hybridInsert(node *vertex, nodeVec []float32, lambda float32, fil
 	before := time.Now()
 
 	var firstInsertError error
+	wasGlobalFirst := false
 	emptyEPfound := false
 	h.Lock()
+	if h.isEmpty() {
+		wasGlobalFirst = true
+	}
 	for filterKey, filterValue := range node.filters {
 		if _, ok := h.entryPointIDperFilterPerValue[filterKey]; !ok {
 			emptyEPfound = true
@@ -316,18 +320,18 @@ func (h *hnsw) hybridInsert(node *vertex, nodeVec []float32, lambda float32, fil
 		}
 	}
 	h.Unlock()
-	//h.RUnlock()
-	/*
-		For example, if we have 3 filters, one of them may not have an entrypoint in the graph yet.
-	*/
-	if emptyEPfound {
-		//h.Lock()
-		firstInsertError = h.insertInitialElementPerFilterPerValue(node, nodeVec)
-		// Locking is already nested within `insertInitialElementPerFilter`
-		//h.Unlock()
+
+	if wasGlobalFirst {
+		firstInsertError = h.insertInitialElement(node, nodeVec)
+		h.insertInitialElementPerFilterPerValue(node, nodeVec)
 		return firstInsertError
 	}
 
+	if emptyEPfound {
+		firstInsertError = h.insertInitialElementPerFilterPerValue(node, nodeVec)
+		// This is not optimal i.e. EP for 1 / 4 filters, but still needs to be connected
+		return firstInsertError
+	}
 	node.markAsMaintenance()
 
 	h.RLock()
@@ -385,6 +389,7 @@ func (h *hnsw) hybridInsert(node *vertex, nodeVec []float32, lambda float32, fil
 
 	h.Lock()
 	h.nodes[nodeId] = node
+	h.nodeCounter++
 	h.Unlock()
 
 	h.insertMetrics.prepareAndInsertNode(before)
@@ -404,7 +409,9 @@ func (h *hnsw) hybridInsert(node *vertex, nodeVec []float32, lambda float32, fil
 	before = time.Now()
 
 	// Add Lambda Here
-	if err := h.findAndConnectNeighborsHybrid(node, entryPointID, nodeVec,
+
+	/* NEED TO CORRECT IT HERE */
+	if err := h.findAndConnectNeighborsHybrid(node, nodeVec, entryPointID, entryPointID,
 		targetLevel, currentMaximumLayer, node.filters, lambda, filterAllowList, helpers.NewAllowList()); err != nil {
 		return errors.Wrap(err, "find and connect neighbors")
 	}

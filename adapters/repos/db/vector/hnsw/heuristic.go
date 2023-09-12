@@ -233,7 +233,11 @@ func (h *hnsw) filteredRobustPrune(input *priorityqueue.Queue,
 		for closestFirst.Len() > 0 && len(returnList) < max {
 			curr := closestFirst.Pop()
 			returnList = append(returnList, curr)
+			if h.nodes[curr.ID] == nil {
+				continue
+			}
 			currFilters := h.nodes[curr.ID].filters
+
 			if denyList != nil && denyList.Contains(curr.ID) {
 				continue
 			}
@@ -258,6 +262,10 @@ func (h *hnsw) filteredRobustPrune(input *priorityqueue.Queue,
 			for _, item := range returnList {
 				peerDist, _, _ := h.distancerProvider.SingleDist(currVec,
 					vecs[item.Index])
+				if h.nodes[item.ID] == nil {
+					good = false
+					break
+				}
 				peerFilters := h.nodes[item.ID].filters
 
 				if peerDist < distToQuery {
