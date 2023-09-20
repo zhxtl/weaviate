@@ -24,7 +24,7 @@ func TestPQSpann(t *testing.T) {
 	queries_size := 1000
 	dimensions := 128
 	vectors, queries := testinghelpers.ReadVecs(vectors_size, queries_size, dimensions, "sift", "../diskAnn/testdata")
-	k := 1
+	k := 10
 	distancer := distancer.NewL2SquaredProvider()
 	truths := testinghelpers.BuildTruths(queries_size, vectors_size, queries, vectors, k, distanceWrapper(distancer), "../diskAnn/testdata")
 

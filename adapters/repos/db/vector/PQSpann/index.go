@@ -14,7 +14,7 @@ const segments = 4
 const centroids = 16
 const trainingLimit = 100_000
 const dimensions = 128
-const overlapping = 1
+const overlapping = 3
 
 var buckets = int(math.Pow(centroids, segments))
 var totalOverlapping = int(math.Pow(overlapping, segments))
@@ -78,15 +78,14 @@ func (idx *PQSpann) Add(id uint64, vector []float32) error {
 }
 
 func (idx *PQSpann) SearchByVector(vector []float32, k int, allowList helpers.AllowList) ([]uint64, []float32, error) {
-	return idx.bruteForce(idx.buckets[idx.bucketFor(vector)], vector, k)
+	indices := idx.bucketsFor(vector, k)
+	return idx.bruteForce(indices, vector, k)
 }
 
 func (idx *PQSpann) addToBuckets(id uint64, vector []float32) {
-	indices := idx.bucketsFor(vector)
-	for _, index := range indices {
-		idx.buckets[index].ids = append(idx.buckets[index].ids, id)
-		idx.buckets[index].vectors = append(idx.buckets[index].vectors, vector)
-	}
+	index := idx.bucketFor(vector)
+	idx.buckets[index].ids = append(idx.buckets[index].ids, id)
+	idx.buckets[index].vectors = append(idx.buckets[index].vectors, vector)
 }
 
 func (idx *PQSpann) bucketFor(vector []float32) int {
@@ -118,21 +117,29 @@ func iterateOverIndices(codes [][]int, indices []int, segment int, is []int, ind
 	return index + 1
 }
 
-func (idx *PQSpann) bucketsFor(vector []float32) []int {
+func (idx *PQSpann) bucketsFor(vector []float32, k int) []int {
 	encoded := idx.pq.MultiEncode(vector, overlapping)
 	indices := make([]int, totalOverlapping)
 	iterateOverIndices(encoded, indices, 0, make([]int, segments), 0)
+	total := 0
+	for _, bIndex := range indices {
+		bucket := idx.buckets[bIndex]
+		total += len(bucket.ids)
+	}
 	return indices
 }
 
-func (idx *PQSpann) bruteForce(bucket bucket, vector []float32, k int) ([]uint64, []float32, error) {
+func (idx *PQSpann) bruteForce(indices []int, vector []float32, k int) ([]uint64, []float32, error) {
 	max := priorityqueue.NewMax(k)
-	for i := range bucket.ids {
-		dist, _, _ := l2.SingleDist(vector, bucket.vectors[i])
-		if max.Len() < k || max.Top().Dist > dist {
-			max.Insert(bucket.ids[i], dist)
-			for max.Len() > k {
-				max.Pop()
+	for _, bIndex := range indices {
+		bucket := idx.buckets[bIndex]
+		for i := range bucket.ids {
+			dist, _, _ := l2.SingleDist(vector, bucket.vectors[i])
+			if max.Len() < k || max.Top().Dist > dist {
+				max.Insert(bucket.ids[i], dist)
+				for max.Len() > k {
+					max.Pop()
+				}
 			}
 		}
 	}
