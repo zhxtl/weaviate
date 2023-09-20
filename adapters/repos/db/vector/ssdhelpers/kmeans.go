@@ -104,6 +104,15 @@ func (m *KMeans) Encode(point []float32) byte {
 	return byte(m.Nearest(point))
 }
 
+func (m *KMeans) MultiEncode(x []float32, k int) []int {
+	c := m.NNearest(x, k)
+	codes := make([]int, k)
+	for i, v := range c {
+		codes[i] = int(v)
+	}
+	return codes
+}
+
 func (m *KMeans) Nearest(point []float32) uint64 {
 	return m.NNearest(point, 1)[0]
 }

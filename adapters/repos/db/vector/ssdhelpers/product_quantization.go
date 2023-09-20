@@ -177,6 +177,7 @@ type PQData struct {
 
 type PQEncoder interface {
 	Encode(x []float32) byte
+	MultiEncode(x []float32, k int) []int
 	Centroid(b byte) []float32
 	Add(x []float32)
 	Fit(data [][]float32) error
@@ -372,6 +373,14 @@ func (pq *ProductQuantizer) Encode(vec []float32) []byte {
 	codes := make([]byte, pq.m)
 	for i := 0; i < pq.m; i++ {
 		PutCode8(pq.kms[i].Encode(vec), codes, i)
+	}
+	return codes
+}
+
+func (pq *ProductQuantizer) MultiEncode(vec []float32, k int) [][]int {
+	codes := make([][]int, pq.m)
+	for i := 0; i < pq.m; i++ {
+		codes[i] = pq.kms[i].MultiEncode(vec, k)
 	}
 	return codes
 }

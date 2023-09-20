@@ -180,6 +180,10 @@ func (te *TileEncoder) Encode(x []float32) byte {
 	return byte(intPart)
 }
 
+func (te *TileEncoder) MultiEncode(x []float32, k int) []int {
+	return nil
+}
+
 func (te *TileEncoder) centroid(b byte) []float32 {
 	res := make([]float32, 0, 1)
 	if b == 0 {
