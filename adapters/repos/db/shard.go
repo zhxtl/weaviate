@@ -409,7 +409,10 @@ func (s *Shard) dynamicMemtableSizing() lsmkv.BucketOption {
 
 func (s *Shard) createPropertyIndex(ctx context.Context, prop *models.Property, eg *errgroup.Group) {
 	if !inverted.HasInvertedIndex(prop) {
-		return
+		// even if main property is not indexed, its nested properties can be
+		if _, isNested := schema.AsNested(prop.DataType); !isNested {
+			return
+		}
 	}
 
 	eg.Go(func() error {
@@ -449,41 +452,97 @@ func (s *Shard) createPropertyValueIndex(ctx context.Context, prop *models.Prope
 		s.dynamicMemtableSizing(),
 		lsmkv.WithPread(s.index.Config.AvoidMMap),
 	}
+	filterableBucketOpts := append(bucketOpts, lsmkv.WithStrategy(lsmkv.StrategyRoaringSet))
+	searchableBucketOpts := append(bucketOpts, lsmkv.WithStrategy(lsmkv.StrategyMapCollection))
+	if s.versioner.Version() < 2 {
+		searchableBucketOpts = append(searchableBucketOpts, lsmkv.WithLegacyMapSorting())
+	}
+
+	_, isNested := schema.AsNested(prop.DataType)
 
 	if inverted.HasFilterableIndex(prop) {
-		if dt, _ := schema.AsPrimitive(prop.DataType); dt == schema.DataTypeGeoCoordinates {
+		if pdt, isPrimitive := schema.AsPrimitive(prop.DataType); isPrimitive && pdt == schema.DataTypeGeoCoordinates {
 			return s.initGeoProp(prop)
 		}
 
 		if schema.IsRefDataType(prop.DataType) {
 			if err := s.store.CreateOrLoadBucket(ctx,
 				helpers.BucketFromPropNameMetaCountLSM(prop.Name),
-				append(bucketOpts, lsmkv.WithStrategy(lsmkv.StrategyRoaringSet))...,
+				filterableBucketOpts...,
 			); err != nil {
 				return err
 			}
 		}
 
-		if err := s.store.CreateOrLoadBucket(ctx,
-			helpers.BucketFromPropNameLSM(prop.Name),
-			append(bucketOpts, lsmkv.WithStrategy(lsmkv.StrategyRoaringSet))...,
-		); err != nil {
-			return err
+		// although nested props can be filterable, setting is meant for length or null indexes,
+		// not value ones, as nested properties have theirs own value indexes
+		if !isNested {
+			if err := s.store.CreateOrLoadBucket(ctx,
+				helpers.BucketFromPropNameLSM(prop.Name),
+				filterableBucketOpts...,
+			); err != nil {
+				return err
+			}
 		}
 	}
 
 	if inverted.HasSearchableIndex(prop) {
-		searchableBucketOpts := append(bucketOpts,
-			lsmkv.WithStrategy(lsmkv.StrategyMapCollection), lsmkv.WithPread(s.index.Config.AvoidMMap))
-		if s.versioner.Version() < 2 {
-			searchableBucketOpts = append(searchableBucketOpts, lsmkv.WithLegacyMapSorting())
-		}
-
 		if err := s.store.CreateOrLoadBucket(ctx,
 			helpers.BucketSearchableFromPropNameLSM(prop.Name),
 			searchableBucketOpts...,
 		); err != nil {
 			return err
+		}
+	}
+
+	if isNested {
+		if err := s.createNestedPropertyValueIndex(ctx, filterableBucketOpts, searchableBucketOpts,
+			prop.Name, prop.NestedProperties,
+		); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *Shard) createNestedPropertyValueIndex(ctx context.Context,
+	filterableBucketOpts, searchableBucketOpts []lsmkv.BucketOption,
+	propPrefix string, nestedProperties []*models.NestedProperty,
+) error {
+	for _, nestedProperty := range nestedProperties {
+		propName := propPrefix + "." + nestedProperty.Name
+		_, isNested := schema.AsNested(nestedProperty.DataType)
+
+		if *nestedProperty.IndexFilterable {
+			if pdt, isPrimitive := schema.AsPrimitive(nestedProperty.DataType); isPrimitive && pdt == schema.DataTypeGeoCoordinates {
+				// TODO nested - add geo prop
+				// s.initGeoProp(nestedProperty)
+			} else if !isNested {
+				if err := s.store.CreateOrLoadBucket(ctx,
+					helpers.BucketFromPropNameLSM(propName),
+					filterableBucketOpts...,
+				); err != nil {
+					return err
+				}
+			}
+		}
+
+		if *nestedProperty.IndexSearchable {
+			if err := s.store.CreateOrLoadBucket(ctx,
+				helpers.BucketSearchableFromPropNameLSM(propName),
+				searchableBucketOpts...,
+			); err != nil {
+				return err
+			}
+		}
+
+		if isNested {
+			if err := s.createNestedPropertyValueIndex(ctx, filterableBucketOpts, searchableBucketOpts,
+				propName, nestedProperty.NestedProperties,
+			); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -495,18 +554,79 @@ func (s *Shard) createPropertyLengthIndex(ctx context.Context, prop *models.Prop
 		return storagestate.ErrStatusReadOnly
 	}
 
-	// some datatypes are not added to the inverted index, so we can skip them here
-	switch schema.DataType(prop.DataType[0]) {
-	case schema.DataTypeGeoCoordinates, schema.DataTypePhoneNumber, schema.DataTypeBlob, schema.DataTypeInt,
-		schema.DataTypeNumber, schema.DataTypeBoolean, schema.DataTypeDate:
-		return nil
-	default:
+	bucketOpts := []lsmkv.BucketOption{
+		s.memtableIdleConfig(),
+		s.dynamicMemtableSizing(),
+		lsmkv.WithPread(s.index.Config.AvoidMMap),
+		lsmkv.WithStrategy(lsmkv.StrategyRoaringSet),
 	}
 
-	return s.store.CreateOrLoadBucket(ctx,
-		helpers.BucketFromPropNameLengthLSM(prop.Name),
-		lsmkv.WithStrategy(lsmkv.StrategyRoaringSet),
-		lsmkv.WithPread(s.index.Config.AvoidMMap))
+	if supportsLengthIndex(prop.DataType) {
+		if err := s.store.CreateOrLoadBucket(ctx,
+			helpers.BucketFromPropNameLengthLSM(prop.Name),
+			bucketOpts...,
+		); err != nil {
+			return err
+		}
+	}
+
+	if _, isNested := schema.AsNested(prop.DataType); isNested {
+		if err := s.createNestedPropertyLengthIndex(ctx,
+			bucketOpts, prop.Name, prop.NestedProperties,
+		); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *Shard) createNestedPropertyLengthIndex(ctx context.Context,
+	bucketOpts []lsmkv.BucketOption, propPrefix string,
+	nestedProperties []*models.NestedProperty,
+) error {
+	for _, nestedProperty := range nestedProperties {
+		propName := propPrefix + "." + nestedProperty.Name
+
+		if supportsLengthIndex(nestedProperty.DataType) {
+			if err := s.store.CreateOrLoadBucket(ctx,
+				helpers.BucketFromPropNameLengthLSM(propName),
+				bucketOpts...,
+			); err != nil {
+				return err
+			}
+		}
+		if _, isNested := schema.AsNested(nestedProperty.DataType); isNested {
+			if err := s.createNestedPropertyLengthIndex(ctx,
+				bucketOpts, propName, nestedProperty.NestedProperties,
+			); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func supportsLengthIndex(dataType []string) bool {
+	if pdt, isPrimitive := schema.AsPrimitive(dataType); isPrimitive {
+		switch pdt {
+		case schema.DataTypeBooleanArray, schema.DataTypeIntArray, schema.DataTypeNumberArray,
+			schema.DataTypeDateArray, schema.DataTypeTextArray, schema.DataTypeUUIDArray:
+			return true
+		case schema.DataTypeText:
+			return true
+		// TODO nested - does uuid length make sense?
+		case schema.DataTypeUUID:
+			return true
+		default:
+			return false
+		}
+	}
+	if ndt, isNested := schema.AsNested(dataType); isNested {
+		return ndt == schema.DataTypeObjectArray
+	}
+	// TODO nested - does ref length make sense?
+	return true
 }
 
 func (s *Shard) createPropertyNullIndex(ctx context.Context, prop *models.Property) error {
@@ -514,10 +634,54 @@ func (s *Shard) createPropertyNullIndex(ctx context.Context, prop *models.Proper
 		return storagestate.ErrStatusReadOnly
 	}
 
-	return s.store.CreateOrLoadBucket(ctx,
-		helpers.BucketFromPropNameNullLSM(prop.Name),
+	bucketOpts := []lsmkv.BucketOption{
+		s.memtableIdleConfig(),
+		s.dynamicMemtableSizing(),
+		lsmkv.WithPread(s.index.Config.AvoidMMap),
 		lsmkv.WithStrategy(lsmkv.StrategyRoaringSet),
-		lsmkv.WithPread(s.index.Config.AvoidMMap))
+	}
+
+	if err := s.store.CreateOrLoadBucket(ctx,
+		helpers.BucketFromPropNameNullLSM(prop.Name),
+		bucketOpts...,
+	); err != nil {
+		return err
+	}
+
+	if _, isNested := schema.AsNested(prop.DataType); isNested {
+		if err := s.createNestedPropertyNullIndex(ctx,
+			bucketOpts, prop.Name, prop.NestedProperties,
+		); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *Shard) createNestedPropertyNullIndex(ctx context.Context,
+	bucketOpts []lsmkv.BucketOption, propPrefix string,
+	nestedProperties []*models.NestedProperty,
+) error {
+	for _, nestedProperty := range nestedProperties {
+		propName := propPrefix + "." + nestedProperty.Name
+
+		if _, isNested := schema.AsNested(nestedProperty.DataType); !isNested {
+			if err := s.store.CreateOrLoadBucket(ctx,
+				helpers.BucketFromPropNameNullLSM(propName),
+				bucketOpts...,
+			); err != nil {
+				return err
+			}
+		} else {
+			if err := s.createNestedPropertyNullIndex(ctx,
+				bucketOpts, propName, nestedProperty.NestedProperties,
+			); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (s *Shard) updateVectorIndexConfig(ctx context.Context,
