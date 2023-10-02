@@ -13,6 +13,7 @@ package lsmkv
 
 import (
 	"github.com/weaviate/weaviate/entities/lsmkv"
+	"log"
 )
 
 type segmentCursorCollection struct {
@@ -65,6 +66,7 @@ func (s *segmentCursorCollection) next() ([]byte, []value, error) {
 	// could be 'entities.Deleted' which would require that the offset is still advanced
 	// for the next cycle
 	s.nextOffset = s.nextOffset + uint64(parsed.offset)
+	log.Printf("s.nextOffset: %d", s.nextOffset)
 	if err != nil {
 		return parsed.primaryKey, nil, err
 	}

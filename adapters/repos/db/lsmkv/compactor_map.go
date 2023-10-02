@@ -15,6 +15,7 @@ import (
 	"bufio"
 	"bytes"
 	"io"
+	"log"
 	"sort"
 
 	"github.com/pkg/errors"
@@ -99,8 +100,14 @@ func (c *compactorMap) init() error {
 }
 
 func (c *compactorMap) writeKeys() ([]segmentindex.Key, error) {
-	key1, value1, _ := c.c1.first()
-	key2, value2, _ := c.c2.first()
+	key1, value1, err := c.c1.first()
+	if err != nil {
+		log.Printf("first() err: %s", err)
+	}
+	key2, value2, err := c.c2.first()
+	if err != nil {
+		log.Printf("first() err: %s", err)
+	}
 
 	// the (dummy) header was already written, this is our initial offset
 	offset := segmentindex.HeaderSize
@@ -162,8 +169,14 @@ func (c *compactorMap) writeKeys() ([]segmentindex.Key, error) {
 			kis = append(kis, ki)
 
 			// advance both!
-			key1, value1, _ = c.c1.next()
-			key2, value2, _ = c.c2.next()
+			key1, value1, err = c.c1.next()
+			if err != nil {
+				log.Printf("next() err: %s", err)
+			}
+			key2, value2, err = c.c2.next()
+			if err != nil {
+				log.Printf("next() err: %s", err)
+			}
 			continue
 		}
 
@@ -176,7 +189,10 @@ func (c *compactorMap) writeKeys() ([]segmentindex.Key, error) {
 
 			offset = ki.ValueEnd
 			kis = append(kis, ki)
-			key1, value1, _ = c.c1.next()
+			key1, value1, err = c.c1.next()
+			if err != nil {
+				log.Printf("next() err: %s", err)
+			}
 		} else {
 			// key 2 is smaller
 			ki, err := c.writeIndividualNode(offset, key2, value2)
@@ -187,7 +203,10 @@ func (c *compactorMap) writeKeys() ([]segmentindex.Key, error) {
 			offset = ki.ValueEnd
 			kis = append(kis, ki)
 
-			key2, value2, _ = c.c2.next()
+			key2, value2, err = c.c2.next()
+			if err != nil {
+				log.Printf("next() err: %s", err)
+			}
 		}
 	}
 

@@ -13,6 +13,9 @@ package cyclemanager
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -243,11 +246,13 @@ func (c *cycleCallbackGroup) cycleCallbackParallel(shouldAbort ShouldAbortCallba
 
 func (c *cycleCallbackGroup) recover(callbackCustomId string, cancel context.CancelFunc) {
 	if r := recover(); r != nil {
+		fmt.Fprintf(os.Stderr, "%v at %s", r, debug.Stack())
 		c.logger.WithFields(logrus.Fields{
 			"action":       "cyclemanager",
 			"callback_id":  callbackCustomId,
 			"callbacks_id": c.customId,
 		}).Errorf("callback panic: %v", r)
+
 	}
 	cancel()
 }

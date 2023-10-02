@@ -14,10 +14,9 @@ package lsmkv
 import (
 	"encoding/binary"
 	"fmt"
-	"io"
-
 	"github.com/pkg/errors"
 	"github.com/weaviate/weaviate/adapters/repos/db/lsmkv/segmentindex"
+	"io"
 )
 
 // a single node of strategy "replace"
@@ -320,6 +319,7 @@ func ParseCollectionNode(r io.Reader) (segmentCollectionNode, error) {
 		}
 		out.values[i].tombstone = tmpBuf[0] == 0x1
 		valueLen := binary.LittleEndian.Uint64(tmpBuf[1:9])
+
 		out.values[i].value = make([]byte, valueLen)
 		n, err := io.ReadFull(r, out.values[i].value)
 		if err != nil {
@@ -344,6 +344,56 @@ func ParseCollectionNode(r io.Reader) (segmentCollectionNode, error) {
 	return out, nil
 }
 
+// ParseCollectionNodeInto2 takes the []byte slice and parses it into the
+// specified node. It does not perform any copies and the caller must be aware
+// that memory may be shared between the two. As a result, the caller must make
+// sure that they do not modify "in" while "node" is still in use. A safer
+// alternative is to use ParseCollectionNode.
+//
+// The primary intention of this function is to provide a way to reuse buffers
+// when the lifetime is controlled tightly, for example in cursors used within
+// compactions. Use at your own risk!
+//
+// If the buffers of the provided node have enough capacity they will be
+// reused. Only if the capacity is not enough, will an allocation occur. This
+// allocation uses 25% overhead to avoid future allocations for nodes of
+// similar size.
+//
+// As a result calling this method only makes sense if you plan on calling it
+// multiple times. Calling it just once on an uninitialized node does not have
+// major advantages over calling ParseCollectionNode.
+func ParseCollectionNodeInto2(in []byte, node *segmentCollectionNode) error {
+	// offset is only the local offset relative to "in". In the end we need to
+	// update the global offset.
+	offset := 0
+
+	valuesLen := binary.LittleEndian.Uint64(in[offset : offset+8])
+	offset += 8
+
+	resizeValuesOfCollectionNode(node, valuesLen)
+	for i := range node.values {
+		node.values[i].tombstone = in[offset] == 0x1
+		offset += 1
+
+		valueLen := binary.LittleEndian.Uint64(in[offset : offset+8])
+		offset += 8
+
+		resizeValueOfCollectionNodeAtPos(node, i, valueLen)
+		node.values[i].value = in[offset : offset+int(valueLen)]
+		offset += int(valueLen)
+	}
+
+	keyLen := binary.LittleEndian.Uint32(in[offset : offset+4])
+	offset += 4
+
+	resizeKeyOfCollectionNode(node, keyLen)
+	node.primaryKey = in[offset : offset+int(keyLen)]
+	offset += int(keyLen)
+
+	node.offset = offset
+	return nil
+}
+
 // ParseCollectionNodeInto takes the []byte slice and parses it into the
 // specified node. It does not perform any copies and the caller must be aware
 // that memory may be shared between the two. As a result, the caller must make
@@ -366,52 +416,47 @@ func ParseCollectionNodeInto(r io.Reader, node *segmentCollectionNode) error {
 	// offset is only the local offset relative to "in". In the end we need to
 	// update the global offset.
 	offset := 0
+	node.offset = 0
 
 	buf := make([]byte, 9)
-	_, err := io.ReadFull(r, buf[0:8])
+	n, err := r.Read(buf[0:8])
 	if err != nil {
 		return fmt.Errorf("read values len: %w", err)
 	}
+	offset += n
 
 	valuesLen := binary.LittleEndian.Uint64(buf[0:8])
-	offset += 8
-
 	resizeValuesOfCollectionNode(node, valuesLen)
 	for i := range node.values {
-		_, err = io.ReadFull(r, buf)
+		n, err = r.Read(buf[0:9])
 		if err != nil {
 			return fmt.Errorf("read values len: %w", err)
 		}
+		offset += n
 
 		node.values[i].tombstone = buf[0] == 0x1
-		offset += 1
-
 		valueLen := binary.LittleEndian.Uint64(buf[1:9])
-		offset += 8
 
 		resizeValueOfCollectionNodeAtPos(node, i, valueLen)
-
-		_, err = io.ReadFull(r, node.values[i].value)
+		n, err = r.Read(node.values[i].value)
 		if err != nil {
 			return fmt.Errorf("read node value: %w", err)
 		}
-
-		offset += int(valueLen)
+		offset += n
 	}
 
-	_, err = io.ReadFull(r, buf[0:4])
+	n, err = r.Read(buf[0:4])
 	if err != nil {
 		return fmt.Errorf("read values len: %w", err)
 	}
+	offset += n
 	keyLen := binary.LittleEndian.Uint32(buf)
-	offset += 4
-
 	resizeKeyOfCollectionNode(node, keyLen)
-	_, err = io.ReadFull(r, node.primaryKey)
+	n, err = r.Read(node.primaryKey)
 	if err != nil {
 		return fmt.Errorf("read primary key: %w", err)
 	}
-	offset += int(keyLen)
+	offset += n
 
 	node.offset = offset
 	return nil
@@ -430,6 +475,7 @@ func resizeValuesOfCollectionNode(node *segmentCollectionNode, size uint64) {
 func resizeValueOfCollectionNodeAtPos(node *segmentCollectionNode, pos int,
 	size uint64,
 ) {
+	//log.Printf("size: %d", size)
 	if cap(node.values[pos].value) >= int(size) {
 		node.values[pos].value = node.values[pos].value[:size]
 	} else {

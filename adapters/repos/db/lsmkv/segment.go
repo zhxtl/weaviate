@@ -44,8 +44,8 @@ type segment struct {
 	logger                logrus.FieldLogger
 	metrics               *Metrics
 	bloomFilterMetrics    *bloomFilterMetrics
-	size                  int64
-	mmapContents          bool
+	//size                  int64
+	mmapContents bool
 
 	// the net addition this segment adds with respect to all previous segments
 	countNetAdditions int
@@ -111,7 +111,7 @@ func newSegment(path string, logger logrus.FieldLogger, metrics *Metrics,
 		version:             header.Version,
 		secondaryIndexCount: header.SecondaryIndices,
 		segmentStartPos:     header.IndexStart,
-		segmentEndPos:       uint64(fileInfo.Size()),
+		segmentEndPos:       uint64(len(contents)),
 		strategy:            header.Strategy,
 		dataStartPos:        segmentindex.HeaderSize, // fixed value that's the same for all strategies
 		dataEndPos:          header.IndexStart,
@@ -119,8 +119,8 @@ func newSegment(path string, logger logrus.FieldLogger, metrics *Metrics,
 		logger:              logger,
 		metrics:             metrics,
 		bloomFilterMetrics:  newBloomFilterMetrics(metrics),
-		size:                fileInfo.Size(),
-		mmapContents:        mmapContents,
+		//size:                int64(len(contents)),
+		mmapContents: mmapContents,
 	}
 
 	// Using pread strategy requires file to remain open for segment lifetime
@@ -205,7 +205,17 @@ func (s *segment) drop() error {
 // Size returns the total size of the segment in bytes, including the header
 // and index
 func (s *segment) Size() int {
-	return int(s.size)
+	if s.mmapContents {
+		return len(s.contents)
+	} else {
+		stat, err := s.contentFile.Stat()
+		if err != nil {
+			s.logger.WithField("action", "segment_size").
+				WithField("segment_path", s.path).WithError(err)
+			return 0
+		}
+		return int(stat.Size())
+	}
 }
 
 // PayloadSize is only the payload of the index, excluding the index
@@ -217,32 +227,28 @@ type nodeReader struct {
 	r io.Reader
 }
 
-func (n *nodeReader) Read(b []byte) (int, error) {
-	return n.r.Read(b)
-}
-
 type nodeOffset struct {
 	start, end uint64
 }
 
-func (s *segment) newNodeReader(offset nodeOffset) (*nodeReader, error) {
+func (s *segment) newNodeReader(offset nodeOffset) (io.Reader, error) {
 	var (
 		r   io.Reader
 		err error
 	)
 	if s.mmapContents {
-		contents := s.contents[offset.start:]
 		if offset.end != 0 {
-			contents = s.contents[offset.start:offset.end]
+			r, err = s.bytesReaderFrom(s.contents[offset.start:offset.end])
+		} else {
+			r, err = s.bytesReaderFrom(s.contents[offset.start:])
 		}
-		r, err = s.bytesReaderFrom(contents)
 	} else {
 		r, err = s.bufferedReaderAt(offset.start)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("new nodeReader: %w", err)
 	}
-	return &nodeReader{r: r}, nil
+	return r, nil
 }
 
 func (s *segment) copyNode(b []byte, offset nodeOffset) error {
@@ -270,6 +276,6 @@ func (s *segment) bufferedReaderAt(offset uint64) (*bufio.Reader, error) {
 		return nil, fmt.Errorf("nil contentFile for segment at %s", s.path)
 	}
 
-	r := io.NewSectionReader(s.contentFile, int64(offset), s.size)
+	r := io.NewSectionReader(s.contentFile, int64(offset), int64(s.Size()))
 	return bufio.NewReader(r), nil
 }

@@ -29,7 +29,7 @@ import (
 // created will have a .tmp suffix so they don't interfere with existing
 // segments that might have a similar name.
 func preComputeSegmentMeta(path string, updatedCountNetAdditions int,
-	logger logrus.FieldLogger,
+	logger logrus.FieldLogger, mmapContents bool,
 ) ([]string, error) {
 	out := []string{path}
 
@@ -86,7 +86,6 @@ func preComputeSegmentMeta(path string, updatedCountNetAdditions int,
 		// segment.tmp.bloom.tmp, whereas we want to end up with segment.bloom.tmp
 		path:                strings.TrimSuffix(path, ".tmp"),
 		contents:            contents,
-		contentFile:         file,
 		version:             header.Version,
 		secondaryIndexCount: header.SecondaryIndices,
 		segmentStartPos:     header.IndexStart,
@@ -96,6 +95,7 @@ func preComputeSegmentMeta(path string, updatedCountNetAdditions int,
 		dataEndPos:          header.IndexStart,
 		index:               primaryDiskIndex,
 		logger:              logger,
+		mmapContents:        mmapContents,
 	}
 
 	if ind.secondaryIndexCount > 0 {

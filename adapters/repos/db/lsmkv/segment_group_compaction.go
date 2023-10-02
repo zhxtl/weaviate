@@ -116,21 +116,22 @@ func (sg *SegmentGroup) compactOnce() error {
 		return nil
 	}
 
-	path := fmt.Sprintf("%s.tmp", sg.segmentAtPos(pair[1]).path)
+	seg0, seg1 := sg.segmentAtPos(pair[0]), sg.segmentAtPos(pair[1])
+
+	path := fmt.Sprintf("%s.tmp", seg1.path)
 	f, err := os.Create(path)
 	if err != nil {
 		return err
 	}
 
-	scratchSpacePath := sg.segmentAtPos(pair[1]).path + "compaction.scratch.d"
+	scratchSpacePath := seg1.path + "compaction.scratch.d"
 
 	// the assumption is that both pairs are of the same level, so we can just
 	// take either value. If we want to support asymmetric compaction, then we
 	// might have to choose this value more intelligently
-	level := sg.segmentAtPos(pair[0]).level
-	secondaryIndices := sg.segmentAtPos(pair[0]).secondaryIndexCount
-
-	strategy := sg.segmentAtPos(pair[0]).strategy
+	level := seg0.level
+	secondaryIndices := seg0.secondaryIndexCount
+	strategy := seg0.strategy
 
 	pathLabel := "n/a"
 	if sg.metrics != nil && !sg.metrics.groupClasses {
@@ -141,8 +142,8 @@ func (sg *SegmentGroup) compactOnce() error {
 	// TODO: call metrics just once with variable strategy label
 
 	case segmentindex.StrategyReplace:
-		c := newCompactorReplace(f, sg.segmentAtPos(pair[0]).newCursor(),
-			sg.segmentAtPos(pair[1]).newCursor(), level, secondaryIndices, scratchSpacePath)
+		c := newCompactorReplace(f, seg0.newCursor(),
+			seg1.newCursor(), level, secondaryIndices, scratchSpacePath)
 
 		if sg.metrics != nil {
 			sg.metrics.CompactionReplace.With(prometheus.Labels{"path": pathLabel}).Inc()
@@ -153,8 +154,8 @@ func (sg *SegmentGroup) compactOnce() error {
 			return err
 		}
 	case segmentindex.StrategySetCollection:
-		c := newCompactorSetCollection(f, sg.segmentAtPos(pair[0]).newCollectionCursor(),
-			sg.segmentAtPos(pair[1]).newCollectionCursor(), level, secondaryIndices,
+		c := newCompactorSetCollection(f, seg0.newCollectionCursor(),
+			seg1.newCollectionCursor(), level, secondaryIndices,
 			scratchSpacePath)
 
 		if sg.metrics != nil {
@@ -167,8 +168,8 @@ func (sg *SegmentGroup) compactOnce() error {
 		}
 	case segmentindex.StrategyMapCollection:
 		c := newCompactorMapCollection(f,
-			sg.segmentAtPos(pair[0]).newCollectionCursorReusable(),
-			sg.segmentAtPos(pair[1]).newCollectionCursorReusable(),
+			seg0.newCollectionCursorReusable(),
+			seg1.newCollectionCursorReusable(),
 			level, secondaryIndices, scratchSpacePath, sg.mapRequiresSorting)
 
 		if sg.metrics != nil {
@@ -180,8 +181,8 @@ func (sg *SegmentGroup) compactOnce() error {
 			return err
 		}
 	case segmentindex.StrategyRoaringSet:
-		leftSegment := sg.segmentAtPos(pair[0])
-		rightSegment := sg.segmentAtPos(pair[1])
+		leftSegment := seg0
+		rightSegment := seg1
 
 		leftCursor := leftSegment.newRoaringSetCursor()
 		rightCursor := rightSegment.newRoaringSetCursor()
@@ -221,8 +222,7 @@ func (sg *SegmentGroup) replaceCompactedSegments(old1, old2 int,
 		sg.segments[old2].countNetAdditions
 	sg.maintenanceLock.RUnlock()
 
-	precomputedFiles, err := preComputeSegmentMeta(newPathTmp,
-		updatedCountNetAdditions, sg.logger)
+	precomputedFiles, err := preComputeSegmentMeta(newPathTmp, updatedCountNetAdditions, sg.logger, sg.mmapContents)
 	if err != nil {
 		return fmt.Errorf("precompute segment meta: %w", err)
 	}

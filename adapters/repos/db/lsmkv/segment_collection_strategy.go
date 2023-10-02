@@ -14,7 +14,6 @@ package lsmkv
 import (
 	"encoding/binary"
 	"fmt"
-
 	"github.com/weaviate/weaviate/adapters/repos/db/lsmkv/segmentindex"
 	"github.com/weaviate/weaviate/entities/lsmkv"
 )
@@ -26,7 +25,11 @@ func (s *segment) getCollection(key []byte) ([]value, error) {
 			StrategySetCollection, StrategyMapCollection)
 	}
 
+	//log.Printf("size of contents for segment %q: %d", s.path, len(s.contents))
+	//log.Printf("key: %s", key)
+
 	if !s.bloomFilter.Test(key) {
+		//log.Printf("not found")
 		return nil, lsmkv.NotFound
 	}
 
@@ -52,6 +55,8 @@ func (s *segment) getCollection(key []byte) ([]value, error) {
 	if err = s.copyNode(contentsCopy, nodeOffset{node.Start, node.End}); err != nil {
 		return nil, err
 	}
+
+	//log.Printf("nodeOffset: %+v", nodeOffset{node.Start, node.End})
 
 	return s.collectionStratParseData(contentsCopy)
 }

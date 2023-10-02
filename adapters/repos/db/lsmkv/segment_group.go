@@ -14,18 +14,17 @@ package lsmkv
 import (
 	"context"
 	"fmt"
-	"io/fs"
-	"os"
-	"path/filepath"
-	"strings"
-	"sync"
-
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/weaviate/weaviate/adapters/repos/db/lsmkv/roaringset"
 	"github.com/weaviate/weaviate/entities/cyclemanager"
 	"github.com/weaviate/weaviate/entities/lsmkv"
 	"github.com/weaviate/weaviate/entities/storagestate"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
 )
 
 type SegmentGroup struct {
