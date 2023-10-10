@@ -82,7 +82,7 @@ func TestFilteredRecall(t *testing.T) {
 		/*
 			[{"id": 0, "vector": [0,15,35,...]},{"id": 0, "vector": [119,15,4,...]},...]
 		*/
-		indexVectorsJSON, err := ioutil.ReadFile("indexVectors100K.json")
+		indexVectorsJSON, err := ioutil.ReadFile("indexVectors-100K.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(indexVectorsJSON, &indexVectors)
 		require.Nil(t, err)
@@ -92,7 +92,7 @@ func TestFilteredRecall(t *testing.T) {
 
 			For now, running one test at a time, future - loop through filter paths
 		*/
-		indexFiltersJSON, err := ioutil.ReadFile("indexFilters100K.json")
+		indexFiltersJSON, err := ioutil.ReadFile("indexFilters-100K-2-99_9.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(indexFiltersJSON, &indexFilters)
 		require.Nil(t, err)
@@ -112,18 +112,18 @@ func TestFilteredRecall(t *testing.T) {
 		   =================================================
 		*/
 
-		queryVectorsJSON, err := ioutil.ReadFile("queryVectors100K.json")
+		queryVectorsJSON, err := ioutil.ReadFile("queryVectors-100K.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(queryVectorsJSON, &queryVectors)
 		require.Nil(t, err)
 
-		queryFiltersJSON, err := ioutil.ReadFile("queryFilters100K.json")
+		queryFiltersJSON, err := ioutil.ReadFile("queryFilters-100K-2-99_9.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(queryFiltersJSON, &queryFilters)
 
 		queryVectorsWithFilters := mergeData(queryVectors, queryFilters)
 
-		truthsJSON, err := ioutil.ReadFile("filtered_recall_truths100K.json")
+		truthsJSON, err := ioutil.ReadFile("filtered_recall_truths-100K-2-99_9.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(truthsJSON, &truths)
 		require.Nil(t, err)
@@ -174,9 +174,10 @@ func TestFilteredRecall(t *testing.T) {
 					nodeId := uint64(originalIndex)
 
 					/* TEST HNSW */
-					//err := vectorIndex.Add(nodeId, vec.Vector)
-
+					err := vectorIndex.Add(nodeId, vec.Vector)
 					require.Nil(t, err)
+
+					// Local allowList mapping for queries
 					mutex.Lock()
 					// filterToIDs is now a map[int]map[int][]uint64
 					for filter, filterValue := range vec.FilterMap {
@@ -194,14 +195,15 @@ func TestFilteredRecall(t *testing.T) {
 					mutex.Unlock()
 
 					/* TEST FILTERED HNSW */
-					filterIdx := 0 // need to change the loop through the filters in the future, POC testing now
-					mutex.Lock()
-					insertAllowList := helpers.NewAllowList(filterToIDs[filterIdx][vec.FilterMap[filterIdx]]...)
-					err := vectorIndex.HybridAdd(nodeId, vec.Vector, vec.FilterMap, 0.5, insertAllowList) // change signature to add vec.Label
-					mutex.Unlock()
-					fmt.Printf("\n Imported %d in %v \n", nodeId, time.Since(before))
-
-					require.Nil(t, err)
+					/*
+						filterIdx := 0 // need to change the loop through the filters in the future, POC testing now
+						mutex.Lock()
+						insertAllowList := helpers.NewAllowList(filterToIDs[filterIdx][vec.FilterMap[filterIdx]]...)
+						err := vectorIndex.HybridAdd(nodeId, vec.Vector, vec.FilterMap, 0.5, insertAllowList) // change signature to add vec.Label
+						mutex.Unlock()
+						fmt.Printf("\n Imported %d in %v \n", nodeId, time.Since(before))
+						require.Nil(t, err)
+					*/
 				}
 			}(workerID, jobs)
 		}
@@ -239,18 +241,20 @@ func TestFilteredRecall(t *testing.T) {
 			/* TEST FILTERED HNSW */
 
 			// select a single filter for the entrypoint
-			queryFilterKey := 0
-			queryStart := time.Now()
-			results, _, err := vectorIndex.SearchByVectorWithEPFilter(queryVectorsWithFilters[i].Vector, queryFilterKey, queryFilters[queryFilterKey], k, queryAllowList)
-			//results, _, err := vectorIndex.SearchByVector(queryVectorsWithFilters[i].Vector, k, queryAllowList)
-			local_latency := float32(time.Now().Sub(queryStart).Seconds())
-
-			/* TEST HNSW */
 			/*
+				queryFilterKey := 0
 				queryStart := time.Now()
-				results, _, err := vectorIndex.SearchByVector(queryVectorsWithFilters[i].Vector, k, queryAllowList)
+				results, _, err := vectorIndex.SearchByVectorWithEPFilter(queryVectorsWithFilters[i].Vector, queryFilterKey, queryFilters[queryFilterKey], k, queryAllowList)
+				//results, _, err := vectorIndex.SearchByVector(queryVectorsWithFilters[i].Vector, k, queryAllowList)
 				local_latency := float32(time.Now().Sub(queryStart).Seconds())
 			*/
+
+			/* TEST HNSW */
+
+			queryStart := time.Now()
+			results, _, err := vectorIndex.SearchByVector(queryVectorsWithFilters[i].Vector, k, queryAllowList)
+			local_latency := float32(time.Now().Sub(queryStart).Seconds())
+
 			require.Nil(t, err)
 
 			relevant_retrieved = matchesInLists(truths[i].Truths, results)

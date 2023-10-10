@@ -81,6 +81,7 @@ func (m *shardMap) Store(name string, shard *Shard) {
 	(*sync.Map)(m).Store(name, shard)
 }
 
+/*
 // Swap swaps the shard for a key and returns the previous value if any.
 // The loaded result reports whether the key was present.
 func (m *shardMap) Swap(name string, shard *Shard) (previous *Shard, loaded bool) {
@@ -95,6 +96,7 @@ func (m *shardMap) Swap(name string, shard *Shard) (previous *Shard, loaded bool
 func (m *shardMap) CompareAndSwap(name string, old, new *Shard) bool {
 	return (*sync.Map)(m).CompareAndSwap(name, old, new)
 }
+*/
 
 // LoadAndDelete deletes the value for a key, returning the previous value if any.
 // The loaded result reports whether the key was present.
@@ -1474,28 +1476,32 @@ func (i *Index) dropShards(names []string) (commit func(success bool), err error
 	defer i.backupStateLock.RUnlock()
 
 	// mark deleted shards
-	for _, name := range names {
-		prev, ok := i.shards.Swap(name, nil) // mark
-		if !ok {                             // shard doesn't exit
-			i.shards.LoadAndDelete(name) // rollback nil value created by swap()
-			continue
+	/*
+		for _, name := range names {
+			//prev, ok := i.shards.Swap(name, nil) // mark
+			if !ok { // shard doesn't exit
+				i.shards.LoadAndDelete(name) // rollback nil value created by swap()
+				continue
+			}
+			if prev != nil {
+				shards[name] = prev
+			}
 		}
-		if prev != nil {
-			shards[name] = prev
-		}
-	}
+	*/
 
-	rollback := func() {
-		for name, shard := range shards {
-			i.shards.CompareAndSwap(name, nil, shard)
+	/*
+		rollback := func() {
+			for name, shard := range shards {
+				i.shards.CompareAndSwap(name, nil, shard)
+			}
 		}
-	}
+	*/
 
 	var eg errgroup.Group
 	eg.SetLimit(_NUMCPU * 2)
 	commit = func(success bool) {
 		if !success {
-			rollback()
+			//rollback()
 			return
 		}
 		// detach shards
