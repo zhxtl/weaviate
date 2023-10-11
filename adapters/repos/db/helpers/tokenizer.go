@@ -23,6 +23,7 @@ var Tokenizations []string = []string{
 	models.PropertyTokenizationLowercase,
 	models.PropertyTokenizationWhitespace,
 	models.PropertyTokenizationField,
+	models.PropertyTokenizationUser,
 }
 
 func Tokenize(tokenization string, in string) []string {
@@ -35,6 +36,8 @@ func Tokenize(tokenization string, in string) []string {
 		return tokenizeWhitespace(in)
 	case models.PropertyTokenizationField:
 		return tokenizeField(in)
+	case models.PropertyTokenizationUser:
+		return nil
 	default:
 		return []string{}
 	}

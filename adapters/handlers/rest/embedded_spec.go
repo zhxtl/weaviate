@@ -4361,7 +4361,8 @@ func init() {
             "word",
             "lowercase",
             "whitespace",
-            "field"
+            "field",
+            "user"
           ]
         }
       }
@@ -9512,7 +9513,8 @@ func init() {
             "word",
             "lowercase",
             "whitespace",
-            "field"
+            "field",
+            "user"
           ]
         }
       }

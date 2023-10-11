@@ -57,7 +57,7 @@ type Property struct {
 	NestedProperties []*NestedProperty `json:"nestedProperties,omitempty"`
 
 	// Determines tokenization of the property as separate words or whole field. Optional. Applies to text and text[] data types. Allowed values are `word` (default; splits on any non-alphanumerical, lowercases), `lowercase` (splits on white spaces, lowercases), `whitespace` (splits on white spaces), `field` (trims). Not supported for remaining data types
-	// Enum: [word lowercase whitespace field]
+	// Enum: [word lowercase whitespace field user]
 	Tokenization string `json:"tokenization,omitempty"`
 }
 
@@ -109,7 +109,7 @@ var propertyTypeTokenizationPropEnum []interface{}
 
 func init() {
 	var res []string
-	if err := json.Unmarshal([]byte(`["word","lowercase","whitespace","field"]`), &res); err != nil {
+	if err := json.Unmarshal([]byte(`["word","lowercase","whitespace","field","user"]`), &res); err != nil {
 		panic(err)
 	}
 	for _, v := range res {
@@ -130,6 +130,9 @@ const (
 
 	// PropertyTokenizationField captures enum value "field"
 	PropertyTokenizationField string = "field"
+
+	// PropertyTokenizationUser captures enum value "user"
+	PropertyTokenizationUser string = "user"
 )
 
 // prop value enum
