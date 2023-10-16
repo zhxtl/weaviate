@@ -110,12 +110,12 @@ func (c *cursorPrefixedRoaringSet) Next() ([]byte, *sroar.Bitmap) {
 	return c.nextInternal()
 }
 
-func (c *cursorPrefixedRoaringSet) Close() {
-	c.cursor.Close()
-}
-
 func (c *cursorPrefixedRoaringSet) Seek(key []byte) ([]byte, *sroar.Bitmap) {
 	return c.seekInternal(_addPrefix(c.prefix, key))
+}
+
+func (c *cursorPrefixedRoaringSet) Close() {
+	c.cursor.Close()
 }
 
 func (c *cursorPrefixedRoaringSet) nextInternal() ([]byte, *sroar.Bitmap) {
