@@ -89,36 +89,37 @@ func newCursorPrefixedRoaringSet(cursor CursorRoaringSet, prefix []byte) CursorR
 }
 
 type cursorPrefixedRoaringSet struct {
-	cursor               CursorRoaringSet
-	prefix               []byte
-	started              bool
-	finished             bool
-	lastFoundMatchingKey []byte
+	cursor CursorRoaringSet
+	prefix []byte
+	// indicates whether internal cursor was already used
+	// if not 1st call to Next() should fallback to First()
+	started bool
+	// indicates whether internal cursor passed prefixed keys or reached its end
+	// if so, further calls to Next() can skip calling internal cursor
+	finished bool
+	// stores last matching prefixed key got from internal cursor
+	// key can be used to rewind internal cursor to previous position in case of
+	// call to Seek returns no result
+	// (on unsuccessful Seek, current cursor should not advance even if internal one advanced,
+	// therefore internal cursor has to be moved to previous position)
+	lastMatchingKey []byte
 }
 
 func (c *cursorPrefixedRoaringSet) First() ([]byte, *sroar.Bitmap) {
 	c.started = true
 
-	foundPrefixedKey, bm := c.cursor.Seek(c.prefix)
-
-	if foundPrefixedKey == nil {
-		c.lastFoundMatchingKey = nil
-		c.finished = true
-		return nil, nil
+	if foundPrefixedKey, bm := c.cursor.Seek(c.prefix); foundPrefixedKey != nil {
+		// something found, remove prefix if matches
+		if key, removed := _removePrefix(c.prefix, foundPrefixedKey); removed {
+			c.lastMatchingKey = foundPrefixedKey
+			c.finished = false
+			return key, bm
+		}
 	}
 
-	// something found, remove prefix if matches
-	if key, removed := _removePrefix(c.prefix, foundPrefixedKey); removed {
-		c.lastFoundMatchingKey = foundPrefixedKey
-		c.finished = false
-		return key, bm
-	}
-
-	c.lastFoundMatchingKey = nil
+	c.lastMatchingKey = nil
 	c.finished = true
 	return nil, nil
-
-	// return c.seekInternal(c.prefix)
 }
 
 func (c *cursorPrefixedRoaringSet) Next() ([]byte, *sroar.Bitmap) {
@@ -130,82 +131,42 @@ func (c *cursorPrefixedRoaringSet) Next() ([]byte, *sroar.Bitmap) {
 		return nil, nil
 	}
 
-	foundPrefixedKey, bm := c.cursor.Next()
-
-	if foundPrefixedKey == nil {
-		c.lastFoundMatchingKey = nil
-		c.finished = true
-		return nil, nil
+	if foundPrefixedKey, bm := c.cursor.Next(); foundPrefixedKey != nil {
+		// something found, remove prefix if matches
+		if key, removed := _removePrefix(c.prefix, foundPrefixedKey); removed {
+			c.lastMatchingKey = foundPrefixedKey
+			c.finished = false
+			return key, bm
+		}
 	}
 
-	// something found, remove prefix if matches
-	if key, removed := _removePrefix(c.prefix, foundPrefixedKey); removed {
-		c.lastFoundMatchingKey = foundPrefixedKey
-		c.finished = false
-		return key, bm
-	}
-
-	c.lastFoundMatchingKey = nil
+	c.lastMatchingKey = nil
 	c.finished = true
 	return nil, nil
-
-	// return c.nextInternal()
 }
 
 func (c *cursorPrefixedRoaringSet) Seek(key []byte) ([]byte, *sroar.Bitmap) {
 	c.started = true
 
-	foundPrefixedKey, bm := c.cursor.Seek(_addPrefix(c.prefix, key))
-
-	if foundPrefixedKey == nil {
-		if c.lastFoundMatchingKey != nil {
-			c.cursor.Seek(c.lastFoundMatchingKey)
+	if foundPrefixedKey, bm := c.cursor.Seek(_addPrefix(c.prefix, key)); foundPrefixedKey != nil {
+		// something found, remove prefix if matches
+		if key, removed := _removePrefix(c.prefix, foundPrefixedKey); removed {
+			c.lastMatchingKey = foundPrefixedKey
+			c.finished = false
+			return key, bm
 		}
-		return nil, nil
 	}
 
-	// something found, remove prefix if matches
-	if key, removed := _removePrefix(c.prefix, foundPrefixedKey); removed {
-		c.lastFoundMatchingKey = foundPrefixedKey
-		c.finished = false
-		return key, bm
-	}
-
-	if c.lastFoundMatchingKey != nil {
-		c.cursor.Seek(c.lastFoundMatchingKey)
+	// move internal cursor back to previous position
+	if c.lastMatchingKey != nil {
+		c.cursor.Seek(c.lastMatchingKey)
 	}
 	return nil, nil
-
-	// return c.seekInternal(_addPrefix(c.prefix, key))
 }
 
 func (c *cursorPrefixedRoaringSet) Close() {
 	c.cursor.Close()
 }
-
-// func (c *cursorPrefixedRoaringSet) nextInternal() ([]byte, *sroar.Bitmap) {
-// 	return c.extractResult(c.cursor.Next())
-// }
-
-// func (c *cursorPrefixedRoaringSet) seekInternal(prefixedKey []byte) ([]byte, *sroar.Bitmap) {
-// 	return c.extractResult(c.cursor.Seek(prefixedKey))
-// }
-
-// func (c *cursorPrefixedRoaringSet) extractResult(foundPrefixedKey []byte, bm *sroar.Bitmap) ([]byte, *sroar.Bitmap) {
-// 	// c.started = true
-// 	// nothing found in internal cursor
-// 	if foundPrefixedKey == nil {
-// 		c.finished = true
-// 		return nil, nil
-// 	}
-// 	// something found, remove prefix if matches
-// 	if key, removed := _removePrefix(c.prefix, foundPrefixedKey); removed {
-// 		c.finished = false
-// 		return key, bm
-// 	}
-// 	c.finished = true
-// 	return nil, nil
-// }
 
 func _addPrefix(prefix, key []byte) []byte {
 	pk := make([]byte, 0, len(prefix)+len(key))
@@ -224,23 +185,3 @@ func _removePrefix(prefix, prefixedKey []byte) ([]byte, bool) {
 func _matchesPrefix(prefix, prefixedKey []byte) bool {
 	return strings.HasPrefix(string(prefixedKey), string(prefix))
 }
-
-/*
-
-first
-- internal seek (prefix)
-- if not found -> set finished, store empty key
-- if found -> store last key
-
-seek key
-- internal seek (prefix+key)
-- if not found -> if last key -> interal seek (last key)
-- if found -> store last key
-
-next
-- only if !finished
-- internal next
-- if not found -> set finished, store empty key
-- if found -> store last key
-
-*/
