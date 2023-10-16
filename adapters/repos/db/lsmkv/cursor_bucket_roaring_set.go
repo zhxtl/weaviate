@@ -85,7 +85,13 @@ func (c *cursorRoaringSet) Close() {
 }
 
 func newCursorPrefixedRoaringSet(cursor CursorRoaringSet, prefix []byte) CursorRoaringSet {
-	return &cursorPrefixedRoaringSet{cursor: cursor, prefix: prefix, started: false, finished: false}
+	return &cursorPrefixedRoaringSet{
+		cursor:          cursor,
+		prefix:          prefix,
+		started:         false,
+		finished:        false,
+		lastMatchingKey: nil,
+	}
 }
 
 type cursorPrefixedRoaringSet struct {
