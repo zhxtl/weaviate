@@ -84,6 +84,10 @@ func (c *cursorRoaringSet) Close() {
 	c.unlock()
 }
 
+func newCursorPrefixedRoaringSet(cursor CursorRoaringSet, prefix []byte) CursorRoaringSet {
+	return &cursorPrefixedRoaringSet{cursor: cursor, prefix: prefix, started: false, finished: false}
+}
+
 type cursorPrefixedRoaringSet struct {
 	cursor   CursorRoaringSet
 	prefix   []byte
