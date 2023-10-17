@@ -125,35 +125,6 @@ func (b *BucketProxy) SetMemtableThreshold(size uint64) {
 	b.realBucket.SetMemtableThreshold(size)
 }
 
-func (b *BucketProxy) Get(key []byte) ([]byte, error) {
-	real_key := b.makePropertyKey(key)
-	return b.realBucket.Get(real_key)
-}
-
-func (b *BucketProxy) GetBySecondary(pos int, key []byte) ([]byte, error) {
-	real_key := b.makePropertyKey(key)
-	return b.realBucket.GetBySecondary(pos, real_key)
-}
-
-func (b *BucketProxy) Put(key, value []byte, opts ...SecondaryKeyOption) error {
-	real_key := b.makePropertyKey(key)
-	return b.realBucket.Put(real_key, value, opts...)
-}
-
-func (b *BucketProxy) WasDeleted(key []byte) (bool, error) {
-	real_key := b.makePropertyKey(key)
-	return b.realBucket.WasDeleted(real_key)
-}
-
-func (b *BucketProxy) Delete(key []byte, opts ...SecondaryKeyOption) error {
-	real_key := b.makePropertyKey(key)
-	return b.realBucket.Delete(real_key, opts...)
-}
-
-func (b *BucketProxy) Count() int {
-	panic("Not allowed for BucketProx")
-}
-
 func (b *BucketProxy) Shutdown(ctx context.Context) error {
 	return b.realBucket.Shutdown(ctx)
 }
@@ -162,8 +133,8 @@ func (b *BucketProxy) FlushAndSwitch() error {
 	return b.realBucket.FlushAndSwitch()
 }
 
-func (b *BucketProxy) Cursor() *CursorReplace {
-	return b.realBucket.Cursor()
+func (b *BucketProxy) Count() int {
+	panic("Not allowed for BucketProx")
 }
 
 func (b *BucketProxy) RoaringSetAddOne(key []byte, value uint64) error {
@@ -238,4 +209,33 @@ func (b *BucketProxy) MapCursor(cfgs ...MapListOption) CursorMap {
 
 func (b *BucketProxy) MapCursorKeyOnly(cfgs ...MapListOption) CursorMap {
 	return newCursorPrefixedMap(b.realBucket.MapCursorKeyOnly(cfgs...), b.propertyPrefix)
+}
+
+func (b *BucketProxy) Put(key, value []byte, opts ...SecondaryKeyOption) error {
+	real_key := b.makePropertyKey(key)
+	return b.realBucket.Put(real_key, value, opts...)
+}
+
+func (b *BucketProxy) Get(key []byte) ([]byte, error) {
+	real_key := b.makePropertyKey(key)
+	return b.realBucket.Get(real_key)
+}
+
+func (b *BucketProxy) GetBySecondary(pos int, key []byte) ([]byte, error) {
+	real_key := b.makePropertyKey(key)
+	return b.realBucket.GetBySecondary(pos, real_key)
+}
+
+func (b *BucketProxy) Delete(key []byte, opts ...SecondaryKeyOption) error {
+	real_key := b.makePropertyKey(key)
+	return b.realBucket.Delete(real_key, opts...)
+}
+
+func (b *BucketProxy) WasDeleted(key []byte) (bool, error) {
+	real_key := b.makePropertyKey(key)
+	return b.realBucket.WasDeleted(real_key)
+}
+
+func (b *BucketProxy) Cursor() CursorReplace {
+	return b.realBucket.Cursor()
 }

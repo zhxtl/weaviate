@@ -18,7 +18,14 @@ import (
 	"github.com/weaviate/weaviate/entities/lsmkv"
 )
 
-type CursorReplace struct {
+type CursorReplace interface {
+	First() ([]byte, []byte)
+	Next() ([]byte, []byte)
+	Seek([]byte) ([]byte, []byte)
+	Close()
+}
+
+type cursorReplace struct {
 	innerCursors []innerCursorReplace
 	state        []cursorStateReplace
 	unlock       func()
@@ -39,7 +46,7 @@ type cursorStateReplace struct {
 
 // Cursor holds a RLock for the flushing state. It needs to be closed using the
 // .Close() methods or otherwise the lock will never be released
-func (b *Bucket) Cursor() *CursorReplace {
+func (b *Bucket) Cursor() CursorReplace {
 	b.flushLock.RLock()
 
 	if b.strategy != StrategyReplace {
@@ -57,7 +64,7 @@ func (b *Bucket) Cursor() *CursorReplace {
 
 	innerCursors = append(innerCursors, b.active.newCursor())
 
-	return &CursorReplace{
+	return &cursorReplace{
 		// cursor are in order from oldest to newest, with the memtable cursor
 		// being at the very top
 		innerCursors: innerCursors,
@@ -68,11 +75,11 @@ func (b *Bucket) Cursor() *CursorReplace {
 	}
 }
 
-func (c *CursorReplace) Close() {
+func (c *cursorReplace) Close() {
 	c.unlock()
 }
 
-func (c *CursorReplace) seekAll(target []byte) {
+func (c *cursorReplace) seekAll(target []byte) {
 	state := make([]cursorStateReplace, len(c.innerCursors))
 	for i, cur := range c.innerCursors {
 		key, value, err := cur.seek(target)
@@ -98,7 +105,7 @@ func (c *CursorReplace) seekAll(target []byte) {
 	c.state = state
 }
 
-func (c *CursorReplace) serveCurrentStateAndAdvance() ([]byte, []byte) {
+func (c *cursorReplace) serveCurrentStateAndAdvance() ([]byte, []byte) {
 	id, err := c.cursorWithLowestKey()
 	if err != nil {
 		if err == lsmkv.NotFound {
@@ -117,7 +124,7 @@ func (c *CursorReplace) serveCurrentStateAndAdvance() ([]byte, []byte) {
 	}
 }
 
-func (c *CursorReplace) haveDuplicatesInState(idWithLowestKey int) ([]int, bool) {
+func (c *cursorReplace) haveDuplicatesInState(idWithLowestKey int) ([]int, bool) {
 	key := c.state[idWithLowestKey].key
 
 	var idsFound []int
@@ -138,7 +145,7 @@ func (c *CursorReplace) haveDuplicatesInState(idWithLowestKey int) ([]int, bool)
 
 // if there are no duplicates present it will still work as returning the
 // latest result is the same as returning the only result
-func (c *CursorReplace) mergeDuplicatesInCurrentStateAndAdvance(ids []int) ([]byte, []byte) {
+func (c *cursorReplace) mergeDuplicatesInCurrentStateAndAdvance(ids []int) ([]byte, []byte) {
 	c.copyStateIntoServeCache(ids[len(ids)-1])
 
 	// with a replace strategy only the highest will be returned, but still all
@@ -156,7 +163,7 @@ func (c *CursorReplace) mergeDuplicatesInCurrentStateAndAdvance(ids []int) ([]by
 	return c.serveCache.key, c.serveCache.value
 }
 
-func (c *CursorReplace) copyStateIntoServeCache(pos int) {
+func (c *cursorReplace) copyStateIntoServeCache(pos int) {
 	resMut := c.state[pos]
 	if len(resMut.key) > cap(c.serveCache.key) {
 		c.serveCache.key = make([]byte, len(resMut.key))
@@ -175,12 +182,12 @@ func (c *CursorReplace) copyStateIntoServeCache(pos int) {
 	c.serveCache.err = resMut.err
 }
 
-func (c *CursorReplace) Seek(key []byte) ([]byte, []byte) {
+func (c *cursorReplace) Seek(key []byte) ([]byte, []byte) {
 	c.seekAll(key)
 	return c.serveCurrentStateAndAdvance()
 }
 
-func (c *CursorReplace) cursorWithLowestKey() (int, error) {
+func (c *cursorReplace) cursorWithLowestKey() (int, error) {
 	err := lsmkv.NotFound
 	pos := -1
 	var lowest []byte
@@ -204,7 +211,7 @@ func (c *CursorReplace) cursorWithLowestKey() (int, error) {
 	return pos, nil
 }
 
-func (c *CursorReplace) advanceInner(id int) {
+func (c *cursorReplace) advanceInner(id int) {
 	k, v, err := c.innerCursors[id].next()
 	if err == lsmkv.NotFound {
 		c.state[id].err = err
@@ -229,11 +236,11 @@ func (c *CursorReplace) advanceInner(id int) {
 	c.state[id].err = nil
 }
 
-func (c *CursorReplace) Next() ([]byte, []byte) {
+func (c *cursorReplace) Next() ([]byte, []byte) {
 	return c.serveCurrentStateAndAdvance()
 }
 
-func (c *CursorReplace) firstAll() {
+func (c *cursorReplace) firstAll() {
 	state := make([]cursorStateReplace, len(c.innerCursors))
 	for i, cur := range c.innerCursors {
 		key, value, err := cur.first()
@@ -258,7 +265,7 @@ func (c *CursorReplace) firstAll() {
 	c.state = state
 }
 
-func (c *CursorReplace) First() ([]byte, []byte) {
+func (c *cursorReplace) First() ([]byte, []byte) {
 	c.firstAll()
 	return c.serveCurrentStateAndAdvance()
 }
