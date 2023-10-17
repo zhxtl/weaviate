@@ -113,14 +113,6 @@ func (b *BucketProxy) makePropertyKey(key []byte) []byte {
 	return helpers.MakePropertyKey(b.propertyPrefix, key)
 }
 
-func (b *BucketProxy) MapCursorKeyOnly(cfgs ...MapListOption) CursorMap {
-	return b.realBucket.MapCursorKeyOnly(cfgs...)
-}
-
-func (b *BucketProxy) MapCursor(cfgs ...MapListOption) CursorMap {
-	return b.realBucket.MapCursor(cfgs...)
-}
-
 func (b *BucketProxy) Strategy() string {
 	return b.realBucket.Strategy()
 }
@@ -151,21 +143,6 @@ func (b *BucketProxy) Put(key, value []byte, opts ...SecondaryKeyOption) error {
 func (b *BucketProxy) WasDeleted(key []byte) (bool, error) {
 	real_key := b.makePropertyKey(key)
 	return b.realBucket.WasDeleted(real_key)
-}
-
-func (b *BucketProxy) MapList(key []byte, cfgs ...MapListOption) ([]MapPair, error) {
-	real_key := b.makePropertyKey(key)
-	return b.realBucket.MapList(real_key, cfgs...)
-}
-
-func (b *BucketProxy) MapSet(rowKey []byte, kv MapPair) error {
-	real_key := b.makePropertyKey(rowKey)
-	return b.realBucket.MapSet(real_key, kv)
-}
-
-func (b *BucketProxy) MapDeleteKey(rowKey, mapKey []byte) error {
-	real_key := b.makePropertyKey(rowKey)
-	return b.realBucket.MapDeleteKey(real_key, mapKey)
 }
 
 func (b *BucketProxy) Delete(key []byte, opts ...SecondaryKeyOption) error {
@@ -238,4 +215,27 @@ func (b *BucketProxy) SetCursor() CursorSet {
 
 func (b *BucketProxy) SetCursorKeyOnly() CursorSet {
 	return newCursorPrefixedSet(b.realBucket.SetCursorKeyOnly(), b.propertyPrefix)
+}
+
+func (b *BucketProxy) MapSet(rowKey []byte, kv MapPair) error {
+	real_key := _addPrefix(b.propertyPrefix, rowKey)
+	return b.realBucket.MapSet(real_key, kv)
+}
+
+func (b *BucketProxy) MapList(key []byte, cfgs ...MapListOption) ([]MapPair, error) {
+	real_key := _addPrefix(b.propertyPrefix, key)
+	return b.realBucket.MapList(real_key, cfgs...)
+}
+
+func (b *BucketProxy) MapDeleteKey(rowKey, mapKey []byte) error {
+	real_key := _addPrefix(b.propertyPrefix, rowKey)
+	return b.realBucket.MapDeleteKey(real_key, mapKey)
+}
+
+func (b *BucketProxy) MapCursor(cfgs ...MapListOption) CursorMap {
+	return newCursorPrefixedMap(b.realBucket.MapCursor(cfgs...), b.propertyPrefix)
+}
+
+func (b *BucketProxy) MapCursorKeyOnly(cfgs ...MapListOption) CursorMap {
+	return newCursorPrefixedMap(b.realBucket.MapCursorKeyOnly(cfgs...), b.propertyPrefix)
 }
