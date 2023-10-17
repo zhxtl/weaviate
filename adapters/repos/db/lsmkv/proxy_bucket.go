@@ -109,26 +109,8 @@ func (b *BucketProxy) PropertyPrefix() []byte {
 	return b.propertyPrefix
 }
 
-func (b *BucketProxy) RoaringSetRemoveOne(key []byte, value uint64) error {
-	real_key := b.makePropertyKey(key)
-	return b.realBucket.RoaringSetRemoveOne(real_key, value)
-}
-
-func (b *BucketProxy) RoaringSetAddList(key []byte, values []uint64) error {
-	real_key := b.makePropertyKey(key)
-	return b.realBucket.RoaringSetAddList(real_key, values)
-}
-
 func (b *BucketProxy) makePropertyKey(key []byte) []byte {
 	return helpers.MakePropertyKey(b.propertyPrefix, key)
-}
-
-func (b *BucketProxy) CursorRoaringSet() CursorRoaringSet {
-	return b.realBucket.CursorRoaringSet()
-}
-
-func (b *BucketProxy) CursorRoaringSetKeyOnly() CursorRoaringSet {
-	return b.realBucket.CursorRoaringSetKeyOnly()
 }
 
 func (b *BucketProxy) MapCursorKeyOnly(cfgs ...MapListOption) CursorMap {
@@ -137,11 +119,6 @@ func (b *BucketProxy) MapCursorKeyOnly(cfgs ...MapListOption) CursorMap {
 
 func (b *BucketProxy) MapCursor(cfgs ...MapListOption) CursorMap {
 	return b.realBucket.MapCursor(cfgs...)
-}
-
-func (b *BucketProxy) RoaringSetGet(key []byte) (*sroar.Bitmap, error) {
-	real_key := b.makePropertyKey(key)
-	return b.realBucket.RoaringSetGet(real_key)
 }
 
 func (b *BucketProxy) SetCursor() CursorSet {
@@ -231,11 +208,34 @@ func (b *BucketProxy) FlushAndSwitch() error {
 	return b.realBucket.FlushAndSwitch()
 }
 
+func (b *BucketProxy) Cursor() *CursorReplace {
+	return b.realBucket.Cursor()
+}
+
 func (b *BucketProxy) RoaringSetAddOne(key []byte, value uint64) error {
-	real_key := b.makePropertyKey(key)
+	real_key := _addPrefix(b.propertyPrefix, key)
 	return b.realBucket.RoaringSetAddOne(real_key, value)
 }
 
-func (b *BucketProxy) Cursor() *CursorReplace {
-	return b.realBucket.Cursor()
+func (b *BucketProxy) RoaringSetAddList(key []byte, values []uint64) error {
+	real_key := _addPrefix(b.propertyPrefix, key)
+	return b.realBucket.RoaringSetAddList(real_key, values)
+}
+
+func (b *BucketProxy) RoaringSetGet(key []byte) (*sroar.Bitmap, error) {
+	real_key := _addPrefix(b.propertyPrefix, key)
+	return b.realBucket.RoaringSetGet(real_key)
+}
+
+func (b *BucketProxy) RoaringSetRemoveOne(key []byte, value uint64) error {
+	real_key := _addPrefix(b.propertyPrefix, key)
+	return b.realBucket.RoaringSetRemoveOne(real_key, value)
+}
+
+func (b *BucketProxy) CursorRoaringSet() CursorRoaringSet {
+	return newCursorPrefixedRoaringSet(b.realBucket.CursorRoaringSet(), b.propertyPrefix)
+}
+
+func (b *BucketProxy) CursorRoaringSetKeyOnly() CursorRoaringSet {
+	return newCursorPrefixedRoaringSet(b.realBucket.CursorRoaringSetKeyOnly(), b.propertyPrefix)
 }
