@@ -17,19 +17,16 @@ import (
 	"fmt"
 
 	"github.com/pkg/errors"
-	"github.com/weaviate/weaviate/adapters/repos/db/helpers"
 	"github.com/weaviate/weaviate/adapters/repos/db/lsmkv"
 	"github.com/weaviate/weaviate/entities/filters"
 )
 
 // RowReader reads one or many row(s) depending on the specified operator
 type RowReader struct {
-	value      []byte
-	bucket     lsmkv.BucketInterface
-	operator   filters.Operator
-	PropPrefix []byte
-
-	keyOnly bool
+	value    []byte
+	bucket   lsmkv.BucketInterface
+	operator filters.Operator
+	keyOnly  bool
 }
 
 // If keyOnly is set, the RowReader will request key-only cursors wherever
@@ -37,11 +34,10 @@ type RowReader struct {
 // nil
 func NewRowReader(bucket lsmkv.BucketInterface, value []byte, operator filters.Operator, keyOnly bool) *RowReader {
 	return &RowReader{
-		bucket:     bucket,
-		value:      value,
-		operator:   operator,
-		PropPrefix: bucket.PropertyPrefix(),
-		keyOnly:    keyOnly,
+		bucket:   bucket,
+		value:    value,
+		operator: operator,
+		keyOnly:  keyOnly,
 	}
 }
 
@@ -51,12 +47,6 @@ func (rr *RowReader) Iterate(ctx context.Context, readFn ReadFn) error {
 	defer c.Close()
 
 	for k, v := c.First(); k != nil; k, v = c.Next() {
-		if !helpers.MatchesPropertyKeyPostfix(rr.PropPrefix, k) {
-			continue
-		}
-
-		k = helpers.UnMakePropertyKey(rr.PropPrefix, k)
-
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -140,11 +130,7 @@ func (rr *RowReader) greaterThan(ctx context.Context, readFn ReadFn,
 	c := rr.newCursor()
 	defer c.Close()
 
-	for compositeKey, v := c.Seek(rr.value); compositeKey != nil; compositeKey, v = c.Next() {
-		if !helpers.MatchesPropertyKeyPostfix(rr.PropPrefix, compositeKey) {
-			continue
-		}
-		k := helpers.UnMakePropertyKey(rr.PropPrefix, compositeKey)
+	for k, v := c.Seek(rr.value); k != nil; k, v = c.Next() {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -175,12 +161,7 @@ func (rr *RowReader) lessThan(ctx context.Context, readFn ReadFn,
 	c := rr.newCursor()
 	defer c.Close()
 
-	for compositeKey, v := c.First(); compositeKey != nil && bytes.Compare(compositeKey, rr.value) != 1; compositeKey, v = c.Next() {
-		if !helpers.MatchesPropertyKeyPostfix(rr.PropPrefix, compositeKey) {
-			continue
-		}
-		k := helpers.UnMakePropertyKey(rr.PropPrefix, compositeKey)
-
+	for k, v := c.First(); k != nil && bytes.Compare(k, rr.value) != 1; k, v = c.Next() {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -208,12 +189,7 @@ func (rr *RowReader) notEqual(ctx context.Context, readFn ReadFn) error {
 	c := rr.newCursor()
 	defer c.Close()
 
-	for compositeKey, v := c.First(); compositeKey != nil; compositeKey, v = c.Next() {
-		if !helpers.MatchesPropertyKeyPostfix(rr.PropPrefix, compositeKey) {
-			continue
-		}
-		k := helpers.UnMakePropertyKey(rr.PropPrefix, compositeKey)
-
+	for k, v := c.First(); k != nil; k, v = c.Next() {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -255,11 +231,7 @@ func (rr *RowReader) like(ctx context.Context, readFn ReadFn) error {
 		initialK, initialV = c.First()
 	}
 
-	for compositeKey, v := initialK, initialV; compositeKey != nil; compositeKey, v = c.Next() {
-		if !helpers.MatchesPropertyKeyPostfix(rr.PropPrefix, compositeKey) {
-			continue
-		}
-		k := helpers.UnMakePropertyKey(rr.PropPrefix, compositeKey)
+	for k, v := initialK, initialV; k != nil; k, v = c.Next() {
 		if err := ctx.Err(); err != nil {
 			return err
 		}

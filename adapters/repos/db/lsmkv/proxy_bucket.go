@@ -121,14 +121,6 @@ func (b *BucketProxy) MapCursor(cfgs ...MapListOption) CursorMap {
 	return b.realBucket.MapCursor(cfgs...)
 }
 
-func (b *BucketProxy) SetCursor() CursorSet {
-	return b.realBucket.SetCursor()
-}
-
-func (b *BucketProxy) SetCursorKeyOnly() CursorSet {
-	return b.realBucket.SetCursorKeyOnly()
-}
-
 func (b *BucketProxy) Strategy() string {
 	return b.realBucket.Strategy()
 }
@@ -151,24 +143,9 @@ func (b *BucketProxy) GetBySecondary(pos int, key []byte) ([]byte, error) {
 	return b.realBucket.GetBySecondary(pos, real_key)
 }
 
-func (b *BucketProxy) SetList(key []byte) ([][]byte, error) {
-	real_key := b.makePropertyKey(key)
-	return b.realBucket.SetList(real_key)
-}
-
 func (b *BucketProxy) Put(key, value []byte, opts ...SecondaryKeyOption) error {
 	real_key := b.makePropertyKey(key)
 	return b.realBucket.Put(real_key, value, opts...)
-}
-
-func (b *BucketProxy) SetAdd(key []byte, values [][]byte) error {
-	real_key := b.makePropertyKey(key)
-	return b.realBucket.SetAdd(real_key, values)
-}
-
-func (b *BucketProxy) SetDeleteSingle(key []byte, valueToDelete []byte) error {
-	real_key := b.makePropertyKey(key)
-	return b.realBucket.SetDeleteSingle(real_key, valueToDelete)
 }
 
 func (b *BucketProxy) WasDeleted(key []byte) (bool, error) {
@@ -238,4 +215,27 @@ func (b *BucketProxy) CursorRoaringSet() CursorRoaringSet {
 
 func (b *BucketProxy) CursorRoaringSetKeyOnly() CursorRoaringSet {
 	return newCursorPrefixedRoaringSet(b.realBucket.CursorRoaringSetKeyOnly(), b.propertyPrefix)
+}
+
+func (b *BucketProxy) SetAdd(key []byte, values [][]byte) error {
+	real_key := _addPrefix(b.propertyPrefix, key)
+	return b.realBucket.SetAdd(real_key, values)
+}
+
+func (b *BucketProxy) SetList(key []byte) ([][]byte, error) {
+	real_key := _addPrefix(b.propertyPrefix, key)
+	return b.realBucket.SetList(real_key)
+}
+
+func (b *BucketProxy) SetDeleteSingle(key []byte, valueToDelete []byte) error {
+	real_key := _addPrefix(b.propertyPrefix, key)
+	return b.realBucket.SetDeleteSingle(real_key, valueToDelete)
+}
+
+func (b *BucketProxy) SetCursor() CursorSet {
+	return newCursorPrefixedSet(b.realBucket.SetCursor(), b.propertyPrefix)
+}
+
+func (b *BucketProxy) SetCursorKeyOnly() CursorSet {
+	return newCursorPrefixedSet(b.realBucket.SetCursorKeyOnly(), b.propertyPrefix)
 }
