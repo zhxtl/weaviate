@@ -19,7 +19,51 @@ import (
 	"github.com/weaviate/weaviate/entities/lsmkv"
 )
 
-type CursorMap struct {
+type CursorMap interface {
+	First() ([]byte, []MapPair)
+	Next() ([]byte, []MapPair)
+	Seek([]byte) ([]byte, []MapPair)
+	Close()
+}
+
+func (b *Bucket) MapCursor(cfgs ...MapListOption) CursorMap {
+	b.flushLock.RLock()
+
+	c := MapListOptionConfig{}
+	for _, cfg := range cfgs {
+		cfg(&c)
+	}
+
+	innerCursors, unlockSegmentGroup := b.disk.newMapCursors()
+
+	// we have a flush-RLock, so we have the guarantee that the flushing state
+	// will not change for the lifetime of the cursor, thus there can only be two
+	// states: either a flushing memtable currently exists - or it doesn't
+	if b.flushing != nil {
+		innerCursors = append(innerCursors, b.flushing.newMapCursor())
+	}
+
+	innerCursors = append(innerCursors, b.active.newMapCursor())
+
+	return &cursorMap{
+		unlock: func() {
+			unlockSegmentGroup()
+			b.flushLock.RUnlock()
+		},
+		// cursor are in order from oldest to newest, with the memtable cursor
+		// being at the very top
+		innerCursors: innerCursors,
+		listCfg:      c,
+	}
+}
+
+func (b *Bucket) MapCursorKeyOnly(cfgs ...MapListOption) CursorMap {
+	c := b.MapCursor(cfgs...)
+	c.(*cursorMap).keyOnly = true
+	return c
+}
+
+type cursorMap struct {
 	innerCursors []innerCursorMap
 	state        []cursorStateMap
 	unlock       func()
@@ -39,49 +83,12 @@ type innerCursorMap interface {
 	seek([]byte) ([]byte, []MapPair, error)
 }
 
-func (b *Bucket) MapCursor(cfgs ...MapListOption) *CursorMap {
-	b.flushLock.RLock()
-
-	c := MapListOptionConfig{}
-	for _, cfg := range cfgs {
-		cfg(&c)
-	}
-
-	innerCursors, unlockSegmentGroup := b.disk.newMapCursors()
-
-	// we have a flush-RLock, so we have the guarantee that the flushing state
-	// will not change for the lifetime of the cursor, thus there can only be two
-	// states: either a flushing memtable currently exists - or it doesn't
-	if b.flushing != nil {
-		innerCursors = append(innerCursors, b.flushing.newMapCursor())
-	}
-
-	innerCursors = append(innerCursors, b.active.newMapCursor())
-
-	return &CursorMap{
-		unlock: func() {
-			unlockSegmentGroup()
-			b.flushLock.RUnlock()
-		},
-		// cursor are in order from oldest to newest, with the memtable cursor
-		// being at the very top
-		innerCursors: innerCursors,
-		listCfg:      c,
-	}
-}
-
-func (b *Bucket) MapCursorKeyOnly(cfgs ...MapListOption) *CursorMap {
-	c := b.MapCursor(cfgs...)
-	c.keyOnly = true
-	return c
-}
-
-func (c *CursorMap) Seek(key []byte) ([]byte, []MapPair) {
+func (c *cursorMap) Seek(key []byte) ([]byte, []MapPair) {
 	c.seekAll(key)
 	return c.serveCurrentStateAndAdvance()
 }
 
-func (c *CursorMap) Next() ([]byte, []MapPair) {
+func (c *cursorMap) Next() ([]byte, []MapPair) {
 	// before := time.Now()
 	// defer func() {
 	// 	fmt.Printf("-- total next took %s\n", time.Since(before))
@@ -89,16 +96,16 @@ func (c *CursorMap) Next() ([]byte, []MapPair) {
 	return c.serveCurrentStateAndAdvance()
 }
 
-func (c *CursorMap) First() ([]byte, []MapPair) {
+func (c *cursorMap) First() ([]byte, []MapPair) {
 	c.firstAll()
 	return c.serveCurrentStateAndAdvance()
 }
 
-func (c *CursorMap) Close() {
+func (c *cursorMap) Close() {
 	c.unlock()
 }
 
-func (c *CursorMap) seekAll(target []byte) {
+func (c *cursorMap) seekAll(target []byte) {
 	state := make([]cursorStateMap, len(c.innerCursors))
 	for i, cur := range c.innerCursors {
 		key, value, err := cur.seek(target)
@@ -120,7 +127,7 @@ func (c *CursorMap) seekAll(target []byte) {
 	c.state = state
 }
 
-func (c *CursorMap) firstAll() {
+func (c *cursorMap) firstAll() {
 	state := make([]cursorStateMap, len(c.innerCursors))
 	for i, cur := range c.innerCursors {
 		key, value, err := cur.first()
@@ -142,7 +149,7 @@ func (c *CursorMap) firstAll() {
 	c.state = state
 }
 
-func (c *CursorMap) serveCurrentStateAndAdvance() ([]byte, []MapPair) {
+func (c *cursorMap) serveCurrentStateAndAdvance() ([]byte, []MapPair) {
 	id, err := c.cursorWithLowestKey()
 	if err != nil {
 		if err == lsmkv.NotFound {
@@ -161,7 +168,7 @@ func (c *CursorMap) serveCurrentStateAndAdvance() ([]byte, []MapPair) {
 	}
 }
 
-func (c *CursorMap) cursorWithLowestKey() (int, error) {
+func (c *cursorMap) cursorWithLowestKey() (int, error) {
 	err := lsmkv.NotFound
 	pos := -1
 	var lowest []byte
@@ -185,7 +192,7 @@ func (c *CursorMap) cursorWithLowestKey() (int, error) {
 	return pos, nil
 }
 
-func (c *CursorMap) haveDuplicatesInState(idWithLowestKey int) ([]int, bool) {
+func (c *cursorMap) haveDuplicatesInState(idWithLowestKey int) ([]int, bool) {
 	key := c.state[idWithLowestKey].key
 
 	var idsFound []int
@@ -206,7 +213,7 @@ func (c *CursorMap) haveDuplicatesInState(idWithLowestKey int) ([]int, bool) {
 
 // if there are no duplicates present it will still work as returning the
 // latest result is the same as returning the only result
-func (c *CursorMap) mergeDuplicatesInCurrentStateAndAdvance(ids []int) ([]byte, []MapPair) {
+func (c *cursorMap) mergeDuplicatesInCurrentStateAndAdvance(ids []int) ([]byte, []MapPair) {
 	// take the key from any of the results, we have the guarantee that they're
 	// all the same
 	key := c.state[ids[0]].key
@@ -248,7 +255,7 @@ func (c *CursorMap) mergeDuplicatesInCurrentStateAndAdvance(ids []int) ([]byte, 
 	}
 }
 
-func (c *CursorMap) advanceInner(id int) {
+func (c *cursorMap) advanceInner(id int) {
 	k, v, err := c.innerCursors[id].next()
 	if err == lsmkv.NotFound {
 		c.state[id].err = err

@@ -54,8 +54,8 @@ type BucketInterface interface {
 	RoaringSetGet(key []byte) (*sroar.Bitmap, error)
 	SetCursorKeyOnly() CursorSet
 	SetCursor() CursorSet
-	MapCursorKeyOnly(cfgs ...MapListOption) *CursorMap
-	MapCursor(cfgs ...MapListOption) *CursorMap
+	MapCursorKeyOnly(cfgs ...MapListOption) CursorMap
+	MapCursor(cfgs ...MapListOption) CursorMap
 	CursorRoaringSet() CursorRoaringSet
 	RoaringSetAddOne(key []byte, value uint64) error
 	FlushAndSwitch() error

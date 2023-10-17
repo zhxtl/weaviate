@@ -131,11 +131,11 @@ func (b *BucketProxy) CursorRoaringSetKeyOnly() CursorRoaringSet {
 	return b.realBucket.CursorRoaringSetKeyOnly()
 }
 
-func (b *BucketProxy) MapCursorKeyOnly(cfgs ...MapListOption) *CursorMap {
+func (b *BucketProxy) MapCursorKeyOnly(cfgs ...MapListOption) CursorMap {
 	return b.realBucket.MapCursorKeyOnly(cfgs...)
 }
 
-func (b *BucketProxy) MapCursor(cfgs ...MapListOption) *CursorMap {
+func (b *BucketProxy) MapCursor(cfgs ...MapListOption) CursorMap {
 	return b.realBucket.MapCursor(cfgs...)
 }
 
