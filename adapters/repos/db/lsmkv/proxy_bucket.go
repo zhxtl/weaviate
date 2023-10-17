@@ -109,10 +109,6 @@ func (b *BucketProxy) PropertyPrefix() []byte {
 	return b.propertyPrefix
 }
 
-func (b *BucketProxy) makePropertyKey(key []byte) []byte {
-	return helpers.MakePropertyKey(b.propertyPrefix, key)
-}
-
 func (b *BucketProxy) Strategy() string {
 	return b.realBucket.Strategy()
 }
@@ -138,23 +134,23 @@ func (b *BucketProxy) Count() int {
 }
 
 func (b *BucketProxy) RoaringSetAddOne(key []byte, value uint64) error {
-	real_key := _addPrefix(b.propertyPrefix, key)
-	return b.realBucket.RoaringSetAddOne(real_key, value)
+	bucketKey := _addPrefix(b.propertyPrefix, key)
+	return b.realBucket.RoaringSetAddOne(bucketKey, value)
 }
 
 func (b *BucketProxy) RoaringSetAddList(key []byte, values []uint64) error {
-	real_key := _addPrefix(b.propertyPrefix, key)
-	return b.realBucket.RoaringSetAddList(real_key, values)
+	bucketKey := _addPrefix(b.propertyPrefix, key)
+	return b.realBucket.RoaringSetAddList(bucketKey, values)
 }
 
 func (b *BucketProxy) RoaringSetGet(key []byte) (*sroar.Bitmap, error) {
-	real_key := _addPrefix(b.propertyPrefix, key)
-	return b.realBucket.RoaringSetGet(real_key)
+	bucketKey := _addPrefix(b.propertyPrefix, key)
+	return b.realBucket.RoaringSetGet(bucketKey)
 }
 
 func (b *BucketProxy) RoaringSetRemoveOne(key []byte, value uint64) error {
-	real_key := _addPrefix(b.propertyPrefix, key)
-	return b.realBucket.RoaringSetRemoveOne(real_key, value)
+	bucketKey := _addPrefix(b.propertyPrefix, key)
+	return b.realBucket.RoaringSetRemoveOne(bucketKey, value)
 }
 
 func (b *BucketProxy) CursorRoaringSet() CursorRoaringSet {
@@ -166,18 +162,18 @@ func (b *BucketProxy) CursorRoaringSetKeyOnly() CursorRoaringSet {
 }
 
 func (b *BucketProxy) SetAdd(key []byte, values [][]byte) error {
-	real_key := _addPrefix(b.propertyPrefix, key)
-	return b.realBucket.SetAdd(real_key, values)
+	bucketKey := _addPrefix(b.propertyPrefix, key)
+	return b.realBucket.SetAdd(bucketKey, values)
 }
 
 func (b *BucketProxy) SetList(key []byte) ([][]byte, error) {
-	real_key := _addPrefix(b.propertyPrefix, key)
-	return b.realBucket.SetList(real_key)
+	bucketKey := _addPrefix(b.propertyPrefix, key)
+	return b.realBucket.SetList(bucketKey)
 }
 
 func (b *BucketProxy) SetDeleteSingle(key []byte, valueToDelete []byte) error {
-	real_key := _addPrefix(b.propertyPrefix, key)
-	return b.realBucket.SetDeleteSingle(real_key, valueToDelete)
+	bucketKey := _addPrefix(b.propertyPrefix, key)
+	return b.realBucket.SetDeleteSingle(bucketKey, valueToDelete)
 }
 
 func (b *BucketProxy) SetCursor() CursorSet {
@@ -189,18 +185,18 @@ func (b *BucketProxy) SetCursorKeyOnly() CursorSet {
 }
 
 func (b *BucketProxy) MapSet(rowKey []byte, kv MapPair) error {
-	real_key := _addPrefix(b.propertyPrefix, rowKey)
-	return b.realBucket.MapSet(real_key, kv)
+	bucketKey := _addPrefix(b.propertyPrefix, rowKey)
+	return b.realBucket.MapSet(bucketKey, kv)
 }
 
 func (b *BucketProxy) MapList(key []byte, cfgs ...MapListOption) ([]MapPair, error) {
-	real_key := _addPrefix(b.propertyPrefix, key)
-	return b.realBucket.MapList(real_key, cfgs...)
+	bucketKey := _addPrefix(b.propertyPrefix, key)
+	return b.realBucket.MapList(bucketKey, cfgs...)
 }
 
 func (b *BucketProxy) MapDeleteKey(rowKey, mapKey []byte) error {
-	real_key := _addPrefix(b.propertyPrefix, rowKey)
-	return b.realBucket.MapDeleteKey(real_key, mapKey)
+	bucketKey := _addPrefix(b.propertyPrefix, rowKey)
+	return b.realBucket.MapDeleteKey(bucketKey, mapKey)
 }
 
 func (b *BucketProxy) MapCursor(cfgs ...MapListOption) CursorMap {
@@ -212,30 +208,30 @@ func (b *BucketProxy) MapCursorKeyOnly(cfgs ...MapListOption) CursorMap {
 }
 
 func (b *BucketProxy) Put(key, value []byte, opts ...SecondaryKeyOption) error {
-	real_key := b.makePropertyKey(key)
-	return b.realBucket.Put(real_key, value, opts...)
+	bucketKey := _addPrefix(b.propertyPrefix, key)
+	return b.realBucket.Put(bucketKey, value, opts...)
 }
 
 func (b *BucketProxy) Get(key []byte) ([]byte, error) {
-	real_key := b.makePropertyKey(key)
-	return b.realBucket.Get(real_key)
+	bucketKey := _addPrefix(b.propertyPrefix, key)
+	return b.realBucket.Get(bucketKey)
 }
 
 func (b *BucketProxy) GetBySecondary(pos int, key []byte) ([]byte, error) {
-	real_key := b.makePropertyKey(key)
-	return b.realBucket.GetBySecondary(pos, real_key)
+	bucketKey := _addPrefix(b.propertyPrefix, key)
+	return b.realBucket.GetBySecondary(pos, bucketKey)
 }
 
 func (b *BucketProxy) Delete(key []byte, opts ...SecondaryKeyOption) error {
-	real_key := b.makePropertyKey(key)
-	return b.realBucket.Delete(real_key, opts...)
+	bucketKey := _addPrefix(b.propertyPrefix, key)
+	return b.realBucket.Delete(bucketKey, opts...)
 }
 
 func (b *BucketProxy) WasDeleted(key []byte) (bool, error) {
-	real_key := b.makePropertyKey(key)
-	return b.realBucket.WasDeleted(real_key)
+	bucketKey := _addPrefix(b.propertyPrefix, key)
+	return b.realBucket.WasDeleted(bucketKey)
 }
 
 func (b *BucketProxy) Cursor() CursorReplace {
-	return b.realBucket.Cursor()
+	return newCursorPrefixedReplace(b.realBucket.Cursor(), b.propertyPrefix)
 }
