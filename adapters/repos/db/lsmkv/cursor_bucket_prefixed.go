@@ -33,6 +33,16 @@ func newCursorPrefixedSet(cursor CursorSet, prefix []byte) CursorSet {
 	}
 }
 
+func newCursorPrefixedMap(cursor CursorMap, prefix []byte) CursorMap {
+	return &cursorPrefixed[[]MapPair]{
+		cursor:          cursor,
+		prefix:          prefix,
+		started:         false,
+		finished:        false,
+		lastMatchingKey: nil,
+	}
+}
+
 type cursorPrefixed[T any] struct {
 	cursor Cursor[T]
 	prefix []byte

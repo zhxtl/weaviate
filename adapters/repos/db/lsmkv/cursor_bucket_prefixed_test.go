@@ -116,6 +116,40 @@ func TestCursorPrefixed_RoaringSet(t *testing.T) {
 	}
 }
 
+func newFakeCursorRoaringSet() CursorRoaringSet {
+	entries := []*entry[*sroar.Bitmap]{
+		{key: []byte("a201"), value: roaringset.NewBitmap(1, 201)},
+		{key: []byte("a202"), value: roaringset.NewBitmap(1, 202)},
+		{key: []byte("a203"), value: roaringset.NewBitmap(1, 203)},
+		{key: []byte("a401"), value: roaringset.NewBitmap(1, 401)},
+		{key: []byte("a402"), value: roaringset.NewBitmap(1, 402)},
+		{key: []byte("a403"), value: roaringset.NewBitmap(1, 403)},
+		{key: []byte("b201"), value: roaringset.NewBitmap(2, 201)},
+		{key: []byte("b202"), value: roaringset.NewBitmap(2, 202)},
+		{key: []byte("b203"), value: roaringset.NewBitmap(2, 203)},
+		{key: []byte("b401"), value: roaringset.NewBitmap(2, 401)},
+		{key: []byte("b402"), value: roaringset.NewBitmap(2, 402)},
+		{key: []byte("b403"), value: roaringset.NewBitmap(2, 403)},
+		{key: []byte("c201"), value: roaringset.NewBitmap(3, 201)},
+		{key: []byte("c202"), value: roaringset.NewBitmap(3, 202)},
+		{key: []byte("c203"), value: roaringset.NewBitmap(3, 203)},
+		{key: []byte("c401"), value: roaringset.NewBitmap(3, 401)},
+		{key: []byte("c402"), value: roaringset.NewBitmap(3, 402)},
+		{key: []byte("c403"), value: roaringset.NewBitmap(3, 403)},
+	}
+	return &fakeCursor[*sroar.Bitmap]{pos: 0, entries: entries}
+}
+
+func assertEntryRoaringSet(t *testing.T, key []byte, bm *sroar.Bitmap, expectedKey []byte, expectedValues ...uint64) {
+	require.Equal(t, expectedKey, key)
+	require.ElementsMatch(t, expectedValues, bm.ToArray())
+}
+
+func assertEntryRoaringSetNil(t *testing.T, key []byte, bm *sroar.Bitmap) {
+	require.Nil(t, key)
+	require.Nil(t, bm)
+}
+
 func TestCursorPrefixed_Set(t *testing.T) {
 	type testCase struct {
 		prefix string
@@ -223,40 +257,6 @@ func TestCursorPrefixed_Set(t *testing.T) {
 	}
 }
 
-func newFakeCursorRoaringSet() CursorRoaringSet {
-	entries := []*entry[*sroar.Bitmap]{
-		{key: []byte("a201"), value: roaringset.NewBitmap(1, 201)},
-		{key: []byte("a202"), value: roaringset.NewBitmap(1, 202)},
-		{key: []byte("a203"), value: roaringset.NewBitmap(1, 203)},
-		{key: []byte("a401"), value: roaringset.NewBitmap(1, 401)},
-		{key: []byte("a402"), value: roaringset.NewBitmap(1, 402)},
-		{key: []byte("a403"), value: roaringset.NewBitmap(1, 403)},
-		{key: []byte("b201"), value: roaringset.NewBitmap(2, 201)},
-		{key: []byte("b202"), value: roaringset.NewBitmap(2, 202)},
-		{key: []byte("b203"), value: roaringset.NewBitmap(2, 203)},
-		{key: []byte("b401"), value: roaringset.NewBitmap(2, 401)},
-		{key: []byte("b402"), value: roaringset.NewBitmap(2, 402)},
-		{key: []byte("b403"), value: roaringset.NewBitmap(2, 403)},
-		{key: []byte("c201"), value: roaringset.NewBitmap(3, 201)},
-		{key: []byte("c202"), value: roaringset.NewBitmap(3, 202)},
-		{key: []byte("c203"), value: roaringset.NewBitmap(3, 203)},
-		{key: []byte("c401"), value: roaringset.NewBitmap(3, 401)},
-		{key: []byte("c402"), value: roaringset.NewBitmap(3, 402)},
-		{key: []byte("c403"), value: roaringset.NewBitmap(3, 403)},
-	}
-	return &fakeCursor[*sroar.Bitmap]{pos: 0, entries: entries}
-}
-
-func assertEntryRoaringSet(t *testing.T, key []byte, bm *sroar.Bitmap, expectedKey []byte, expectedValues ...uint64) {
-	require.Equal(t, expectedKey, key)
-	require.ElementsMatch(t, expectedValues, bm.ToArray())
-}
-
-func assertEntryRoaringSetNil(t *testing.T, key []byte, bm *sroar.Bitmap) {
-	require.Nil(t, key)
-	require.Nil(t, bm)
-}
-
 func newFakeCursorSet() CursorSet {
 	entries := []*entry[[][]byte]{
 		{key: []byte("a201"), value: asBytes(1, 201)},
@@ -299,6 +299,161 @@ func asBytes(values ...uint64) [][]byte {
 		bytes[i] = b
 	}
 	return bytes
+}
+
+func TestCursorPrefixed_Map(t *testing.T) {
+	type testCase struct {
+		prefix string
+		id     uint64
+	}
+
+	testCases := []testCase{
+		{
+			prefix: "a",
+			id:     1,
+		},
+		{
+			prefix: "b",
+			id:     2,
+		},
+		{
+			prefix: "c",
+			id:     3,
+		},
+	}
+
+	for _, tc := range testCases {
+		var cursor CursorMap = newCursorPrefixedMap(newFakeCursorMap(), []byte(tc.prefix))
+
+		t.Run("first", func(t *testing.T) {
+			key, value := cursor.First()
+			assertEntryMap(t, key, value, []byte("201"), tc.id, 201)
+		})
+
+		t.Run("nexts", func(t *testing.T) {
+			key1, value1 := cursor.Next()
+			assertEntryMap(t, key1, value1, []byte("202"), tc.id, 202)
+			key2, value2 := cursor.Next()
+			assertEntryMap(t, key2, value2, []byte("203"), tc.id, 203)
+			key3, value3 := cursor.Next()
+			assertEntryMap(t, key3, value3, []byte("401"), tc.id, 401)
+			key4, value4 := cursor.Next()
+			assertEntryMap(t, key4, value4, []byte("402"), tc.id, 402)
+			key5, value5 := cursor.Next()
+			assertEntryMap(t, key5, value5, []byte("403"), tc.id, 403)
+			key6, value6 := cursor.Next()
+			assertEntryMapNil(t, key6, value6)
+			key7, value7 := cursor.Next()
+			assertEntryMapNil(t, key7, value7)
+		})
+
+		t.Run("seeks", func(t *testing.T) {
+			key1, value1 := cursor.Seek([]byte("402"))
+			assertEntryMap(t, key1, value1, []byte("402"), tc.id, 402)
+			key2, value2 := cursor.Seek([]byte("333"))
+			assertEntryMap(t, key2, value2, []byte("401"), tc.id, 401)
+			key3, value3 := cursor.Seek([]byte("203"))
+			assertEntryMap(t, key3, value3, []byte("203"), tc.id, 203)
+			key4, value4 := cursor.Seek([]byte("200"))
+			assertEntryMap(t, key4, value4, []byte("201"), tc.id, 201)
+			key5, value5 := cursor.Seek([]byte("404"))
+			assertEntryMapNil(t, key5, value5)
+			key6, value6 := cursor.Seek([]byte("101"))
+			assertEntryMap(t, key6, value6, []byte("201"), tc.id, 201)
+		})
+
+		t.Run("mix", func(t *testing.T) {
+			key1, value1 := cursor.Seek([]byte("401"))
+			assertEntryMap(t, key1, value1, []byte("401"), tc.id, 401)
+			key2, value2 := cursor.First()
+			assertEntryMap(t, key2, value2, []byte("201"), tc.id, 201)
+			key3, value3 := cursor.Seek([]byte("666"))
+			assertEntryMapNil(t, key3, value3)
+			key4, value4 := cursor.Next()
+			assertEntryMap(t, key4, value4, []byte("202"), tc.id, 202)
+			key5, value5 := cursor.Next()
+			assertEntryMap(t, key5, value5, []byte("203"), tc.id, 203)
+			key6, value6 := cursor.First()
+			assertEntryMap(t, key6, value6, []byte("201"), tc.id, 201)
+			key7, value7 := cursor.Seek([]byte("402"))
+			assertEntryMap(t, key7, value7, []byte("402"), tc.id, 402)
+			key8, value8 := cursor.Next()
+			assertEntryMap(t, key8, value8, []byte("403"), tc.id, 403)
+			key9, value9 := cursor.Next()
+			assertEntryMapNil(t, key9, value9)
+			key10, value10 := cursor.Next()
+			assertEntryMapNil(t, key10, value10)
+			key11, value11 := cursor.First()
+			assertEntryMap(t, key11, value11, []byte("201"), tc.id, 201)
+			key12, value12 := cursor.Seek([]byte("201"))
+			assertEntryMap(t, key12, value12, []byte("201"), tc.id, 201)
+			key13, value13 := cursor.Seek([]byte("403"))
+			assertEntryMap(t, key13, value13, []byte("403"), tc.id, 403)
+			key14, value14 := cursor.Next()
+			assertEntryMapNil(t, key14, value14)
+			key15, value15 := cursor.Seek([]byte("403"))
+			assertEntryMap(t, key15, value15, []byte("403"), tc.id, 403)
+		})
+	}
+
+	for _, tc := range testCases {
+		var cursor CursorMap = newCursorPrefixedMap(newFakeCursorMap(), []byte(tc.prefix))
+
+		t.Run("next fallbacks to first", func(t *testing.T) {
+			key1, value1 := cursor.Next()
+			assertEntryMap(t, key1, value1, []byte("201"), tc.id, 201)
+			key2, value2 := cursor.Next()
+			assertEntryMap(t, key2, value2, []byte("202"), tc.id, 202)
+		})
+	}
+}
+
+func newFakeCursorMap() CursorMap {
+	entries := []*entry[[]MapPair]{
+		{key: []byte("a201"), value: asMapPairs(1, 201)},
+		{key: []byte("a202"), value: asMapPairs(1, 202)},
+		{key: []byte("a203"), value: asMapPairs(1, 203)},
+		{key: []byte("a401"), value: asMapPairs(1, 401)},
+		{key: []byte("a402"), value: asMapPairs(1, 402)},
+		{key: []byte("a403"), value: asMapPairs(1, 403)},
+		{key: []byte("b201"), value: asMapPairs(2, 201)},
+		{key: []byte("b202"), value: asMapPairs(2, 202)},
+		{key: []byte("b203"), value: asMapPairs(2, 203)},
+		{key: []byte("b401"), value: asMapPairs(2, 401)},
+		{key: []byte("b402"), value: asMapPairs(2, 402)},
+		{key: []byte("b403"), value: asMapPairs(2, 403)},
+		{key: []byte("c201"), value: asMapPairs(3, 201)},
+		{key: []byte("c202"), value: asMapPairs(3, 202)},
+		{key: []byte("c203"), value: asMapPairs(3, 203)},
+		{key: []byte("c401"), value: asMapPairs(3, 401)},
+		{key: []byte("c402"), value: asMapPairs(3, 402)},
+		{key: []byte("c403"), value: asMapPairs(3, 403)},
+	}
+	return &fakeCursor[[]MapPair]{pos: 0, entries: entries}
+}
+
+func assertEntryMap(t *testing.T, key []byte, mp []MapPair, expectedKey []byte, expectedValues ...uint64) {
+	require.Equal(t, expectedKey, key)
+	require.ElementsMatch(t, asMapPairs(expectedValues...), mp)
+}
+
+func assertEntryMapNil(t *testing.T, key []byte, mp []MapPair) {
+	require.Nil(t, key)
+	require.Nil(t, mp)
+}
+
+func asMapPairs(values ...uint64) []MapPair {
+	mp := MapPair{Tombstone: false}
+	for i := range values {
+		b := make([]byte, 8)
+		binary.LittleEndian.PutUint64(b, values[i])
+		if i == 0 {
+			mp.Key = b
+		} else {
+			mp.Value = append(mp.Value, b...)
+		}
+	}
+	return []MapPair{mp}
 }
 
 type entry[T any] struct {
