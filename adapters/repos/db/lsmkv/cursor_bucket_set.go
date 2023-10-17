@@ -18,7 +18,57 @@ import (
 	"github.com/weaviate/weaviate/entities/lsmkv"
 )
 
-type CursorSet struct {
+type CursorSet interface {
+	First() ([]byte, [][]byte)
+	Next() ([]byte, [][]byte)
+	Seek([]byte) ([]byte, [][]byte)
+	Close()
+}
+
+// SetCursor holds a RLock for the flushing state. It needs to be closed using the
+// .Close() methods or otherwise the lock will never be released
+func (b *Bucket) SetCursor() CursorSet {
+	b.flushLock.RLock()
+
+	if b.strategy != StrategySetCollection {
+		panic("SetCursor() called on strategy other than 'set'")
+	}
+
+	innerCursors, unlockSegmentGroup := b.disk.newCollectionCursors()
+
+	// we have a flush-RLock, so we have the guarantee that the flushing state
+	// will not change for the lifetime of the cursor, thus there can only be two
+	// states: either a flushing memtable currently exists - or it doesn't
+	if b.flushing != nil {
+		innerCursors = append(innerCursors, b.flushing.newCollectionCursor())
+	}
+
+	innerCursors = append(innerCursors, b.active.newCollectionCursor())
+
+	return &cursorSet{
+		unlock: func() {
+			unlockSegmentGroup()
+			b.flushLock.RUnlock()
+		},
+		// cursor are in order from oldest to newest, with the memtable cursor
+		// being at the very top
+		innerCursors: innerCursors,
+	}
+}
+
+// SetCursorKeyOnly returns nil for all values. It has no control over the
+// underlying "inner" cursors which may still retrieve a value which is then
+// discarded. It does however, omit any handling of values, such as decoding,
+// making this considerably more efficient if only keys are required.
+//
+// The same locking rules as for SetCursor apply.
+func (b *Bucket) SetCursorKeyOnly() CursorSet {
+	c := b.SetCursor()
+	c.(*cursorSet).keyOnly = true
+	return c
+}
+
+type cursorSet struct {
 	innerCursors []innerCursorCollection
 	state        []cursorStateCollection
 	unlock       func()
@@ -37,68 +87,25 @@ type cursorStateCollection struct {
 	err   error
 }
 
-// SetCursor holds a RLock for the flushing state. It needs to be closed using the
-// .Close() methods or otherwise the lock will never be released
-func (b *Bucket) SetCursor() *CursorSet {
-	b.flushLock.RLock()
-
-	if b.strategy != StrategySetCollection {
-		panic("SetCursor() called on strategy other than 'set'")
-	}
-
-	innerCursors, unlockSegmentGroup := b.disk.newCollectionCursors()
-
-	// we have a flush-RLock, so we have the guarantee that the flushing state
-	// will not change for the lifetime of the cursor, thus there can only be two
-	// states: either a flushing memtable currently exists - or it doesn't
-	if b.flushing != nil {
-		innerCursors = append(innerCursors, b.flushing.newCollectionCursor())
-	}
-
-	innerCursors = append(innerCursors, b.active.newCollectionCursor())
-
-	return &CursorSet{
-		unlock: func() {
-			unlockSegmentGroup()
-			b.flushLock.RUnlock()
-		},
-		// cursor are in order from oldest to newest, with the memtable cursor
-		// being at the very top
-		innerCursors: innerCursors,
-	}
-}
-
-// SetCursorKeyOnly returns nil for all values. It has no control over the
-// underlying "inner" cursors which may still retrieve a value which is then
-// discarded. It does however, omit any handling of values, such as decoding,
-// making this considerably more efficient if only keys are required.
-//
-// The same locking rules as for SetCursor apply.
-func (b *Bucket) SetCursorKeyOnly() *CursorSet {
-	c := b.SetCursor()
-	c.keyOnly = true
-	return c
-}
-
-func (c *CursorSet) Seek(key []byte) ([]byte, [][]byte) {
+func (c *cursorSet) Seek(key []byte) ([]byte, [][]byte) {
 	c.seekAll(key)
 	return c.serveCurrentStateAndAdvance()
 }
 
-func (c *CursorSet) Next() ([]byte, [][]byte) {
+func (c *cursorSet) Next() ([]byte, [][]byte) {
 	return c.serveCurrentStateAndAdvance()
 }
 
-func (c *CursorSet) First() ([]byte, [][]byte) {
+func (c *cursorSet) First() ([]byte, [][]byte) {
 	c.firstAll()
 	return c.serveCurrentStateAndAdvance()
 }
 
-func (c *CursorSet) Close() {
+func (c *cursorSet) Close() {
 	c.unlock()
 }
 
-func (c *CursorSet) seekAll(target []byte) {
+func (c *cursorSet) seekAll(target []byte) {
 	state := make([]cursorStateCollection, len(c.innerCursors))
 	for i, cur := range c.innerCursors {
 		key, value, err := cur.seek(target)
@@ -120,7 +127,7 @@ func (c *CursorSet) seekAll(target []byte) {
 	c.state = state
 }
 
-func (c *CursorSet) firstAll() {
+func (c *cursorSet) firstAll() {
 	state := make([]cursorStateCollection, len(c.innerCursors))
 	for i, cur := range c.innerCursors {
 		key, value, err := cur.first()
@@ -142,7 +149,7 @@ func (c *CursorSet) firstAll() {
 	c.state = state
 }
 
-func (c *CursorSet) serveCurrentStateAndAdvance() ([]byte, [][]byte) {
+func (c *cursorSet) serveCurrentStateAndAdvance() ([]byte, [][]byte) {
 	id, err := c.cursorWithLowestKey()
 	if err != nil {
 		if err == lsmkv.NotFound {
@@ -161,7 +168,7 @@ func (c *CursorSet) serveCurrentStateAndAdvance() ([]byte, [][]byte) {
 	}
 }
 
-func (c *CursorSet) cursorWithLowestKey() (int, error) {
+func (c *cursorSet) cursorWithLowestKey() (int, error) {
 	err := lsmkv.NotFound
 	pos := -1
 	var lowest []byte
@@ -185,7 +192,7 @@ func (c *CursorSet) cursorWithLowestKey() (int, error) {
 	return pos, nil
 }
 
-func (c *CursorSet) haveDuplicatesInState(idWithLowestKey int) ([]int, bool) {
+func (c *cursorSet) haveDuplicatesInState(idWithLowestKey int) ([]int, bool) {
 	key := c.state[idWithLowestKey].key
 
 	var idsFound []int
@@ -206,7 +213,7 @@ func (c *CursorSet) haveDuplicatesInState(idWithLowestKey int) ([]int, bool) {
 
 // if there are no duplicates present it will still work as returning the
 // latest result is the same as returning the only result
-func (c *CursorSet) mergeDuplicatesInCurrentStateAndAdvance(ids []int) ([]byte, [][]byte) {
+func (c *cursorSet) mergeDuplicatesInCurrentStateAndAdvance(ids []int) ([]byte, [][]byte) {
 	// take the key from any of the results, we have the guarantee that they're
 	// all the same
 	key := c.state[ids[0]].key
@@ -225,7 +232,7 @@ func (c *CursorSet) mergeDuplicatesInCurrentStateAndAdvance(ids []int) ([]byte, 
 	}
 }
 
-func (c *CursorSet) advanceInner(id int) {
+func (c *cursorSet) advanceInner(id int) {
 	k, v, err := c.innerCursors[id].next()
 	if err == lsmkv.NotFound {
 		c.state[id].err = err

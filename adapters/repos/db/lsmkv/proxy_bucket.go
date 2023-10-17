@@ -144,11 +144,11 @@ func (b *BucketProxy) RoaringSetGet(key []byte) (*sroar.Bitmap, error) {
 	return b.realBucket.RoaringSetGet(real_key)
 }
 
-func (b *BucketProxy) SetCursor() *CursorSet {
+func (b *BucketProxy) SetCursor() CursorSet {
 	return b.realBucket.SetCursor()
 }
 
-func (b *BucketProxy) SetCursorKeyOnly() *CursorSet {
+func (b *BucketProxy) SetCursorKeyOnly() CursorSet {
 	return b.realBucket.SetCursorKeyOnly()
 }
 

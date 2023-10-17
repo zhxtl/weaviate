@@ -52,8 +52,8 @@ type BucketInterface interface {
 	Count() int
 	Strategy() string
 	RoaringSetGet(key []byte) (*sroar.Bitmap, error)
-	SetCursorKeyOnly() *CursorSet
-	SetCursor() *CursorSet
+	SetCursorKeyOnly() CursorSet
+	SetCursor() CursorSet
 	MapCursorKeyOnly(cfgs ...MapListOption) *CursorMap
 	MapCursor(cfgs ...MapListOption) *CursorMap
 	CursorRoaringSet() CursorRoaringSet
