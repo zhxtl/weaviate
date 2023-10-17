@@ -43,6 +43,16 @@ func newCursorPrefixedMap(cursor CursorMap, prefix []byte) CursorMap {
 	}
 }
 
+func newCursorPrefixedReplace(cursor CursorReplace, prefix []byte) CursorReplace {
+	return &cursorPrefixed[[]byte]{
+		cursor:          cursor,
+		prefix:          prefix,
+		started:         false,
+		finished:        false,
+		lastMatchingKey: nil,
+	}
+}
+
 type cursorPrefixed[T any] struct {
 	cursor Cursor[T]
 	prefix []byte

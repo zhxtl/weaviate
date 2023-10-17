@@ -259,31 +259,31 @@ func TestCursorPrefixed_Set(t *testing.T) {
 
 func newFakeCursorSet() CursorSet {
 	entries := []*entry[[][]byte]{
-		{key: []byte("a201"), value: asBytes(1, 201)},
-		{key: []byte("a202"), value: asBytes(1, 202)},
-		{key: []byte("a203"), value: asBytes(1, 203)},
-		{key: []byte("a401"), value: asBytes(1, 401)},
-		{key: []byte("a402"), value: asBytes(1, 402)},
-		{key: []byte("a403"), value: asBytes(1, 403)},
-		{key: []byte("b201"), value: asBytes(2, 201)},
-		{key: []byte("b202"), value: asBytes(2, 202)},
-		{key: []byte("b203"), value: asBytes(2, 203)},
-		{key: []byte("b401"), value: asBytes(2, 401)},
-		{key: []byte("b402"), value: asBytes(2, 402)},
-		{key: []byte("b403"), value: asBytes(2, 403)},
-		{key: []byte("c201"), value: asBytes(3, 201)},
-		{key: []byte("c202"), value: asBytes(3, 202)},
-		{key: []byte("c203"), value: asBytes(3, 203)},
-		{key: []byte("c401"), value: asBytes(3, 401)},
-		{key: []byte("c402"), value: asBytes(3, 402)},
-		{key: []byte("c403"), value: asBytes(3, 403)},
+		{key: []byte("a201"), value: asBytes2D(1, 201)},
+		{key: []byte("a202"), value: asBytes2D(1, 202)},
+		{key: []byte("a203"), value: asBytes2D(1, 203)},
+		{key: []byte("a401"), value: asBytes2D(1, 401)},
+		{key: []byte("a402"), value: asBytes2D(1, 402)},
+		{key: []byte("a403"), value: asBytes2D(1, 403)},
+		{key: []byte("b201"), value: asBytes2D(2, 201)},
+		{key: []byte("b202"), value: asBytes2D(2, 202)},
+		{key: []byte("b203"), value: asBytes2D(2, 203)},
+		{key: []byte("b401"), value: asBytes2D(2, 401)},
+		{key: []byte("b402"), value: asBytes2D(2, 402)},
+		{key: []byte("b403"), value: asBytes2D(2, 403)},
+		{key: []byte("c201"), value: asBytes2D(3, 201)},
+		{key: []byte("c202"), value: asBytes2D(3, 202)},
+		{key: []byte("c203"), value: asBytes2D(3, 203)},
+		{key: []byte("c401"), value: asBytes2D(3, 401)},
+		{key: []byte("c402"), value: asBytes2D(3, 402)},
+		{key: []byte("c403"), value: asBytes2D(3, 403)},
 	}
 	return &fakeCursor[[][]byte]{pos: 0, entries: entries}
 }
 
 func assertEntrySet(t *testing.T, key []byte, set [][]byte, expectedKey []byte, expectedValues ...uint64) {
 	require.Equal(t, expectedKey, key)
-	require.ElementsMatch(t, asBytes(expectedValues...), set)
+	require.ElementsMatch(t, asBytes2D(expectedValues...), set)
 }
 
 func assertEntrySetNil(t *testing.T, key []byte, set [][]byte) {
@@ -291,7 +291,7 @@ func assertEntrySetNil(t *testing.T, key []byte, set [][]byte) {
 	require.Nil(t, set)
 }
 
-func asBytes(values ...uint64) [][]byte {
+func asBytes2D(values ...uint64) [][]byte {
 	bytes := make([][]byte, len(values))
 	for i := range values {
 		b := make([]byte, 8)
@@ -454,6 +454,155 @@ func asMapPairs(values ...uint64) []MapPair {
 		}
 	}
 	return []MapPair{mp}
+}
+
+func TestCursorPrefixed_Replace(t *testing.T) {
+	type testCase struct {
+		prefix string
+		id     uint64
+	}
+
+	testCases := []testCase{
+		{
+			prefix: "a",
+			id:     1,
+		},
+		{
+			prefix: "b",
+			id:     2,
+		},
+		{
+			prefix: "c",
+			id:     3,
+		},
+	}
+
+	for _, tc := range testCases {
+		var cursor CursorReplace = newCursorPrefixedReplace(newFakeCursorReplace(), []byte(tc.prefix))
+
+		t.Run("first", func(t *testing.T) {
+			key, value := cursor.First()
+			assertEntryReplace(t, key, value, []byte("201"), tc.id, 201)
+		})
+
+		t.Run("nexts", func(t *testing.T) {
+			key1, value1 := cursor.Next()
+			assertEntryReplace(t, key1, value1, []byte("202"), tc.id, 202)
+			key2, value2 := cursor.Next()
+			assertEntryReplace(t, key2, value2, []byte("203"), tc.id, 203)
+			key3, value3 := cursor.Next()
+			assertEntryReplace(t, key3, value3, []byte("401"), tc.id, 401)
+			key4, value4 := cursor.Next()
+			assertEntryReplace(t, key4, value4, []byte("402"), tc.id, 402)
+			key5, value5 := cursor.Next()
+			assertEntryReplace(t, key5, value5, []byte("403"), tc.id, 403)
+			key6, value6 := cursor.Next()
+			assertEntryReplaceNil(t, key6, value6)
+			key7, value7 := cursor.Next()
+			assertEntryReplaceNil(t, key7, value7)
+		})
+
+		t.Run("seeks", func(t *testing.T) {
+			key1, value1 := cursor.Seek([]byte("402"))
+			assertEntryReplace(t, key1, value1, []byte("402"), tc.id, 402)
+			key2, value2 := cursor.Seek([]byte("333"))
+			assertEntryReplace(t, key2, value2, []byte("401"), tc.id, 401)
+			key3, value3 := cursor.Seek([]byte("203"))
+			assertEntryReplace(t, key3, value3, []byte("203"), tc.id, 203)
+			key4, value4 := cursor.Seek([]byte("200"))
+			assertEntryReplace(t, key4, value4, []byte("201"), tc.id, 201)
+			key5, value5 := cursor.Seek([]byte("404"))
+			assertEntryReplaceNil(t, key5, value5)
+			key6, value6 := cursor.Seek([]byte("101"))
+			assertEntryReplace(t, key6, value6, []byte("201"), tc.id, 201)
+		})
+
+		t.Run("mix", func(t *testing.T) {
+			key1, value1 := cursor.Seek([]byte("401"))
+			assertEntryReplace(t, key1, value1, []byte("401"), tc.id, 401)
+			key2, value2 := cursor.First()
+			assertEntryReplace(t, key2, value2, []byte("201"), tc.id, 201)
+			key3, value3 := cursor.Seek([]byte("666"))
+			assertEntryReplaceNil(t, key3, value3)
+			key4, value4 := cursor.Next()
+			assertEntryReplace(t, key4, value4, []byte("202"), tc.id, 202)
+			key5, value5 := cursor.Next()
+			assertEntryReplace(t, key5, value5, []byte("203"), tc.id, 203)
+			key6, value6 := cursor.First()
+			assertEntryReplace(t, key6, value6, []byte("201"), tc.id, 201)
+			key7, value7 := cursor.Seek([]byte("402"))
+			assertEntryReplace(t, key7, value7, []byte("402"), tc.id, 402)
+			key8, value8 := cursor.Next()
+			assertEntryReplace(t, key8, value8, []byte("403"), tc.id, 403)
+			key9, value9 := cursor.Next()
+			assertEntryReplaceNil(t, key9, value9)
+			key10, value10 := cursor.Next()
+			assertEntryReplaceNil(t, key10, value10)
+			key11, value11 := cursor.First()
+			assertEntryReplace(t, key11, value11, []byte("201"), tc.id, 201)
+			key12, value12 := cursor.Seek([]byte("201"))
+			assertEntryReplace(t, key12, value12, []byte("201"), tc.id, 201)
+			key13, value13 := cursor.Seek([]byte("403"))
+			assertEntryReplace(t, key13, value13, []byte("403"), tc.id, 403)
+			key14, value14 := cursor.Next()
+			assertEntryReplaceNil(t, key14, value14)
+			key15, value15 := cursor.Seek([]byte("403"))
+			assertEntryReplace(t, key15, value15, []byte("403"), tc.id, 403)
+		})
+	}
+
+	for _, tc := range testCases {
+		var cursor CursorReplace = newCursorPrefixedReplace(newFakeCursorReplace(), []byte(tc.prefix))
+
+		t.Run("next fallbacks to first", func(t *testing.T) {
+			key1, value1 := cursor.Next()
+			assertEntryReplace(t, key1, value1, []byte("201"), tc.id, 201)
+			key2, value2 := cursor.Next()
+			assertEntryReplace(t, key2, value2, []byte("202"), tc.id, 202)
+		})
+	}
+}
+
+func newFakeCursorReplace() CursorReplace {
+	entries := []*entry[[]byte]{
+		{key: []byte("a201"), value: asBytes(1, 201)},
+		{key: []byte("a202"), value: asBytes(1, 202)},
+		{key: []byte("a203"), value: asBytes(1, 203)},
+		{key: []byte("a401"), value: asBytes(1, 401)},
+		{key: []byte("a402"), value: asBytes(1, 402)},
+		{key: []byte("a403"), value: asBytes(1, 403)},
+		{key: []byte("b201"), value: asBytes(2, 201)},
+		{key: []byte("b202"), value: asBytes(2, 202)},
+		{key: []byte("b203"), value: asBytes(2, 203)},
+		{key: []byte("b401"), value: asBytes(2, 401)},
+		{key: []byte("b402"), value: asBytes(2, 402)},
+		{key: []byte("b403"), value: asBytes(2, 403)},
+		{key: []byte("c201"), value: asBytes(3, 201)},
+		{key: []byte("c202"), value: asBytes(3, 202)},
+		{key: []byte("c203"), value: asBytes(3, 203)},
+		{key: []byte("c401"), value: asBytes(3, 401)},
+		{key: []byte("c402"), value: asBytes(3, 402)},
+		{key: []byte("c403"), value: asBytes(3, 403)},
+	}
+	return &fakeCursor[[]byte]{pos: 0, entries: entries}
+}
+
+func assertEntryReplace(t *testing.T, key []byte, val []byte, expectedKey []byte, expectedValues ...uint64) {
+	require.Equal(t, expectedKey, key)
+	require.ElementsMatch(t, asBytes(expectedValues...), val)
+}
+
+func assertEntryReplaceNil(t *testing.T, key []byte, val []byte) {
+	require.Nil(t, key)
+	require.Nil(t, val)
+}
+
+func asBytes(values ...uint64) []byte {
+	bytes := make([]byte, 8*len(values))
+	for i := range values {
+		binary.LittleEndian.PutUint64(bytes[i*8:(i+1)*8], values[i])
+	}
+	return bytes
 }
 
 type entry[T any] struct {
