@@ -79,6 +79,31 @@ type DB struct {
 	ratePerSecond       int
 }
 
+func (db *DB) GetSchemaGetter() schemaUC.SchemaGetter {
+	return db.schemaGetter
+}
+
+func (db *DB) GetSchema() schema.Schema {
+	return db.schemaGetter.GetSchemaSkipAuth()
+}
+
+func (db *DB) GetConfig() Config {
+	return db.config
+}
+
+func (db *DB) GetIndices() []*Index {
+	out := make([]*Index, 0, len(db.indices))
+	for _, index := range db.indices {
+		out = append(out, index)
+	}
+
+	return out
+}
+
+func (db *DB) GetRemoteIndex() sharding.RemoteIndexClient {
+	return db.remoteIndex
+}
+
 func (db *DB) SetSchemaGetter(sg schemaUC.SchemaGetter) {
 	db.schemaGetter = sg
 }
@@ -209,6 +234,8 @@ func (db *DB) DeleteIndex(className schema.ClassName) error {
 		db.logger.WithField("action", "delete_index").WithField("class", className).Error(err)
 	}
 	delete(db.indices, id)
+
+	db.promMetrics.DeleteClass(className.String())
 	return nil
 }
 

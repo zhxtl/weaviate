@@ -14,7 +14,6 @@ package lsmkv
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -239,21 +238,48 @@ func (b *Bucket) PropertyPrefix() []byte {
 	return []byte("")
 }
 
-// Iterate over every entry in the bucket and create a human-readable display of the bucket's contents, and return it as a string.
-func (b *Bucket) DumpString() string {
-	var buf bytes.Buffer
-	buf.WriteString(fmt.Sprintf("Bucket: %s\n", b.dir))
-	b.IterateObjects(context.Background(), func(object *storobj.Object) error {
-		// Marshall the object to json
-		json, err := json.Marshal(object)
-		if err != nil {
-			return err
-		}
-		buf.WriteString(fmt.Sprintf("%v, %v: %v\n", object.ID(), object.DocID(), string(json)))
-		return nil
-	})
-	buf.WriteString("Bucket end\n")
-	return buf.String()
+
+func (b *Bucket) GetDir() string {
+	return b.dir
+}
+
+func (b *Bucket) GetRootDir() string {
+	return b.rootDir
+}
+
+func (b *Bucket) GetStrategy() string {
+	return b.strategy
+}
+
+func (b *Bucket) GetDesiredStrategy() string {
+	return b.desiredStrategy
+}
+
+func (b *Bucket) GetSecondaryIndices() uint16 {
+	return b.secondaryIndices
+}
+
+func (b *Bucket) GetStatus() storagestate.Status {
+	b.statusLock.RLock()
+	defer b.statusLock.RUnlock()
+
+	return b.status
+}
+
+func (b *Bucket) GetMemtableThreshold() uint64 {
+	return b.memtableThreshold
+}
+
+func (b *Bucket) GetWalThreshold() uint64 {
+	return b.walThreshold
+}
+
+func (b *Bucket) GetFlushAfterIdle() time.Duration {
+	return b.flushAfterIdle
+}
+
+func (b *Bucket) GetFlushCallbackCtrl() cyclemanager.CycleCallbackCtrl {
+	return b.flushCallbackCtrl
 }
 
 func (b *Bucket) IterateObjects(ctx context.Context, f func(object *storobj.Object) error) error {
@@ -276,16 +302,20 @@ func (b *Bucket) IterateObjects(ctx context.Context, f func(object *storobj.Obje
 	return nil
 }
 
-// Iterate over every entry in the bucket and create a human-readable display of the bucket's contents, and return it as a string.
-func (b *Bucket) DumpStringRoaring() string {
-	var buf bytes.Buffer
-	cursor := b.cursorRoaringSet(false)
+
+func (b *Bucket) IterateMapObjects(ctx context.Context, f func([]byte, []byte, []byte, bool) error) error {
+	cursor := b.MapCursor()
 	defer cursor.Close()
 
-	for k, sbmp := cursor.First(); k != nil; k, sbmp = cursor.Next() {
-		buf.WriteString(fmt.Sprintf("%v: %v\n", k, sbmp.ToArray()))
+	for kList, vList := cursor.First(); kList != nil; kList, vList = cursor.Next() {
+		for _, v := range vList {
+			if err := f(kList, v.Key, v.Value, v.Tombstone); err != nil {
+				return errors.Wrapf(err, "callback on object '%v' failed", v)
+			}
+		}
 	}
-	return buf.String()
+
+	return nil
 }
 
 func (b *Bucket) SetMemtableThreshold(size uint64) {
@@ -317,7 +347,7 @@ func (b *Bucket) Get(key []byte) ([]byte, error) {
 	}
 
 	if err != lsmkv.NotFound {
-		panic("unsupported error in bucket.Get")
+		panic(fmt.Sprintf("unsupported error in bucket.Get: %v\n", err))
 	}
 
 	if b.flushing != nil {
