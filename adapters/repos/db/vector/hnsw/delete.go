@@ -376,6 +376,10 @@ func (h *hnsw) reassignNeighbor(neighbor uint64, deleteList helpers.AllowList, b
 		return false, err
 	}
 
+	// Hard-coded `nil` for `filterAllowList`
+	/*
+		Might need to think more about if a delete changes anythign with post index filtered HNSW
+	*/
 	if err := h.findAndConnectNeighbors(neighborNode, entryPointID, neighborVec,
 		neighborLevel, currentMaximumLayer, deleteList); err != nil {
 		return false, errors.Wrap(err, "find and connect neighbors")

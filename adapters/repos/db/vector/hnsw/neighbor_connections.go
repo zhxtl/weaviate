@@ -39,6 +39,7 @@ type neighborFinderConnector struct {
 	targetLevel     int
 	currentMaxLevel int
 	denyList        helpers.AllowList
+	filterAllowList helpers.AllowList
 	// bufLinksLog     BufferedLinksLogger
 }
 

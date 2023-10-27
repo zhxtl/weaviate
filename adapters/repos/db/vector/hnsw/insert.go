@@ -209,6 +209,7 @@ func (h *hnsw) insert(node *vertex, nodeVec []float32) error {
 	h.insertMetrics.findEntrypoint(before)
 	before = time.Now()
 
+	// Hard coded nil for the `filterAllowList`
 	if err := h.findAndConnectNeighbors(node, entryPointID, nodeVec,
 		targetLevel, currentMaximumLayer, helpers.NewAllowList()); err != nil {
 		return errors.Wrap(err, "find and connect neighbors")
