@@ -209,7 +209,6 @@ func (h *hnsw) insert(node *vertex, nodeVec []float32) error {
 	h.insertMetrics.findEntrypoint(before)
 	before = time.Now()
 
-	// Hard coded nil for the `filterAllowList`
 	if err := h.findAndConnectNeighbors(node, entryPointID, nodeVec,
 		targetLevel, currentMaximumLayer, helpers.NewAllowList()); err != nil {
 		return errors.Wrap(err, "find and connect neighbors")
@@ -242,6 +241,74 @@ func (h *hnsw) insert(node *vertex, nodeVec []float32) error {
 	} else {
 		h.RUnlock()
 	}
+
+	return nil
+}
+
+func (h *hnsw) AddFilteredEdges(id uint64, filterAllowList helpers.AllowList) error {
+	//before := time.Now()
+	//h.metrics.InsertVector()
+	//defer h.insertMetrics.total(before)
+
+	node := h.nodes[id]
+	vector, err := h.vectorForID(context.Background(), id)
+	if err != nil {
+		return errors.Wrapf(err, "Unable to find vector with `vectorForID`")
+	}
+
+	if h.distancerProvider.Type() == "cosine-dot" {
+		// cosine-dot requires normalized vectors, as the dot product and cosine
+		// similarity are only identical if the vector is normalized
+		vector = distancer.Normalize(vector)
+	}
+
+	h.compressActionLock.RLock()
+	defer h.compressActionLock.RUnlock()
+	return h.insertFilteredEdges(node, vector, filterAllowList)
+}
+
+func (h *hnsw) insertFilteredEdges(node *vertex, nodeVec []float32, filterAllowList helpers.AllowList) error {
+	before := time.Now()
+	h.RLock()
+	entryPointID := h.entryPointID
+	currentMaximumLayer := h.currentMaximumLayer
+	h.RUnlock()
+
+	targetLevel := node.level
+
+	// make sure this new vec is immediately present in the cache, so we don't
+	// have to read it from disk again
+	if h.compressed.Load() {
+		compressed := h.pq.Encode(nodeVec)
+		h.storeCompressedVector(node.id, compressed)
+		h.compressedVectorsCache.preload(node.id, compressed)
+	} else {
+		h.cache.preload(node.id, nodeVec)
+	}
+
+	node.markAsMaintenance()
+
+	var err error
+	entryPointID, err = h.findBestEntrypointForNode(currentMaximumLayer, targetLevel,
+		entryPointID, nodeVec)
+	if err != nil {
+		return errors.Wrap(err, "find best entrypoint")
+	}
+
+	h.insertMetrics.findEntrypoint(before)
+	before = time.Now()
+
+	if err := h.offlineFindAndConnectNeighbors(node, entryPointID, nodeVec,
+		targetLevel, currentMaximumLayer, helpers.NewAllowList(), filterAllowList); err != nil {
+		return errors.Wrap(err, "find and connect neighbors")
+	}
+
+	h.insertMetrics.findAndConnectTotal(before)
+	before = time.Now()
+	defer h.insertMetrics.updateGlobalEntrypoint(before)
+
+	// go h.insertHook(nodeId, targetLevel, neighborsAtLevel)
+	node.unmarkAsMaintenance()
 
 	return nil
 }

@@ -675,3 +675,7 @@ func (h *hnsw) Entrypoint() uint64 {
 
 	return h.entryPointID
 }
+
+func (h *hnsw) InspectNeighborsAtLevel(nodeId int, level int) []uint64 {
+	return h.nodes[nodeId].connections[level]
+}
