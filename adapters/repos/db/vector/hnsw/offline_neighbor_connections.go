@@ -45,13 +45,12 @@ func newOfflineNeighborFinderConnector(graph *hnsw, node *vertex, entryPointID u
 }
 
 func (n *offlineNeighborFinderConnector) Do() error {
-	// Just doing this on layer 0 for now
-	n.doAtLevel()
+	// Just doing this on layer 0 for now, now working in layer 1
+	n.doAtLevel(0)
 	return nil
 }
 
-func (n *offlineNeighborFinderConnector) doAtLevel() error {
-	level := 0
+func (n *offlineNeighborFinderConnector) doAtLevel(level int) error {
 	before := time.Now()
 	if err := n.pickEntrypoint(); err != nil {
 		return errors.Wrap(err, "pick entrypoint at level beginning")
@@ -61,11 +60,7 @@ func (n *offlineNeighborFinderConnector) doAtLevel() error {
 	eps.Insert(n.entryPointID, n.entryPointDist)
 
 	// Not efConstruction -- this needs to be another parameter to the struct
-	// For now, hard-coded 42, the meaning of life
-	results, err := n.graph.searchLayerByVector(n.nodeVec, eps, 128, level, n.filterAllowList)
-	if err != nil {
-		return errors.Wrapf(err, "search layer at level %d", level)
-	}
+	results, _ := n.graph.searchLayerByVector(n.nodeVec, eps, 128, level, n.filterAllowList)
 	n.graph.insertMetrics.findAndConnectSearch(before)
 	before = time.Now()
 
@@ -75,12 +70,13 @@ func (n *offlineNeighborFinderConnector) doAtLevel() error {
 	for results.Len() > 0 {
 		id := results.Pop().ID
 		if neighborhoodContains(id, level, currentNeighbors) == false {
-			newNeighbors = append(newNeighbors, id)
+			if id != n.node.id {
+				newNeighbors = append(newNeighbors, id)
+			}
 		}
 	}
 	n.graph.pools.pqResults.Put(results)
 
-	// Need to understand this better, maybe search with ef < maxConn - add to maxConn - ef or something
 	for _, neighborID := range newNeighbors {
 		n.connectNeighborAtLevel(neighborID, level)
 	}

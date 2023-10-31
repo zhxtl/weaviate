@@ -270,7 +270,7 @@ func (h *hnsw) AddFilteredEdges(id uint64, filterAllowList helpers.AllowList) er
 func (h *hnsw) insertFilteredEdges(node *vertex, nodeVec []float32, filterAllowList helpers.AllowList) error {
 	before := time.Now()
 	h.RLock()
-	entryPointID := h.entryPointID
+	entryPointID := h.entryPointID // Maybe an idea to find another entrypoint for this?
 	currentMaximumLayer := h.currentMaximumLayer
 	h.RUnlock()
 

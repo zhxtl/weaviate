@@ -222,19 +222,18 @@ func TestFilteredRecall(t *testing.T) {
 
 		fmt.Printf("Adding edges post Index \n")
 
+		indexAllowList := []uint64{}
+		minorityFilterKey := 0
+		minorityFilterValue := 1
+		indexAllowIDs = append(indexAllowIDs, filterToIDs[minorityFilterKey][minorityFilterValue]...)
+		indexAllowList := helpers.NewAllowList(indexAllowIDs...)
+
 		/* Should also do this more concurrently than this */
 		for idx, indexVecWithFilters := range indexVectorsWithFilters {
 			if idx%1000 == 999 {
 				fmt.Print(idx)
 			}
 			// Only add extra edges to the minority filter
-			if indexVecWithFilters.FilterMap[0] == 1 {
-				// get allowList
-				indexAllowIDs := []uint64{}
-				for filterKey, filterValue := range indexVecWithFilters.FilterMap {
-					indexAllowIDs = append(indexAllowIDs, filterToIDs[filterKey][filterValue]...)
-				}
-				indexAllowList := helpers.NewAllowList(indexAllowIDs...)
 				vectorIndex.AddFilteredEdges(uint64(indexVecWithFilters.ID), indexAllowList)
 			}
 		}
