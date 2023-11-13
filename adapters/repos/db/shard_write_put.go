@@ -170,6 +170,49 @@ func (s *Shard) putObjectLSM(object *storobj.Object, idBytes []byte,
 	return status, nil
 }
 
+// temporary name
+func (s *Shard) upsertObjectLSM(object *storobj.Object, idBytes []byte,
+) (objectInsertStatus, []byte, error) {
+	before := time.Now()
+	defer s.metrics.PutObject(before)
+
+	bucket := s.store.Bucket(helpers.ObjectsBucketLSM)
+
+	// First the object bucket is checked if already an object with the same uuid is present, to determine if it is new
+	// or an update. Afterwards the bucket is updates. To avoid races, only one goroutine can do this at once.
+	lock := &s.docIdLock[s.uuidToIdLockPoolId(idBytes)]
+	lock.Lock()
+	previous_object_bytes, err := bucket.Get(idBytes)
+	if err != nil {
+		lock.Unlock()
+		return objectInsertStatus{}, nil, err
+	}
+
+	status, err := s.determineInsertStatus(previous_object_bytes, object)
+	if err != nil {
+		lock.Unlock()
+		return status, previous_object_bytes, errors.Wrap(err, "check insert/update status")
+	}
+	s.metrics.PutObjectDetermineStatus(before)
+
+	object.SetDocID(status.docID)
+	data, err := object.MarshalBinary()
+	if err != nil {
+		lock.Unlock()
+		return status, previous_object_bytes, errors.Wrapf(err, "marshal object %s to binary", object.ID())
+	}
+
+	before = time.Now()
+	if err := s.upsertObjectDataLSM(bucket, idBytes, data, status.docID); err != nil {
+		lock.Unlock()
+		return status, previous_object_bytes, errors.Wrap(err, "upsert object data")
+	}
+	lock.Unlock()
+	s.metrics.PutObjectUpsertObject(before)
+
+	return status, previous_object_bytes, nil
+}
+
 type objectInsertStatus struct {
 	docID        uint64
 	docIDChanged bool

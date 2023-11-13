@@ -22,6 +22,8 @@ import (
 	"github.com/go-openapi/strfmt"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
+	"github.com/weaviate/weaviate/adapters/repos/db/helpers"
+	"github.com/weaviate/weaviate/adapters/repos/db/inverted"
 	"github.com/weaviate/weaviate/entities/storagestate"
 	"github.com/weaviate/weaviate/entities/storobj"
 )
@@ -136,6 +138,15 @@ func (ob *objectsBatcher) storeInObjectStore(ctx context.Context) {
 	ob.shard.metrics.ObjectStore(beforeObjectStore)
 }
 
+type propObj struct {
+	index    int
+	object   *storobj.Object
+	status   objectInsertStatus
+	previous []byte
+	props    []inverted.Property
+	nilProps []nilProp
+}
+
 func (ob *objectsBatcher) storeSingleBatchInLSM(ctx context.Context,
 	batch []*storobj.Object,
 ) []error {
@@ -153,7 +164,13 @@ func (ob *objectsBatcher) storeSingleBatchInLSM(ctx context.Context,
 	wg := &sync.WaitGroup{}
 	concurrencyLimit := make(chan struct{}, _NUMCPU)
 
+	ch := make(chan propObj)
+
 	for j, object := range batch {
+		if _, ok := ob.duplicates[j]; ok {
+			return nil
+		}
+
 		wg.Add(1)
 		go func(index int, object *storobj.Object) {
 			defer wg.Done()
@@ -169,45 +186,199 @@ func (ob *objectsBatcher) storeSingleBatchInLSM(ctx context.Context,
 				<-concurrencyLimit
 			}()
 
-			if err := ob.storeObjectOfBatchInLSM(ctx, index, object); err != nil {
+			status, previous, err := ob.storeObjectOfBatchInLSM(ctx, index, object)
+			if err != nil {
 				errLock.Lock()
 				errs[index] = err
 				errLock.Unlock()
+				return
 			}
+
+			if status.docIDChanged {
+				oldObject, err := storobj.FromBinary(previous)
+				if err == nil {
+					oldProps, _, err := ob.shard.analyzeObject(oldObject)
+					if err != nil {
+						ob.shard.index.logger.WithField("action", "subtractPropLengths").WithError(err).Error("could not analyse prop lengths")
+					}
+
+					if err := ob.shard.subtractPropLengths(oldProps); err != nil {
+						ob.shard.index.logger.WithField("action", "subtractPropLengths").WithError(err).Error("could not subtract prop lengths")
+					}
+				}
+			}
+
+			// TODO: metrics
+			if err := ob.shard.updateInvertedIndexCleanupOldLSM(status, previous); err != nil {
+				errLock.Lock()
+				errs[index] = errors.Wrap(err, "analyze and cleanup previous")
+				errLock.Unlock()
+				return
+			}
+
+			ch <- propObj{
+				index:    index,
+				object:   object,
+				status:   status,
+				previous: previous,
+			}
+
 		}(j, object)
 	}
-	wg.Wait()
 
+	type propValue struct {
+		name string
+		val  string
+	}
+
+	objByPropValue := make(map[string]map[string][]propObj)
+
+	go func() {
+		for o := range ch {
+			props, nilprops, err := ob.shard.analyzeObject(o.object)
+			if err != nil {
+				errLock.Lock()
+				errs[o.index] = err
+				errLock.Unlock()
+				continue
+			}
+
+			if ob.shard.index.invertedIndexConfig.IndexTimestamps {
+				// update the inverted timestamp indices as well
+				err := ob.shard.addIndexedTimestampsToProps(o.object, &props)
+				if err != nil {
+					errLock.Lock()
+					errs[o.index] = errors.Wrap(err, "add indexed timestamps to props")
+					errLock.Unlock()
+					continue
+				}
+			}
+
+			for _, prop := range props {
+				m := make(map[string][]propObj)
+				for _, item := range prop.Items {
+					k := string(item.Data)
+					m[k] = append(m[k], o)
+				}
+				objByPropValue[prop.Name] = m
+			}
+
+			o.props = props
+			o.nilProps = nilprops
+		}
+	}()
+
+	wg.Wait()
+	close(ch)
+
+	objSeen := make(map[uint64]struct{})
+	var objSeenLock sync.Mutex
+
+	for name, m := range objByPropValue {
+		wg.Add(1)
+		go func(propName string, objsPerValue map[string][]propObj) {
+			defer wg.Done()
+
+			for val, objs := range objsPerValue {
+				docIDs := make([]uint64, len(objs))
+				for i, obj := range objs {
+					docIDs[i] = obj.status.docID
+				}
+
+				objects := make([]*storobj.Object, len(objs))
+				for i, obj := range objs {
+					objects[i] = obj.object
+				}
+
+				prop := objs[0].props[0]
+
+				if err := ob.shard.addManyToPropertyValueIndex(prop, []byte(val), docIDs); err != nil {
+					ob.shard.index.logger.WithField("action", "addManyToPropertyValueIndex").WithError(err).Error("could not add to property value index")
+					return
+				}
+
+				for _, obj := range objs {
+					objSeenLock.Lock()
+					if _, ok := objSeen[obj.status.docID]; ok {
+						objSeenLock.Unlock()
+						continue
+					}
+					objSeen[obj.status.docID] = struct{}{}
+					objSeenLock.Unlock()
+
+					// from addToPropertyValueIndex
+					for _, p := range obj.props {
+						if p.HasSearchableIndex {
+							bucketValue := ob.shard.store.Bucket(helpers.BucketSearchableFromPropNameLSM(p.Name))
+							if bucketValue == nil {
+								errLock.Lock()
+								errs[obj.index] = errors.Errorf("no bucket searchable for prop '%s' found", p.Name)
+								errLock.Unlock()
+								continue
+							}
+
+							propLen := float32(len(p.Items))
+							for _, item := range p.Items {
+								key := item.Data
+								pair := ob.shard.pairPropertyWithFrequency(obj.status.docID, item.TermFrequency, propLen)
+								if err := ob.shard.addToPropertyMapBucket(bucketValue, pair, key); err != nil {
+									errLock.Lock()
+									errs[obj.index] = errors.Wrapf(err, "failed adding to prop '%s' value bucket", p.Name)
+									errLock.Unlock()
+									continue
+								}
+							}
+						}
+					}
+
+					if err := ob.shard.addPropLengths(obj.props); err != nil {
+						errLock.Lock()
+						errs[obj.index] = errors.Wrap(err, "store field length values for props")
+						errLock.Unlock()
+						continue
+					}
+
+					if ob.shard.index.Config.TrackVectorDimensions {
+						err := ob.shard.extendDimensionTrackerLSM(len(obj.object.Vector), obj.status.docID)
+						if err != nil {
+							errLock.Lock()
+							errs[obj.index] = errors.Wrap(err, "track dimensions")
+							errLock.Unlock()
+							continue
+						}
+					}
+				}
+			}
+
+		}(name, m)
+	}
 	return errs
 }
 
 func (ob *objectsBatcher) storeObjectOfBatchInLSM(ctx context.Context,
 	objectIndex int, object *storobj.Object,
-) error {
-	if _, ok := ob.duplicates[objectIndex]; ok {
-		return nil
-	}
+) (objectInsertStatus, []byte, error) {
 	uuidParsed, err := uuid.Parse(object.ID().String())
 	if err != nil {
-		return errors.Wrap(err, "invalid id")
+		return objectInsertStatus{}, nil, errors.Wrap(err, "invalid id")
 	}
 
 	idBytes, err := uuidParsed.MarshalBinary()
 	if err != nil {
-		return err
+		return objectInsertStatus{}, nil, err
 	}
 
-	status, err := ob.shard.putObjectLSM(object, idBytes)
+	status, previous, err := ob.shard.upsertObjectLSM(object, idBytes)
 	if err != nil {
-		return err
+		return status, previous, err
 	}
 
 	ob.setStatusForID(status, object.ID())
 
 	if err := ctx.Err(); err != nil {
-		return errors.Wrapf(err, "end store object %d of batch", objectIndex)
+		return status, previous, errors.Wrapf(err, "end store object %d of batch", objectIndex)
 	}
-	return nil
+	return status, previous, nil
 }
 
 // setStatusForID is thread-safe as it uses the underlying mutex to lock the

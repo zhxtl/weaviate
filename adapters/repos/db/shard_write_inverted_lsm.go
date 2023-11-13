@@ -102,6 +102,21 @@ func (s *Shard) addToPropertyValueIndex(docID uint64, property inverted.Property
 	return nil
 }
 
+func (s *Shard) addManyToPropertyValueIndex(property inverted.Property, key []byte, docIDs []uint64) error {
+	if property.HasFilterableIndex {
+		bucketValue := s.store.Bucket(helpers.BucketFromPropNameLSM(property.Name))
+		if bucketValue == nil {
+			return errors.Errorf("no bucket for prop '%s' found", property.Name)
+		}
+
+		if err := s.addManyToPropertySetBucket(bucketValue, key, docIDs); err != nil {
+			return errors.Wrapf(err, "failed adding to prop '%s' value bucket", property.Name)
+		}
+	}
+
+	return nil
+}
+
 func (s *Shard) addToPropertyLengthIndex(propName string, docID uint64, length int) error {
 	bucketLength := s.store.Bucket(helpers.BucketFromPropNameLengthLSM(propName))
 	if bucketLength == nil {
@@ -113,6 +128,22 @@ func (s *Shard) addToPropertyLengthIndex(propName string, docID uint64, length i
 		return errors.Wrapf(err, "failed creating key for prop '%s' length", propName)
 	}
 	if err := s.addToPropertySetBucket(bucketLength, docID, key); err != nil {
+		return errors.Wrapf(err, "failed adding to prop '%s' length bucket", propName)
+	}
+	return nil
+}
+
+func (s *Shard) addManyToPropertyLengthIndex(propName string, length int, docIDs []uint64) error {
+	bucketLength := s.store.Bucket(helpers.BucketFromPropNameLengthLSM(propName))
+	if bucketLength == nil {
+		return errors.Errorf("no bucket for prop '%s' length found", propName)
+	}
+
+	key, err := s.keyPropertyLength(length)
+	if err != nil {
+		return errors.Wrapf(err, "failed creating key for prop '%s' length", propName)
+	}
+	if err := s.addManyToPropertySetBucket(bucketLength, key, docIDs); err != nil {
 		return errors.Wrapf(err, "failed adding to prop '%s' length bucket", propName)
 	}
 	return nil
@@ -182,6 +213,22 @@ func (s *Shard) addToPropertySetBucket(bucket *lsmkv.Bucket, docID uint64, key [
 	}
 
 	return bucket.RoaringSetAddOne(key, docID)
+}
+
+func (s *Shard) addManyToPropertySetBucket(bucket *lsmkv.Bucket, key []byte, docIDs []uint64) error {
+	lsmkv.CheckExpectedStrategy(bucket.Strategy(), lsmkv.StrategySetCollection, lsmkv.StrategyRoaringSet)
+
+	if bucket.Strategy() == lsmkv.StrategySetCollection {
+		values := make([][]byte, len(docIDs))
+		for i, docID := range docIDs {
+			docIDBytes := make([]byte, 8)
+			binary.LittleEndian.PutUint64(docIDBytes, docID)
+			values[i] = docIDBytes
+		}
+		return bucket.SetAdd(key, values)
+	}
+
+	return bucket.RoaringSetAddList(key, docIDs)
 }
 
 func (s *Shard) batchExtendInvertedIndexItemsLSMNoFrequency(b *lsmkv.Bucket,
