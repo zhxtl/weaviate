@@ -14,3 +14,12 @@
 package asm
 
 func Dot(x []float32, y []float32) float32
+
+func dot512(x []float32, y []float32) float32
+func Dot512(x []float32, y []float32) float32 {
+	if len(x) > 512 {
+		return dot512(x, y)
+	} else {
+		return Dot(x, y)
+	}
+}

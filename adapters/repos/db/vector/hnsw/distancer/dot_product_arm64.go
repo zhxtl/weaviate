@@ -17,7 +17,10 @@ import (
 )
 
 func init() {
-	if cpu.ARM64.HasASIMD {
+	if cpu.ARM64.HasAVX512 {
+		dotProductImplementation = asm.Dot512
+	}
+	else if cpu.ARM64.HasASIMD {
 		dotProductImplementation = asm.Dot
 	}
 }
