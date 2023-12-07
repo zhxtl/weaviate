@@ -13,7 +13,7 @@ package common
 
 import "sync"
 
-const DefaultShardedLocksCount = 512
+const DefaultShardedLocksCount = 1024
 
 type ShardedLocks struct {
 	// number of locks
