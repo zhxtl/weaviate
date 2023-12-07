@@ -18,7 +18,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/alphadose/haxmap"
+	xsync "github.com/puzpuzpuz/xsync/v3"
 	"github.com/sirupsen/logrus"
 	"github.com/weaviate/weaviate/adapters/repos/db/vector/common"
 	"github.com/weaviate/weaviate/adapters/repos/db/vector/hnsw/distancer"
@@ -26,7 +26,7 @@ import (
 
 type shardedLockCache[T float32 | byte | uint64] struct {
 	shardedLocks     *common.ShardedLocks
-	cache            *haxmap.Map[uint64, []T]
+	cache            *xsync.MapOf[uint64, []T]
 	vectorForID      common.VectorForID[T]
 	normalizeOnRead  bool
 	maxSize          int64
@@ -60,7 +60,7 @@ func NewShardedFloat32LockCache(vecForID common.VectorForID[float32], maxSize in
 			}
 			return vec, nil
 		},
-		cache:            haxmap.New[uint64, []float32](),
+		cache:            xsync.NewMapOf[uint64, []float32](),
 		normalizeOnRead:  normalizeOnRead,
 		count:            0,
 		maxSize:          int64(maxSize),
@@ -80,7 +80,7 @@ func NewShardedByteLockCache(vecForID common.VectorForID[byte], maxSize int,
 ) Cache[byte] {
 	vc := &shardedLockCache[byte]{
 		vectorForID:      vecForID,
-		cache:            haxmap.New[uint64, []byte](),
+		cache:            xsync.NewMapOf[uint64, []byte](),
 		normalizeOnRead:  false,
 		count:            0,
 		maxSize:          int64(maxSize),
@@ -100,7 +100,7 @@ func NewShardedUInt64LockCache(vecForID common.VectorForID[uint64], maxSize int,
 ) Cache[uint64] {
 	vc := &shardedLockCache[uint64]{
 		vectorForID:      vecForID,
-		cache:            haxmap.New[uint64, []uint64](),
+		cache:            xsync.NewMapOf[uint64, []uint64](),
 		normalizeOnRead:  false,
 		count:            0,
 		maxSize:          int64(maxSize),
@@ -119,7 +119,7 @@ func (s *shardedLockCache[T]) All() [][]T {
 
 	var values [][]T
 
-	s.cache.ForEach(func(k uint64, v []T) bool {
+	s.cache.Range(func(k uint64, v []T) bool {
 		values = append(values, v)
 		return true
 	})
@@ -128,7 +128,7 @@ func (s *shardedLockCache[T]) All() [][]T {
 }
 
 func (s *shardedLockCache[T]) Get(ctx context.Context, id uint64) ([]T, error) {
-	vec, ok := s.cache.Get(id)
+	vec, ok := s.cache.Load(id)
 
 	if ok {
 		return vec, nil
@@ -139,7 +139,7 @@ func (s *shardedLockCache[T]) Get(ctx context.Context, id uint64) ([]T, error) {
 
 func (s *shardedLockCache[T]) Delete(ctx context.Context, id uint64) {
 
-	s.cache.Del(id)
+	s.cache.Delete(id)
 
 	// s.cache[id] = nil
 	atomic.AddInt64(&s.count, -1)
@@ -152,7 +152,7 @@ func (s *shardedLockCache[T]) handleCacheMiss(ctx context.Context, id uint64) ([
 	}
 
 	atomic.AddInt64(&s.count, 1)
-	s.cache.Set(id, vec)
+	s.cache.Store(id, vec)
 
 	return vec, nil
 }
@@ -162,7 +162,7 @@ func (s *shardedLockCache[T]) MultiGet(ctx context.Context, ids []uint64) ([][]T
 	errs := make([]error, len(ids))
 
 	for i, id := range ids {
-		vec, ok := s.cache.Get(id)
+		vec, ok := s.cache.Load(id)
 
 		if !ok {
 			vecFromDisk, err := s.handleCacheMiss(ctx, id)
@@ -182,7 +182,7 @@ var prefetchFunc func(in uintptr) = func(in uintptr) {
 }
 
 func (s *shardedLockCache[T]) Prefetch(id uint64) {
-	vec, ok := s.cache.Get(id)
+	vec, ok := s.cache.Load(id)
 	if ok {
 		prefetchFunc(uintptr(unsafe.Pointer(&vec)))
 	}
@@ -190,7 +190,7 @@ func (s *shardedLockCache[T]) Prefetch(id uint64) {
 
 func (s *shardedLockCache[T]) Preload(id uint64, vec []T) {
 	atomic.AddInt64(&s.count, 1)
-	s.cache.Set(id, vec)
+	s.cache.Store(id, vec)
 }
 
 func (s *shardedLockCache[T]) Grow(node uint64) {
@@ -225,7 +225,7 @@ func (s *shardedLockCache[T]) Grow(node uint64) {
 
 func (s *shardedLockCache[T]) Len() int32 {
 
-	return int32(s.cache.Len())
+	return int32(s.cache.Size())
 }
 
 func (s *shardedLockCache[T]) CountVectors() int64 {
@@ -244,8 +244,8 @@ func (s *shardedLockCache[T]) deleteAllVectors() {
 	s.logger.WithField("action", "hnsw_delete_vector_cache").
 		Debug("deleting full vector cache")
 
-	s.cache.ForEach(func(k uint64, v []T) bool {
-		s.cache.Del(k)
+	s.cache.Range(func(k uint64, v []T) bool {
+		s.cache.Delete(k)
 		return true
 	})
 
