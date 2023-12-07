@@ -18,6 +18,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/cornelk/hashmap"
 	"github.com/sirupsen/logrus"
 	"github.com/weaviate/weaviate/adapters/repos/db/vector/common"
 	"github.com/weaviate/weaviate/adapters/repos/db/vector/hnsw/distancer"
@@ -25,7 +26,7 @@ import (
 
 type shardedLockCache[T float32 | byte | uint64] struct {
 	shardedLocks     *common.ShardedLocks
-	cache            [][]T
+	cache            *hashmap.Map[uint64, []T]
 	vectorForID      common.VectorForID[T]
 	normalizeOnRead  bool
 	maxSize          int64
@@ -40,7 +41,7 @@ type shardedLockCache[T float32 | byte | uint64] struct {
 }
 
 const (
-	InitialSize             = 1000
+	InitialSize             = 100000
 	MinimumIndexGrowthDelta = 2000
 	indexGrowthRate         = 1.25
 )
@@ -59,7 +60,7 @@ func NewShardedFloat32LockCache(vecForID common.VectorForID[float32], maxSize in
 			}
 			return vec, nil
 		},
-		cache:            make([][]float32, InitialSize),
+		cache:            hashmap.New[uint64, []float32](),
 		normalizeOnRead:  normalizeOnRead,
 		count:            0,
 		maxSize:          int64(maxSize),
@@ -79,7 +80,7 @@ func NewShardedByteLockCache(vecForID common.VectorForID[byte], maxSize int,
 ) Cache[byte] {
 	vc := &shardedLockCache[byte]{
 		vectorForID:      vecForID,
-		cache:            make([][]byte, InitialSize),
+		cache:            hashmap.NewSized[uint64, []byte](InitialSize),
 		normalizeOnRead:  false,
 		count:            0,
 		maxSize:          int64(maxSize),
@@ -99,7 +100,7 @@ func NewShardedUInt64LockCache(vecForID common.VectorForID[uint64], maxSize int,
 ) Cache[uint64] {
 	vc := &shardedLockCache[uint64]{
 		vectorForID:      vecForID,
-		cache:            make([][]uint64, InitialSize),
+		cache:            hashmap.NewSized[uint64, []uint64](InitialSize),
 		normalizeOnRead:  false,
 		count:            0,
 		maxSize:          int64(maxSize),
@@ -115,15 +116,21 @@ func NewShardedUInt64LockCache(vecForID common.VectorForID[uint64], maxSize int,
 }
 
 func (s *shardedLockCache[T]) All() [][]T {
-	return s.cache
+
+	var values [][]T
+
+	s.cache.Range(func(k uint64, v []T) bool {
+		values = append(values, v)
+		return true
+	})
+
+	return values
 }
 
 func (s *shardedLockCache[T]) Get(ctx context.Context, id uint64) ([]T, error) {
-	s.shardedLocks.RLock(id)
-	vec := s.cache[id]
-	s.shardedLocks.RUnlock(id)
+	vec, ok := s.cache.Get(id)
 
-	if vec != nil {
+	if ok {
 		return vec, nil
 	}
 
@@ -131,14 +138,10 @@ func (s *shardedLockCache[T]) Get(ctx context.Context, id uint64) ([]T, error) {
 }
 
 func (s *shardedLockCache[T]) Delete(ctx context.Context, id uint64) {
-	s.shardedLocks.Lock(id)
-	defer s.shardedLocks.Unlock(id)
 
-	if int(id) >= len(s.cache) || s.cache[id] == nil {
-		return
-	}
+	s.cache.Del(id)
 
-	s.cache[id] = nil
+	// s.cache[id] = nil
 	atomic.AddInt64(&s.count, -1)
 }
 
@@ -149,9 +152,7 @@ func (s *shardedLockCache[T]) handleCacheMiss(ctx context.Context, id uint64) ([
 	}
 
 	atomic.AddInt64(&s.count, 1)
-	s.shardedLocks.Lock(id)
-	s.cache[id] = vec
-	s.shardedLocks.Unlock(id)
+	s.cache.Set(id, vec)
 
 	return vec, nil
 }
@@ -162,10 +163,10 @@ func (s *shardedLockCache[T]) MultiGet(ctx context.Context, ids []uint64) ([][]T
 
 	for i, id := range ids {
 		s.shardedLocks.RLock(id)
-		vec := s.cache[id]
+		vec, ok := s.cache.Get(id)
 		s.shardedLocks.RUnlock(id)
 
-		if vec == nil {
+		if !ok {
 			vecFromDisk, err := s.handleCacheMiss(ctx, id)
 			errs[i] = err
 			vec = vecFromDisk
@@ -183,51 +184,52 @@ var prefetchFunc func(in uintptr) = func(in uintptr) {
 }
 
 func (s *shardedLockCache[T]) Prefetch(id uint64) {
-	s.shardedLocks.RLock(id)
-	defer s.shardedLocks.RUnlock(id)
-
-	prefetchFunc(uintptr(unsafe.Pointer(&s.cache[id])))
+	vec, ok := s.cache.Get(id)
+	if ok {
+		prefetchFunc(uintptr(unsafe.Pointer(&vec)))
+	}
 }
 
 func (s *shardedLockCache[T]) Preload(id uint64, vec []T) {
 	s.shardedLocks.Lock(id)
 	defer s.shardedLocks.Unlock(id)
-
 	atomic.AddInt64(&s.count, 1)
-	s.cache[id] = vec
+	s.cache.Set(id, vec)
 }
 
 func (s *shardedLockCache[T]) Grow(node uint64) {
-	s.maintenanceLock.RLock()
-	if node < uint64(len(s.cache)) {
-		s.maintenanceLock.RUnlock()
-		return
-	}
-	s.maintenanceLock.RUnlock()
+	panic("not implemented")
+	// s.maintenanceLock.RLock()
+	// if node < uint64(len(s.cache)) {
+	// 	s.maintenanceLock.RUnlock()
+	// 	return
+	// }
+	// s.maintenanceLock.RUnlock()
 
-	s.maintenanceLock.Lock()
-	defer s.maintenanceLock.Unlock()
+	// s.maintenanceLock.Lock()
+	// defer s.maintenanceLock.Unlock()
 
-	// make sure cache still needs growing
-	// (it could have grown while waiting for maintenance lock)
-	if node < uint64(len(s.cache)) {
-		return
-	}
+	// // make sure cache still needs growing
+	// // (it could have grown while waiting for maintenance lock)
+	// if node < uint64(len(s.cache)) {
+	// 	return
+	// }
 
-	s.shardedLocks.LockAll()
-	defer s.shardedLocks.UnlockAll()
+	// s.shardedLocks.LockAll()
+	// defer s.shardedLocks.UnlockAll()
 
-	newSize := node + MinimumIndexGrowthDelta
-	newCache := make([][]T, newSize)
-	copy(newCache, s.cache)
-	s.cache = newCache
+	// newSize := int(float64(len(s.cache)) * indexGrowthRate)
+	// if newSize < int(node)+MinimumIndexGrowthDelta {
+	// 	newSize = int(node) + MinimumIndexGrowthDelta
+	// }
+	// newCache := make([][]T, newSize)
+	// copy(newCache, s.cache)
+	// s.cache = newCache
 }
 
 func (s *shardedLockCache[T]) Len() int32 {
-	s.maintenanceLock.RLock()
-	defer s.maintenanceLock.RUnlock()
 
-	return int32(len(s.cache))
+	return int32(s.cache.Len())
 }
 
 func (s *shardedLockCache[T]) CountVectors() int64 {
@@ -242,14 +244,14 @@ func (s *shardedLockCache[T]) Drop() {
 }
 
 func (s *shardedLockCache[T]) deleteAllVectors() {
-	s.shardedLocks.LockAll()
-	defer s.shardedLocks.UnlockAll()
 
 	s.logger.WithField("action", "hnsw_delete_vector_cache").
 		Debug("deleting full vector cache")
-	for i := range s.cache {
-		s.cache[i] = nil
-	}
+
+	s.cache.Range(func(k uint64, v []T) bool {
+		s.cache.Del(k)
+		return true
+	})
 
 	atomic.StoreInt64(&s.count, 0)
 }

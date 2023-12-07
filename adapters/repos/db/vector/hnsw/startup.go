@@ -155,10 +155,10 @@ func (h *hnsw) restoreFromDisk() error {
 		}
 
 		// make sure the compressed cache fits the current size
-		h.compressedVectorsCache.Grow(uint64(len(h.nodes)))
+		// h.compressedVectorsCache.Grow(uint64(len(h.nodes)))
 	} else {
 		// make sure the cache fits the current size
-		h.cache.Grow(uint64(len(h.nodes)))
+		// h.cache.Grow(uint64(len(h.nodes)))
 
 		if len(h.nodes) > 0 {
 			if vec, err := h.vectorForID(context.Background(), h.entryPointID); err == nil {
@@ -210,7 +210,7 @@ func (h *hnsw) prefillCache() {
 			cursor := h.compressedBucket.Cursor()
 			for k, v := cursor.First(); k != nil; k, v = cursor.Next() {
 				id := binary.LittleEndian.Uint64(k)
-				h.compressedVectorsCache.Grow(id)
+				// h.compressedVectorsCache.Grow(id)
 
 				// Make sure to copy the vector. The cursor only guarantees that
 				// the underlying memory won't change until we hit .Next(). Since
