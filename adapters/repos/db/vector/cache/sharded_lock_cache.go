@@ -24,7 +24,7 @@ import (
 )
 
 type shardedLockCache[T float32 | byte | uint64] struct {
-	shardedLocks     *common.ShardedLocks
+	shardedLocks     common.ShardedLocks
 	cache            [][]T
 	vectorForID      common.VectorForID[T]
 	normalizeOnRead  bool

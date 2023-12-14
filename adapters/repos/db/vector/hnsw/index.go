@@ -162,7 +162,7 @@ type hnsw struct {
 	className              string
 	shardName              string
 	VectorForIDThunk       common.VectorForID[float32]
-	shardedNodeLocks       *common.ShardedLocks
+	shardedNodeLocks       common.ShardedLocks
 	store                  *lsmkv.Store
 }
 

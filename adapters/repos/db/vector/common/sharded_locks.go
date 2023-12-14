@@ -11,144 +11,188 @@
 
 package common
 
-import "sync"
+import (
+	"sync"
+)
+
+type ShardedLocks interface {
+	LockAll()
+	UnlockAll()
+	LockedAll(callback func())
+
+	RLockAll()
+	RUnlockAll()
+	RLockedAll(callback func())
+
+	Lock(id uint64)
+	Unlock(id uint64)
+	Locked(id uint64, callback func())
+
+	RLock(id uint64)
+	RUnlock(id uint64)
+	RLocked(id uint64, callback func())
+}
 
 const DefaultShardedLocksCount = 512
 
-type ShardedLocks struct {
-	// number of locks
+type shardedLocks struct {
+	// number of sharded locks
 	count int
-	// ensures single LockAll and multiple RLockAll, Lock and RLock
-	// LockAll is exclusive to RLockAll, Lock, RLock
+	// ensures single LockAll and multiple RLockAll / Lock / RLock
+	// (LockAll is exclusive to RLockAll / Lock / RLock)
 	writeAll *sync.RWMutex
-	// indicates whether write of any single shard is ongoing, exclusive with readAll
-	writeAny *sync.RWMutex
-	// indicates whether read of all shards is ongoing, exclusive with writeAny
-	readAll *sync.RWMutex
-	// allows safe transition between writeAny and readAll
-	change *sync.RWMutex
+	// ensures RLockAll and Lock are exclusive
+	pair pairReadMutex
 	// sharded locks
 	shards []*sync.RWMutex
 }
 
-func NewDefaultShardedLocks() *ShardedLocks {
+func NewDefaultShardedLocks() *shardedLocks {
 	return NewShardedLocks(DefaultShardedLocksCount)
 }
 
-func NewShardedLocks(count int) *ShardedLocks {
+func NewShardedLocks(count int) *shardedLocks {
 	if count < 2 {
 		count = 2
 	}
 
 	writeAll := new(sync.RWMutex)
-	writeAny := new(sync.RWMutex)
-	readAll := new(sync.RWMutex)
-	change := new(sync.RWMutex)
+	pair := newLockBasedPairReadMutex()
 	shards := make([]*sync.RWMutex, count)
 	for i := 0; i < count; i++ {
 		shards[i] = new(sync.RWMutex)
 	}
 
-	return &ShardedLocks{
+	return &shardedLocks{
 		count:    count,
 		writeAll: writeAll,
-		readAll:  readAll,
-		writeAny: writeAny,
-		change:   change,
+		pair:     pair,
 		shards:   shards,
 	}
 }
 
-func (sl *ShardedLocks) LockAll() {
+func (sl *shardedLocks) LockAll() {
 	sl.writeAll.Lock()
 }
 
-func (sl *ShardedLocks) UnlockAll() {
+func (sl *shardedLocks) UnlockAll() {
 	sl.writeAll.Unlock()
 }
 
-func (sl *ShardedLocks) LockedAll(callback func()) {
+func (sl *shardedLocks) LockedAll(callback func()) {
 	sl.LockAll()
 	defer sl.UnlockAll()
 
 	callback()
 }
 
-func (sl *ShardedLocks) Lock(id uint64) {
+func (sl *shardedLocks) Lock(id uint64) {
 	sl.writeAll.RLock()
-	sl.markOngoingWriteAny()
-	sl.shards[sl.mid(id)].Lock()
+	sl.pair.leftRLock()
+	sl.shards[sl.modid(id)].Lock()
 }
 
-func (sl *ShardedLocks) Unlock(id uint64) {
-	sl.shards[sl.mid(id)].Unlock()
-	sl.writeAny.RUnlock()
+func (sl *shardedLocks) Unlock(id uint64) {
+	sl.shards[sl.modid(id)].Unlock()
+	sl.pair.leftRUnlock()
 	sl.writeAll.RUnlock()
 }
 
-func (sl *ShardedLocks) Locked(id uint64, callback func()) {
+func (sl *shardedLocks) Locked(id uint64, callback func()) {
 	sl.Lock(id)
 	defer sl.Unlock(id)
 
 	callback()
 }
 
-func (sl *ShardedLocks) RLockAll() {
+func (sl *shardedLocks) RLockAll() {
 	sl.writeAll.RLock()
-	sl.markOngoingReadAll()
+	sl.pair.rightRLock()
 }
 
-func (sl *ShardedLocks) RUnlockAll() {
-	sl.readAll.RUnlock()
+func (sl *shardedLocks) RUnlockAll() {
+	sl.pair.rightRUnlock()
 	sl.writeAll.RUnlock()
 }
 
-func (sl *ShardedLocks) RLockedAll(callback func()) {
+func (sl *shardedLocks) RLockedAll(callback func()) {
 	sl.RLockAll()
 	defer sl.RUnlockAll()
 
 	callback()
 }
 
-func (sl *ShardedLocks) RLock(id uint64) {
+func (sl *shardedLocks) RLock(id uint64) {
 	sl.writeAll.RLock()
-	sl.shards[sl.mid(id)].RLock()
+	sl.shards[sl.modid(id)].RLock()
 }
 
-func (sl *ShardedLocks) RUnlock(id uint64) {
-	sl.shards[sl.mid(id)].RUnlock()
+func (sl *shardedLocks) RUnlock(id uint64) {
+	sl.shards[sl.modid(id)].RUnlock()
 	sl.writeAll.RUnlock()
 }
 
-func (sl *ShardedLocks) RLocked(id uint64, callback func()) {
+func (sl *shardedLocks) RLocked(id uint64, callback func()) {
 	sl.RLock(id)
 	defer sl.RUnlock(id)
 
 	callback()
 }
 
-func (sl *ShardedLocks) mid(id uint64) uint64 {
+func (sl *shardedLocks) modid(id uint64) uint64 {
 	return id % uint64(sl.count)
 }
 
-func (sl *ShardedLocks) markOngoingWriteAny() {
-	sl.change.RLock()
-	defer sl.change.RUnlock()
-
-	// wait until no ongoing readAll
-	sl.readAll.Lock()
-	// mark ongoing writeAny
-	sl.writeAny.RLock()
-	sl.readAll.Unlock()
+// allows multiple left locks or multiple right locks
+// (left and right are exclusive)
+type pairReadMutex interface {
+	leftRLock()
+	leftRUnlock()
+	rightRLock()
+	rightRUnlock()
 }
 
-func (sl *ShardedLocks) markOngoingReadAll() {
-	sl.change.Lock()
-	defer sl.change.Unlock()
+type lockBasedPairReadMutex struct {
+	right *sync.RWMutex
+	left  *sync.RWMutex
+	// allows safe transition between left and right
+	change *sync.Mutex
+}
 
-	// wait until no ongoing writeAny
-	sl.writeAny.Lock()
-	// mark ongoing readAll
-	sl.readAll.RLock()
-	sl.writeAny.Unlock()
+func newLockBasedPairReadMutex() *lockBasedPairReadMutex {
+	return &lockBasedPairReadMutex{
+		right:  new(sync.RWMutex),
+		left:   new(sync.RWMutex),
+		change: new(sync.Mutex),
+	}
+}
+
+func (m *lockBasedPairReadMutex) leftRLock() {
+	m.aRLock(m.left, m.right)
+}
+
+func (m *lockBasedPairReadMutex) leftRUnlock() {
+	m.aRUnlock(m.left, m.right)
+}
+
+func (m *lockBasedPairReadMutex) rightRLock() {
+	m.aRLock(m.right, m.left)
+}
+
+func (m *lockBasedPairReadMutex) rightRUnlock() {
+	m.aRUnlock(m.right, m.left)
+}
+
+func (m *lockBasedPairReadMutex) aRLock(a, b *sync.RWMutex) {
+	m.change.Lock()
+	// wait until b not locked
+	b.Lock()
+	a.RLock()
+	m.change.Unlock()
+
+	b.Unlock()
+}
+
+func (m *lockBasedPairReadMutex) aRUnlock(a, b *sync.RWMutex) {
+	a.RUnlock()
 }
