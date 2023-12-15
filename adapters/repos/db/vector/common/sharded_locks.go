@@ -58,7 +58,8 @@ func NewShardedLocks(count int) *shardedLocks {
 
 	writeAll := new(sync.RWMutex)
 	// pair := newLockBasedPairReadMutex()
-	pair := newLockBasedPairReadMutexAlt()
+	// pair := newLockBasedPairReadMutexAlt()
+	pair := newCounterBasedPairReadMutex()
 	shards := make([]*sync.RWMutex, count)
 	for i := 0; i < count; i++ {
 		shards[i] = new(sync.RWMutex)
@@ -229,4 +230,79 @@ func (m *lockBasedPairReadMutexAlt) rightRLock() {
 
 func (m *lockBasedPairReadMutexAlt) rightRUnlock() {
 	m.right.RUnlock()
+}
+
+type counterBasedPairReadMutex struct {
+	leftCounter  int
+	rightCounter int
+	left         *sync.Mutex
+	right        *sync.Mutex
+	main         *sync.Mutex
+}
+
+func newCounterBasedPairReadMutex() *counterBasedPairReadMutex {
+	return &counterBasedPairReadMutex{
+		left:  new(sync.Mutex),
+		right: new(sync.Mutex),
+		main:  new(sync.Mutex),
+	}
+}
+
+func (m *counterBasedPairReadMutex) leftRLock() {
+	m.aRLock(m.left, m.right, &m.leftCounter, &m.rightCounter)
+}
+
+func (m *counterBasedPairReadMutex) leftRUnlock() {
+	m.aRUnlock(m.left, m.right, &m.leftCounter, &m.rightCounter)
+}
+
+func (m *counterBasedPairReadMutex) rightRLock() {
+	m.aRLock(m.right, m.left, &m.rightCounter, &m.leftCounter)
+}
+
+func (m *counterBasedPairReadMutex) rightRUnlock() {
+	m.aRUnlock(m.right, m.left, &m.rightCounter, &m.leftCounter)
+}
+
+func (m *counterBasedPairReadMutex) aRLock(a, b *sync.Mutex, aCounter, bCounter *int) {
+	m.main.Lock()
+	if *bCounter == 0 {
+		if *aCounter == 0 {
+			a.Lock()
+		}
+		*aCounter++
+		m.main.Unlock()
+		return
+	}
+	m.main.Unlock()
+
+	for {
+		b.Lock()
+		if !m.main.TryLock() {
+			b.Unlock()
+			continue
+		}
+		b.Unlock()
+
+		if *bCounter == 0 {
+			if *aCounter == 0 {
+				a.Lock()
+			}
+			*aCounter++
+			m.main.Unlock()
+			return
+		}
+
+		panic("counter should be 0?")
+	}
+}
+
+func (m *counterBasedPairReadMutex) aRUnlock(a, b *sync.Mutex, aCounter, bCounter *int) {
+	m.main.Lock()
+	defer m.main.Unlock()
+
+	*aCounter--
+	if *aCounter == 0 {
+		a.Unlock()
+	}
 }
