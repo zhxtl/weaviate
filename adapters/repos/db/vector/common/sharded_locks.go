@@ -58,10 +58,10 @@ func NewShardedLocks(count int) *shardedLocks {
 	}
 
 	writeAll := new(sync.RWMutex)
-	// pair := newLockBasedPairReadMutex()
+	pair := newLockBasedPairReadMutex()
 	// pair := newLockBasedPairReadMutexAlt()
 	// pair := newCounterBasedPairReadMutex()
-	pair := newContextBasedPairReadMutex()
+	// pair := newContextBasedPairReadMutex()
 	shards := make([]*sync.RWMutex, count)
 	for i := 0; i < count; i++ {
 		shards[i] = new(sync.RWMutex)
