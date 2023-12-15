@@ -12,6 +12,7 @@
 package common
 
 import (
+	"context"
 	"sync"
 )
 
@@ -59,7 +60,8 @@ func NewShardedLocks(count int) *shardedLocks {
 	writeAll := new(sync.RWMutex)
 	// pair := newLockBasedPairReadMutex()
 	// pair := newLockBasedPairReadMutexAlt()
-	pair := newCounterBasedPairReadMutex()
+	// pair := newCounterBasedPairReadMutex()
+	pair := newContextBasedPairReadMutex()
 	shards := make([]*sync.RWMutex, count)
 	for i := 0; i < count; i++ {
 		shards[i] = new(sync.RWMutex)
@@ -304,5 +306,77 @@ func (m *counterBasedPairReadMutex) aRUnlock(a, b *sync.Mutex, aCounter, bCounte
 	*aCounter--
 	if *aCounter == 0 {
 		a.Unlock()
+	}
+}
+
+type contextBasedPairReadMutex struct {
+	leftCounter  int
+	rightCounter int
+	leftCtx      context.Context
+	rightCtx     context.Context
+	leftCancel   context.CancelFunc
+	rightCancel  context.CancelFunc
+	main         *sync.Mutex
+}
+
+func newContextBasedPairReadMutex() *contextBasedPairReadMutex {
+	return &contextBasedPairReadMutex{
+		main: new(sync.Mutex),
+	}
+}
+
+func (m *contextBasedPairReadMutex) leftRLock() {
+	for {
+		m.main.Lock()
+		if m.rightCounter == 0 {
+			if m.leftCounter == 0 {
+				m.leftCtx, m.leftCancel = context.WithCancel(context.Background())
+			}
+			m.leftCounter++
+			m.main.Unlock()
+			return
+		}
+		rightCtx := m.rightCtx
+		m.main.Unlock()
+
+		<-rightCtx.Done()
+	}
+}
+
+func (m *contextBasedPairReadMutex) leftRUnlock() {
+	m.main.Lock()
+	defer m.main.Unlock()
+
+	m.leftCounter--
+	if m.leftCounter == 0 {
+		m.leftCancel()
+	}
+}
+
+func (m *contextBasedPairReadMutex) rightRLock() {
+	for {
+		m.main.Lock()
+		if m.leftCounter == 0 {
+			if m.rightCounter == 0 {
+				m.rightCtx, m.rightCancel = context.WithCancel(context.Background())
+			}
+			m.rightCounter++
+			m.main.Unlock()
+			return
+		}
+		leftCtx := m.leftCtx
+		m.main.Unlock()
+
+		<-leftCtx.Done()
+	}
+}
+
+func (m *contextBasedPairReadMutex) rightRUnlock() {
+	m.main.Lock()
+	defer m.main.Unlock()
+
+	m.rightCounter--
+	if m.rightCounter == 0 {
+		m.rightCancel()
 	}
 }
