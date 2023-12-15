@@ -57,7 +57,8 @@ func NewShardedLocks(count int) *shardedLocks {
 	}
 
 	writeAll := new(sync.RWMutex)
-	pair := newLockBasedPairReadMutex()
+	// pair := newLockBasedPairReadMutex()
+	pair := newLockBasedPairReadMutexAlt()
 	shards := make([]*sync.RWMutex, count)
 	for i := 0; i < count; i++ {
 		shards[i] = new(sync.RWMutex)
@@ -195,4 +196,37 @@ func (m *lockBasedPairReadMutex) aRLock(a, b *sync.RWMutex) {
 
 func (m *lockBasedPairReadMutex) aRUnlock(a, b *sync.RWMutex) {
 	a.RUnlock()
+}
+
+type lockBasedPairReadMutexAlt struct {
+	right *sync.RWMutex
+	left  *sync.RWMutex
+}
+
+func newLockBasedPairReadMutexAlt() *lockBasedPairReadMutexAlt {
+	return &lockBasedPairReadMutexAlt{
+		right: new(sync.RWMutex),
+		left:  new(sync.RWMutex),
+	}
+}
+
+func (m *lockBasedPairReadMutexAlt) leftRLock() {
+	m.right.Lock()
+	m.left.RLock()
+	m.right.Unlock()
+}
+
+func (m *lockBasedPairReadMutexAlt) leftRUnlock() {
+	m.left.RUnlock()
+}
+
+func (m *lockBasedPairReadMutexAlt) rightRLock() {
+	m.right.RLock()
+	// lock and immediate unlock to ensure exclusiveness with left lock
+	m.left.Lock()
+	m.left.Unlock()
+}
+
+func (m *lockBasedPairReadMutexAlt) rightRUnlock() {
+	m.right.RUnlock()
 }
