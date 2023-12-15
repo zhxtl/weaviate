@@ -380,3 +380,139 @@ func (m *contextBasedPairReadMutex) rightRUnlock() {
 		m.rightCancel()
 	}
 }
+
+type dummyRWMutexShardedLocks struct {
+	mutex *sync.RWMutex
+}
+
+func NewDummyRWMutexShardedLocks() *dummyRWMutexShardedLocks {
+	return &dummyRWMutexShardedLocks{mutex: new(sync.RWMutex)}
+}
+
+func (sl *dummyRWMutexShardedLocks) LockAll() {
+	sl.mutex.Lock()
+}
+
+func (sl *dummyRWMutexShardedLocks) UnlockAll() {
+	sl.mutex.Unlock()
+}
+
+func (sl *dummyRWMutexShardedLocks) LockedAll(callback func()) {
+	sl.mutex.Lock()
+	defer sl.mutex.Unlock()
+
+	callback()
+}
+
+func (sl *dummyRWMutexShardedLocks) RLockAll() {
+	sl.mutex.RLock()
+}
+
+func (sl *dummyRWMutexShardedLocks) RUnlockAll() {
+	sl.mutex.RUnlock()
+}
+
+func (sl *dummyRWMutexShardedLocks) RLockedAll(callback func()) {
+	sl.mutex.RLock()
+	defer sl.mutex.RUnlock()
+
+	callback()
+}
+
+func (sl *dummyRWMutexShardedLocks) Lock(id uint64) {
+	sl.mutex.Lock()
+}
+
+func (sl *dummyRWMutexShardedLocks) Unlock(id uint64) {
+	sl.mutex.Unlock()
+}
+
+func (sl *dummyRWMutexShardedLocks) Locked(id uint64, callback func()) {
+	sl.mutex.Lock()
+	defer sl.mutex.Unlock()
+
+	callback()
+}
+
+func (sl *dummyRWMutexShardedLocks) RLock(id uint64) {
+	sl.mutex.RLock()
+}
+
+func (sl *dummyRWMutexShardedLocks) RUnlock(id uint64) {
+	sl.mutex.RUnlock()
+}
+
+func (sl *dummyRWMutexShardedLocks) RLocked(id uint64, callback func()) {
+	sl.mutex.RLock()
+	defer sl.mutex.RUnlock()
+
+	callback()
+}
+
+type dummyMutexShardedLocks struct {
+	mutex *sync.Mutex
+}
+
+func NewDummyMutexShardedLocks() *dummyMutexShardedLocks {
+	return &dummyMutexShardedLocks{mutex: new(sync.Mutex)}
+}
+
+func (sl *dummyMutexShardedLocks) LockAll() {
+	sl.mutex.Lock()
+}
+
+func (sl *dummyMutexShardedLocks) UnlockAll() {
+	sl.mutex.Unlock()
+}
+
+func (sl *dummyMutexShardedLocks) LockedAll(callback func()) {
+	sl.mutex.Lock()
+	defer sl.mutex.Unlock()
+
+	callback()
+}
+
+func (sl *dummyMutexShardedLocks) RLockAll() {
+	sl.mutex.Lock()
+}
+
+func (sl *dummyMutexShardedLocks) RUnlockAll() {
+	sl.mutex.Unlock()
+}
+
+func (sl *dummyMutexShardedLocks) RLockedAll(callback func()) {
+	sl.mutex.Lock()
+	defer sl.mutex.Unlock()
+
+	callback()
+}
+
+func (sl *dummyMutexShardedLocks) Lock(id uint64) {
+	sl.mutex.Lock()
+}
+
+func (sl *dummyMutexShardedLocks) Unlock(id uint64) {
+	sl.mutex.Unlock()
+}
+
+func (sl *dummyMutexShardedLocks) Locked(id uint64, callback func()) {
+	sl.mutex.Lock()
+	defer sl.mutex.Unlock()
+
+	callback()
+}
+
+func (sl *dummyMutexShardedLocks) RLock(id uint64) {
+	sl.mutex.Lock()
+}
+
+func (sl *dummyMutexShardedLocks) RUnlock(id uint64) {
+	sl.mutex.Unlock()
+}
+
+func (sl *dummyMutexShardedLocks) RLocked(id uint64, callback func()) {
+	sl.mutex.Lock()
+	defer sl.mutex.Unlock()
+
+	callback()
+}
