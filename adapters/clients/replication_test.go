@@ -308,7 +308,7 @@ func TestReplicationDeleteObjects(t *testing.T) {
 	defer ts.Close()
 	client := newReplicationClient(ts.Client())
 
-	docs := []uint64{1, 2}
+	docs := []strfmt.UUID{strfmt.UUID("1"), strfmt.UUID("2")}
 	t.Run("ConnectionError", func(t *testing.T) {
 		_, err := client.DeleteObjects(ctx, "", "C1", "S1", "", docs, false)
 		assert.NotNil(t, err)

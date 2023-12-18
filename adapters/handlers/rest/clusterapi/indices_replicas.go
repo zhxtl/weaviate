@@ -38,7 +38,7 @@ type replicator interface {
 	ReplicateDeletion(ctx context.Context, indexName, shardName,
 		requestID string, uuid strfmt.UUID) replica.SimpleResponse
 	ReplicateDeletions(ctx context.Context, indexName, shardName,
-		requestID string, docIDs []uint64, dryRun bool) replica.SimpleResponse
+		requestID string, docIDs []strfmt.UUID, dryRun bool) replica.SimpleResponse
 	ReplicateReferences(ctx context.Context, indexName, shardName,
 		requestID string, refs []objects.BatchReference) replica.SimpleResponse
 	CommitReplication(indexName,
