@@ -566,10 +566,10 @@ func (p findUUIDsParamsPayload) Marshal(filter *filters.LocalFilter) ([]byte, er
 }
 
 func (p findUUIDsParamsPayload) Unmarshal(in []byte) (*filters.LocalFilter, error) {
-	type findDocIDsParametersPayload struct {
+	type findUUIDsParametersPayload struct {
 		Filters *filters.LocalFilter `json:"filters"`
 	}
-	var par findDocIDsParametersPayload
+	var par findUUIDsParametersPayload
 	err := json.Unmarshal(in, &par)
 	return par.Filters, err
 }
@@ -614,24 +614,24 @@ func (p findUUIDsResultsPayload) CheckContentTypeHeader(r *http.Response) (strin
 
 type batchDeleteParamsPayload struct{}
 
-func (p batchDeleteParamsPayload) Marshal(docIDs []strfmt.UUID, dryRun bool) ([]byte, error) {
+func (p batchDeleteParamsPayload) Marshal(uuids []strfmt.UUID, dryRun bool) ([]byte, error) {
 	type params struct {
-		DocIDs []strfmt.UUID `json:"uuids"`
+		UUIDs  []strfmt.UUID `json:"uuids"`
 		DryRun bool          `json:"dryRun"`
 	}
 
-	par := params{docIDs, dryRun}
+	par := params{uuids, dryRun}
 	return json.Marshal(par)
 }
 
 func (p batchDeleteParamsPayload) Unmarshal(in []byte) ([]strfmt.UUID, bool, error) {
 	type batchDeleteParametersPayload struct {
-		DocIDs []strfmt.UUID `json:"uuids"`
+		UUIDs  []strfmt.UUID `json:"uuids"`
 		DryRun bool          `json:"dryRun"`
 	}
 	var par batchDeleteParametersPayload
 	err := json.Unmarshal(in, &par)
-	return par.DocIDs, par.DryRun, err
+	return par.UUIDs, par.DryRun, err
 }
 
 func (p batchDeleteParamsPayload) MIME() string {

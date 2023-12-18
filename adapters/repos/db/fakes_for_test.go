@@ -222,7 +222,7 @@ func (f *fakeRemoteClient) FindUUIDs(ctx context.Context, hostName, indexName, s
 }
 
 func (f *fakeRemoteClient) DeleteObjectBatch(ctx context.Context, hostName, indexName, shardName string,
-	docIDs []strfmt.UUID, dryRun bool,
+	uuids []strfmt.UUID, dryRun bool,
 ) objects.BatchSimpleObjects {
 	return nil
 }
@@ -290,7 +290,7 @@ func (f *fakeReplicationClient) MergeObject(ctx context.Context, host, index, sh
 }
 
 func (f *fakeReplicationClient) DeleteObjects(ctx context.Context, host, index, shard, requestID string,
-	docIDs []strfmt.UUID, dryRun bool,
+	uuids []strfmt.UUID, dryRun bool,
 ) (replica.SimpleResponse, error) {
 	return replica.SimpleResponse{}, nil
 }

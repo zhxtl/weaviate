@@ -1925,7 +1925,7 @@ func (i *Index) IncomingFindUUIDs(ctx context.Context, shardName string,
 	return shard.FindUUIDs(ctx, filters)
 }
 
-func (i *Index) batchDeleteObjects(ctx context.Context, shardDocIDs map[string][]strfmt.UUID,
+func (i *Index) batchDeleteObjects(ctx context.Context, shardUUIDs map[string][]strfmt.UUID,
 	dryRun bool, replProps *additional.ReplicationProperties,
 ) (objects.BatchSimpleObjects, error) {
 	before := time.Now()
@@ -1940,22 +1940,23 @@ func (i *Index) batchDeleteObjects(ctx context.Context, shardDocIDs map[string][
 	}
 
 	wg := &sync.WaitGroup{}
-	ch := make(chan result, len(shardDocIDs))
-	for shardName, docIDs := range shardDocIDs {
+	ch := make(chan result, len(shardUUIDs))
+	for shardName, uuids := range shardUUIDs {
+		uuids := uuids
 		wg.Add(1)
 		go func(shardName string, uuids []strfmt.UUID) {
 			defer wg.Done()
 
 			var objs objects.BatchSimpleObjects
 			if i.replicationEnabled() {
-				objs = i.replicator.DeleteObjects(ctx, shardName, docIDs,
+				objs = i.replicator.DeleteObjects(ctx, shardName, uuids,
 					dryRun, replica.ConsistencyLevel(replProps.ConsistencyLevel))
 			} else if i.localShard(shardName) == nil {
-				objs = i.remote.DeleteObjectBatch(ctx, shardName, docIDs, dryRun)
+				objs = i.remote.DeleteObjectBatch(ctx, shardName, uuids, dryRun)
 			} else {
 				i.backupMutex.RLockGuard(func() error {
 					if shard := i.localShard(shardName); shard != nil {
-						objs = shard.DeleteObjectBatch(ctx, docIDs, dryRun)
+						objs = shard.DeleteObjectBatch(ctx, uuids, dryRun)
 					} else {
 						objs = objects.BatchSimpleObjects{objects.BatchSimpleObject{Err: errShardNotFound}}
 					}
@@ -1963,7 +1964,7 @@ func (i *Index) batchDeleteObjects(ctx context.Context, shardDocIDs map[string][
 				})
 			}
 			ch <- result{objs}
-		}(shardName, docIDs)
+		}(shardName, uuids)
 	}
 
 	wg.Wait()

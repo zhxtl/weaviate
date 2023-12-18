@@ -525,21 +525,21 @@ func (c *RemoteIndex) FindUUIDs(ctx context.Context, hostName, indexName,
 		return nil, errors.Errorf("unexpected content type: %s", ct)
 	}
 
-	docIDs, err := clusterapi.IndicesPayloads.FindUUIDsResults.Unmarshal(resBytes)
+	uuids, err := clusterapi.IndicesPayloads.FindUUIDsResults.Unmarshal(resBytes)
 	if err != nil {
 		return nil, errors.Wrap(err, "unmarshal body")
 	}
-	return docIDs, nil
+	return uuids, nil
 }
 
 func (c *RemoteIndex) DeleteObjectBatch(ctx context.Context, hostName, indexName, shardName string,
-	docIDs []strfmt.UUID, dryRun bool,
+	uuids []strfmt.UUID, dryRun bool,
 ) objects.BatchSimpleObjects {
 	path := fmt.Sprintf("/indices/%s/shards/%s/objects", indexName, shardName)
 	method := http.MethodDelete
 	url := url.URL{Scheme: "http", Host: hostName, Path: path}
 
-	marshalled, err := clusterapi.IndicesPayloads.BatchDeleteParams.Marshal(docIDs, dryRun)
+	marshalled, err := clusterapi.IndicesPayloads.BatchDeleteParams.Marshal(uuids, dryRun)
 	if err != nil {
 		err := errors.Wrap(err, "marshal payload")
 		return objects.BatchSimpleObjects{objects.BatchSimpleObject{Err: err}}

@@ -115,7 +115,7 @@ type shards interface {
 	FindUUIDs(ctx context.Context, indexName, shardName string,
 		filters *filters.LocalFilter) ([]strfmt.UUID, error)
 	DeleteObjectBatch(ctx context.Context, indexName, shardName string,
-		docIDs []strfmt.UUID, dryRun bool) objects.BatchSimpleObjects
+		uuids []strfmt.UUID, dryRun bool) objects.BatchSimpleObjects
 	GetShardQueueSize(ctx context.Context, indexName, shardName string) (int64, error)
 	GetShardStatus(ctx context.Context, indexName, shardName string) (string, error)
 	UpdateShardStatus(ctx context.Context, indexName, shardName,
@@ -888,7 +888,7 @@ func (i *indices) deleteObjects() http.Handler {
 			return
 		}
 
-		docIDs, dryRun, err := IndicesPayloads.BatchDeleteParams.
+		uuids, dryRun, err := IndicesPayloads.BatchDeleteParams.
 			Unmarshal(reqPayload)
 		if err != nil {
 			http.Error(w, "unmarshal find doc ids params from json: "+err.Error(),
@@ -896,7 +896,7 @@ func (i *indices) deleteObjects() http.Handler {
 			return
 		}
 
-		results := i.shards.DeleteObjectBatch(r.Context(), index, shard, docIDs, dryRun)
+		results := i.shards.DeleteObjectBatch(r.Context(), index, shard, uuids, dryRun)
 
 		resBytes, err := IndicesPayloads.BatchDeleteResults.Marshal(results)
 		if err != nil {
