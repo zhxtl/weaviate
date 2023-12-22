@@ -20,6 +20,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/weaviate/weaviate/adapters/repos/db/helpers"
+	"github.com/weaviate/weaviate/adapters/repos/db/priorityqueue"
 )
 
 func (h *hnsw) ValidateBeforeInsert(vector []float32) error {
@@ -258,5 +259,108 @@ func (h *hnsw) insertInitialElement(node *vertex, nodeVec []float32) error {
 	}
 
 	// go h.insertHook(node.id, 0, node.connections)
+	return nil
+}
+
+/* TODO - Interface outwards with AddFilterSharingEdges */
+
+func (h *hnsw) addFilterSharingEdges(vector []float32, node *vertex, allowList helpers.AllowList) error {
+	//h.compressActionLock.RLock()
+	h.deleteVsInsertLock.RLock()
+
+	before := time.Now()
+
+	defer func() {
+		h.deleteVsInsertLock.RUnlock()
+		//h.compressActionLock.RUnlock()
+		//h.insertMetrics.updateGlobalEntrypoint(before)
+	}()
+
+	node.markAsMaintenance()
+
+	h.RLock()
+	// initially use the "global" entrypoint which is guaranteed to be on the
+	// currently highest layer
+	entryPointID := h.entryPointID
+	// initially use the level of the entrypoint which is the highest level of
+	// the h-graph in the first iteration
+	currentMaximumLayer := h.currentMaximumLayer
+	h.RUnlock()
+
+	/* Not adding a new node, need to look at exactly what this does.
+	if err := h.commitLog.AddNode(node); err != nil {
+		return err
+	}
+	*/
+
+	/*
+		nodeId := node.id
+
+		h.shardedNodeLocks.Lock(nodeId)
+		h.nodes[nodeId] = node
+		h.shardedNodeLocks.Unlock(nodeId)
+	*/
+
+	if h.compressed.Load() {
+		compressed := h.pq.Encode(vector)
+		h.storeCompressedVector(node.id, compressed)
+		h.compressedVectorsCache.Preload(node.id, compressed)
+	} else {
+		h.cache.Preload(node.id, vector)
+	}
+
+	h.insertMetrics.prepareAndInsertNode(before)
+	before = time.Now()
+
+	var err error
+	targetLevel := 0 // only testing adding filter sharing edges to layer 0
+	entryPointID, err = h.findBestEntrypointForNode(currentMaximumLayer, targetLevel,
+		entryPointID, vector)
+	if err != nil {
+		return errors.Wrap(err, "find best entrypoint")
+	}
+
+	h.insertMetrics.findEntrypoint(before)
+	before = time.Now()
+
+	// TODO: check findAndConnectNeighbors...
+
+	// Init variables (graph, node, entryPointId, nodeVec, targetLeve, currentMaxLevel, denyList)
+
+	/* denyList is just helpers.NewAllowList() */
+
+	// allowList
+
+	entryPointDist, ok, err := h.distBetweenNodeAndVec(entryPointID, vector)
+	if err != nil {
+		// not an error we could recover from - fail!
+		return errors.Wrapf(err,
+			"calculate distance between insert node and entrypoint")
+	}
+	if !ok {
+		return nil
+	}
+	eps := priorityqueue.NewMin[any](1)
+	eps.Insert(entryPointID, entryPointDist)
+	results, err := h.searchLayerByVector(vector, eps, h.efConstruction, 0, allowList)
+
+	/* connect results to node and node to results */
+	// node.setConnectionsAtLevel(level, neighbors) -- need to add rather than do it like this.
+	for results.Len() > 0 {
+		id := results.Pop().ID
+		node.appendConnectionAtLevelNoLock(0, id, h.maximumConnectionsLayerZero)
+		/*
+			TODO -- ADD TO COMMMIT LOGGER AS WELL
+			if err := n.graph.commitLog.AddLinkAtLevel(neighbor.id, level, id); err != nil {
+				return err
+			}
+		*/
+	}
+
+	h.insertMetrics.findAndConnectTotal(before)
+	before = time.Now()
+
+	node.unmarkAsMaintenance()
+
 	return nil
 }
