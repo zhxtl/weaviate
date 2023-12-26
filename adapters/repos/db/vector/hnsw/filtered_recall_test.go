@@ -174,10 +174,11 @@ func TestFilteredRecall(t *testing.T) {
 		fmt.Printf("Importing took %s \n", time.Since(before))
 		/* ADDING FILTER SHARING NEIGHBORS AFTER THE GRAPH HAS BEEN BUILT */
 		//var nodeFilter map[int]int
-		var nodeVec []float32
+		//var nodeVec []float32
+		addEdgesTimer := time.Now()
 		for idx, node := range vectorIndex.nodes {
 			if idx%1000 == 999 {
-				fmt.Print(idx)
+				fmt.Printf("\nCheckpoint at idx %d. Adding filter sharing edges has run for %s seconds.", idx, time.Since(addEdgesTimer))
 			}
 			// Get the Filter
 			// nodeFilter := IDToFilter[node.id]
@@ -199,8 +200,18 @@ func TestFilteredRecall(t *testing.T) {
 				}
 			}
 			nodeAllowList := helpers.NewAllowList(nodeAllowListIDs...)
-			nodeVec = IDsToVector[node.id]
-			vectorIndex.addFilterSharingEdges(nodeVec, node, nodeAllowList)
+			// COUNT FILTER SHARING NEIGHBORS
+			// IF LESS THAN K, RUN `addFilterSharingEdges`
+			matchCount := countFilterSharingEdges(node, IDsToFilter, filterToIDs)
+			if matchCount < 2 {
+				fmt.Printf("\nNodeId: %d, has %f filter sharing neighbors.", node.id, matchCount)
+				nodeVec := IDsToVector[node.id]
+				vectorIndex.addFilterSharingEdges(nodeVec, node, nodeAllowList, 128)
+				matchCount := countFilterSharingEdges(node, IDsToFilter, filterToIDs)
+				fmt.Printf("\nAfter adding edges, NodeId: %d, now has %f filter sharing neighbors.", node.id, matchCount)
+			}
+			// ADD FILTERS FROM MAJORITY TO MINORITY
+
 		}
 		// TODO
 
@@ -245,8 +256,80 @@ func TestFilteredRecall(t *testing.T) {
 			fmt.Printf("Recall for filter %d = %f \n", filterKey, RecallPerFilter)
 			fmt.Printf("Latency for filter %d = %f \n", filterKey, LatencyPerFilter)
 		}
-		/* TODO - COUNT MATCHING NEIGHBORS PER FILTER */
+		/* COUNT MATCHING NEIGHBORS PER FILTER */
+		var matchLog map[int]map[int][]float32 = make(map[int]map[int][]float32)
+		for idx, node := range vectorIndex.nodes {
+			// LOGGER, THIS IS SLOW
+			if idx%1000 == 999 {
+				// TODO - MAKE THIS PRETTIER
+				fmt.Printf("idx: %d \n", idx)
+			}
+			// CATCH NIL NODES IN `vectorIndex.nodes`
+			if node == nil {
+				// TODO - CLEAN THIS UP
+				fmt.Print("Nil node!! \n")
+				fmt.Print(idx)
+				fmt.Print("Nil node!! \n")
+				break
+			}
+			nodeFilter, ok := IDsToFilter[node.id]
+			if !ok {
+				fmt.Print(node.id)
+				// can;t remember command for break put keep looping
+			}
+			count := countFilterSharingEdges(node, IDsToFilter, filterToIDs)
+			for filterKey, filterValue := range nodeFilter {
+				// INITIALIZE MAP ENTRY IF NIL
+				if _, exists := matchLog[filterKey]; !exists {
+					matchLog[filterKey] = make(map[int][]float32)
+				}
+				matchLog[filterKey][filterValue] = append(matchLog[filterKey][filterValue], count)
+			}
+		}
+		// PRINT AVERAGE FILTER SHARING NEIGHBORS
+		// `matchLog` to `matchAverage`
+		var matchAverage map[int]map[int]float32 = make(map[int]map[int]float32)
+		for filterKey, filterValueMap := range matchLog {
+			if _, exists := matchAverage[filterKey]; !exists {
+				matchAverage[filterKey] = make(map[int]float32)
+			}
+			for filterValue, counts := range filterValueMap {
+				var total float32 = 0.0
+				for _, count := range counts {
+					total += count
+				}
+				matchAverage[filterKey][filterValue] = total / float32(len(counts))
+			}
+		}
+		// DISPLAY COUNT AVERAGES
+		for filterKey, filterValueMap := range matchAverage {
+			for filterValue, avgLatency := range filterValueMap {
+				fmt.Printf("\nFilter [%d:%d] Average Matching Neighbors: %f\n", filterKey, filterValue, avgLatency)
+			}
+		}
 	})
+}
+
+// RUN FOR ONE NODE
+func countFilterSharingEdges(node *vertex, IDstoFilter map[uint64]map[int]int, filterToIDs map[int]map[int][]uint64) float32 {
+	// GET FILTER FOR NODE
+	nodeFilter, ok := IDstoFilter[node.id]
+	if !ok {
+		fmt.Print(node.id)
+	}
+	// CONSTRUCT ALLOWLIST FOR NODE
+	nodeAllowListIDs := []uint64{}
+	for filterKey, filterValue := range nodeFilter {
+		nodeAllowListIDs = append(nodeAllowListIDs, filterToIDs[filterKey][filterValue]...)
+	}
+	nodeAllowList := helpers.NewAllowList(nodeAllowListIDs...)
+	var count float32 = 0.0
+	for _, connection := range node.connections[0] {
+		if nodeAllowList.Contains(connection) {
+			count += 1.0
+		}
+	}
+	return count
 }
 
 func mergeData(vectors []Vector, filters []Filters) []vecWithFilters {

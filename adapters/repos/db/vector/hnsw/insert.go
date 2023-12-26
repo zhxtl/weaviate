@@ -264,7 +264,7 @@ func (h *hnsw) insertInitialElement(node *vertex, nodeVec []float32) error {
 
 /* TODO - Interface outwards with AddFilterSharingEdges */
 
-func (h *hnsw) addFilterSharingEdges(vector []float32, node *vertex, allowList helpers.AllowList) error {
+func (h *hnsw) addFilterSharingEdges(vector []float32, node *vertex, allowList helpers.AllowList, newNeighbors int) error {
 	//h.compressActionLock.RLock()
 	h.deleteVsInsertLock.RLock()
 
@@ -342,7 +342,8 @@ func (h *hnsw) addFilterSharingEdges(vector []float32, node *vertex, allowList h
 	}
 	eps := priorityqueue.NewMin[any](1)
 	eps.Insert(entryPointID, entryPointDist)
-	results, err := h.searchLayerByVector(vector, eps, h.efConstruction, 0, allowList)
+	/* Replace `h.efConstruction` with `newNeighbors` */
+	results, err := h.searchLayerByVector(vector, eps, newNeighbors, 0, allowList)
 
 	/* connect results to node and node to results */
 	// node.setConnectionsAtLevel(level, neighbors) -- need to add rather than do it like this.
