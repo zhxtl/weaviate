@@ -66,6 +66,10 @@ func (s *Shard) merge(ctx context.Context, idBytes []byte, doc objects.MergeDocu
 		return errors.Wrap(err, "flush all vector index buffered WALs")
 	}
 
+	if err := s.upsertObjectHashTree(next, idBytes); err != nil {
+		return errors.Wrap(err, "object merge in hashtree")
+	}
+
 	return nil
 }
 

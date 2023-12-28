@@ -21,6 +21,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
+	"github.com/spaolacci/murmur3"
 	"github.com/weaviate/weaviate/adapters/repos/db/helpers"
 	"github.com/weaviate/weaviate/adapters/repos/db/inverted"
 	"github.com/weaviate/weaviate/adapters/repos/db/lsmkv"
@@ -72,6 +73,10 @@ func (s *Shard) putOne(ctx context.Context, uuid []byte, object *storobj.Object)
 
 	if err := s.VectorIndex().Flush(); err != nil {
 		return errors.Wrap(err, "flush all vector index buffered WALs")
+	}
+
+	if err := s.upsertObjectHashTree(object, uuid); err != nil {
+		return errors.Wrap(err, "object creation in hashtree")
 	}
 
 	return nil
@@ -169,6 +174,29 @@ func (s *Shard) putObjectLSM(object *storobj.Object, idBytes []byte,
 	s.metrics.PutObjectUpdateInverted(before)
 
 	return status, nil
+}
+
+func (s *Shard) upsertObjectHashTree(object *storobj.Object, uuidBytes []byte) error {
+	if len(uuidBytes) != 16 {
+		return fmt.Errorf("invalid object uuid")
+	}
+
+	if object.Object.LastUpdateTimeUnix < 1 {
+		return fmt.Errorf("invalid object last update time")
+	}
+
+	h := murmur3.New64()
+	h.Write(uuidBytes)
+	token := h.Sum64()
+
+	var objectDigest [16 + 8]byte
+
+	copy(objectDigest[:], uuidBytes)
+	binary.LittleEndian.PutUint64(objectDigest[16:], uint64(object.Object.LastUpdateTimeUnix))
+
+	s.hashtree.AggregateLeafWith(token, objectDigest[:])
+
+	return nil
 }
 
 type objectInsertStatus struct {
