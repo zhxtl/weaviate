@@ -79,7 +79,7 @@ func (s *Shard) DeleteObject(ctx context.Context, id strfmt.UUID) error {
 		return fmt.Errorf("subtract prop lengths: %w", err)
 	}
 
-	if err = s.deleteObjectHashTree(idBytes); err != nil {
+	if err = s.mayDeleteObjectHashTree(idBytes); err != nil {
 		return fmt.Errorf("object deletion in hashtree: %w", err)
 	}
 
@@ -136,7 +136,7 @@ func (s *Shard) deleteOne(ctx context.Context, bucket *lsmkv.Bucket, obj, idByte
 		return fmt.Errorf("flush all vector index buffered WALs: %w", err)
 	}
 
-	if err = s.deleteObjectHashTree(idBytes); err != nil {
+	if err = s.mayDeleteObjectHashTree(idBytes); err != nil {
 		return fmt.Errorf("store object deletion in hashtree: %w", err)
 	}
 
@@ -172,6 +172,14 @@ func (s *Shard) cleanupInvertedIndexOnDelete(previous []byte, docID uint64) erro
 	}
 
 	return nil
+}
+
+func (s *Shard) mayDeleteObjectHashTree(uuidBytes []byte) error {
+	if s.hashtree == nil {
+		return nil
+	}
+
+	return s.deleteObjectHashTree(uuidBytes)
 }
 
 func (s *Shard) deleteObjectHashTree(uuidBytes []byte) error {

@@ -75,7 +75,7 @@ func (s *Shard) putOne(ctx context.Context, uuid []byte, object *storobj.Object)
 		return errors.Wrap(err, "flush all vector index buffered WALs")
 	}
 
-	if err := s.upsertObjectHashTree(object, uuid); err != nil {
+	if err := s.mayUpsertObjectHashTree(object, uuid); err != nil {
 		return errors.Wrap(err, "object creation in hashtree")
 	}
 
@@ -176,7 +176,11 @@ func (s *Shard) putObjectLSM(object *storobj.Object, idBytes []byte,
 	return status, nil
 }
 
-func (s *Shard) upsertObjectHashTree(object *storobj.Object, uuidBytes []byte) error {
+func (s *Shard) mayUpsertObjectHashTree(object *storobj.Object, uuidBytes []byte) error {
+	if s.hashtree == nil {
+		return nil
+	}
+
 	if len(uuidBytes) != 16 {
 		return fmt.Errorf("invalid object uuid")
 	}
