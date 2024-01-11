@@ -175,8 +175,8 @@ func TestFilteredRecall(t *testing.T) {
 		fmt.Printf("Importing took %s \n", time.Since(before))
 		/* ADDING FILTER SHARING NEIGHBORS AFTER THE GRAPH HAS BEEN BUILT */
 		// Turn off Interventions here to record original Latency / Recall
-		hnsw_afn := false
-		if hnsw_afn {
+		hnsw_efg := false
+		if hnsw_efg {
 			addEdgesTimer := time.Now()
 			// TODO, replace with deriving from data
 			minorityFilter := map[int]int{0: 1}
@@ -258,7 +258,7 @@ func TestFilteredRecall(t *testing.T) {
 			}
 			queryAllowList := helpers.NewAllowList(allowListIDs...)
 			queryStart := time.Now()
-			if hnsw_afn {
+			if hnsw_efg {
 				results, _, err = vectorIndex.FilteredSearchWithExtendedGraph(queryVectorsWithFilters[i].Vector, k, queryAllowList)
 			} else {
 				results, _, err = vectorIndex.SearchByVector(queryVectorsWithFilters[i].Vector, k, queryAllowList)
@@ -274,7 +274,7 @@ func TestFilteredRecall(t *testing.T) {
 			}
 		}
 		fmt.Println("Saving LatenciesPerFilter and RecallPerFilter...")
-		if hnsw_afn {
+		if hnsw_efg {
 			saveJSON("LatenciesPerFilter-intervention.json", LatenciesPerFilter)
 			saveJSON("RecallPerFilter-intervention.json", RecallPerFilter)
 		} else {
