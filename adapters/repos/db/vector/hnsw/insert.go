@@ -263,8 +263,8 @@ func (h *hnsw) insertInitialElement(node *vertex, nodeVec []float32) error {
 }
 
 /* TODO - Interface outwards with AddFilterSharingEdges */
-
-func (h *hnsw) addFilterSharingEdges(vector []float32, node *vertex, allowList helpers.AllowList, newNeighbors int) error {
+//
+func (h *hnsw) addFilterTargetEdges(vector []float32, node *vertex, allowList helpers.AllowList, newNeighbors int) error {
 	//h.compressActionLock.RLock()
 	h.deleteVsInsertLock.RLock()
 

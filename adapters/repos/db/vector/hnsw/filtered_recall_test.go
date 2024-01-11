@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"runtime"
 	"sync"
 	"testing"
@@ -80,12 +81,12 @@ func TestFilteredRecall(t *testing.T) {
 	t.Run("Loading vectors for testing...", func(t *testing.T) {
 		/* READ VECTORS, FILTERS, AND GROUND TRUTHS FROM JSONS */
 		/* USING THE SAME INDEX VECTORS FOR ALL FILTER LEVELS */
-		indexVectorsJSON, err := ioutil.ReadFile("./datasets/filtered/indexVectors_100K.json")
+		indexVectorsJSON, err := ioutil.ReadFile("./datasets/filtered/indexVectors_1M.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(indexVectorsJSON, &indexVectors)
 		require.Nil(t, err)
 		/* ADD THE FILTERS -- TODO: TEST MORE THAN 1 FILTER % PER RUN */
-		indexFiltersJSON, err := ioutil.ReadFile("./datasets/filtered/indexFilters-100K-2-99_0.json")
+		indexFiltersJSON, err := ioutil.ReadFile("./datasets/filtered/indexFilters-1M-2-80_0.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(indexFiltersJSON, &indexFilters)
 		require.Nil(t, err)
@@ -93,18 +94,18 @@ func TestFilteredRecall(t *testing.T) {
 		indexVectorsWithFilters := mergeData(indexVectors, indexFilters)
 		/* IDEA -- SHUFFLE VECTORS TO AVOID CONFOUNDING WITH INSERT ORDER */
 		/* USE THE SAME QUERY VECTORS FOR ALL FILTER LEVELS */
-		queryVectorsJSON, err := ioutil.ReadFile("./datasets/filtered/queryVectors_100K.json")
+		queryVectorsJSON, err := ioutil.ReadFile("./datasets/filtered/queryVectors_1M.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(queryVectorsJSON, &queryVectors)
 		require.Nil(t, err)
 		/* ADD THE FILTERS -- TODO: TEST MORE THAN 1 FILTER % PER RUN */
-		queryFiltersJSON, err := ioutil.ReadFile("./datasets/filtered/queryFilters-100K-2-99_0.json")
+		queryFiltersJSON, err := ioutil.ReadFile("./datasets/filtered/queryFilters-1M-2-80_0.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(queryFiltersJSON, &queryFilters)
 		/* MERGE QUERY VECTORS WITH FILTERS */
 		queryVectorsWithFilters := mergeData(queryVectors, queryFilters)
 		/* LOAD GROUND TRUTHS */
-		truthsJSON, err := ioutil.ReadFile("./datasets/filtered/filtered_recall_truths-100K-2-99_0.json")
+		truthsJSON, err := ioutil.ReadFile("./datasets/filtered/filtered_recall_truths-1M-2-80_0.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(truthsJSON, &truths)
 		require.Nil(t, err)
@@ -126,7 +127,7 @@ func TestFilteredRecall(t *testing.T) {
 		}, cyclemanager.NewCallbackGroupNoop(), cyclemanager.NewCallbackGroupNoop(),
 			cyclemanager.NewCallbackGroupNoop(), newDummyStore(t))
 		vectorIndex = index
-		/* KEEPING THE FILTER TO ID MAPPING IN-MEMORY TO CONTSRUCT THE ALLOW LIST */
+		/* KEEPING THE FILTER TO ID MAPPING IN-MEMORY TO CONSTRUCT THE ALLOW LIST */
 		filterToIDs := make(map[int]map[int][]uint64)
 		IDsToFilter := make(map[uint64]map[int]int)
 		IDsToVector := make(map[uint64][]float32)
@@ -173,57 +174,82 @@ func TestFilteredRecall(t *testing.T) {
 		wg.Wait()
 		fmt.Printf("Importing took %s \n", time.Since(before))
 		/* ADDING FILTER SHARING NEIGHBORS AFTER THE GRAPH HAS BEEN BUILT */
-		//var nodeFilter map[int]int
-		//var nodeVec []float32
-		addEdgesTimer := time.Now()
-		for idx, node := range vectorIndex.nodes {
-			if idx%1000 == 999 {
-				fmt.Printf("\nCheckpoint at idx %d. Adding filter sharing edges has run for %s seconds.", idx, time.Since(addEdgesTimer))
-			}
-			// Get the Filter
-			// nodeFilter := IDToFilter[node.id]
-			// Or... node.filters (workaround for the test)
-			if node == nil {
-				fmt.Print("Nil node!!! \n")
-				fmt.Print(idx)
-				fmt.Print("\n Nil node!!!")
-				break
-			}
-			nodeFilter, ok := IDsToFilter[node.id]
-			if !ok {
-				fmt.Print(node.id)
-			}
-			nodeAllowListIDs := []uint64{}
-			for filterKey, filterValue := range nodeFilter {
-				if ids, ok := filterToIDs[filterKey][filterValue]; ok {
-					nodeAllowListIDs = append(nodeAllowListIDs, ids...)
+		// Turn off Interventions here to record original Latency / Recall
+		hnsw_afn := false
+		if hnsw_afn {
+			addEdgesTimer := time.Now()
+			// TODO, replace with deriving from data
+			minorityFilter := map[int]int{0: 1}
+			for idx, node := range vectorIndex.nodes {
+				if idx%1000 == 999 {
+					fmt.Printf("\nCheckpoint at idx %d. Adding filter sharing edges has run for %s seconds.", idx, time.Since(addEdgesTimer))
+				}
+				// Get the Filter
+				// nodeFilter := IDToFilter[node.id]
+				// Or... node.filters (workaround for the test)
+				if node == nil {
+					fmt.Print("Nil node!!! \n")
+					fmt.Print(idx)
+					fmt.Print("\n Nil node!!!")
+					break
+				}
+				nodeFilter, ok := IDsToFilter[node.id]
+				if !ok {
+					fmt.Print(node.id)
+				}
+				nodeAllowList := buildAllowList(nodeFilter, filterToIDs)
+				// COUNT FILTER SHARING NEIGHBORS
+				// IF LESS THAN K, RUN `addFilterSharingEdges`
+
+				matchCount := countTargetFilterEdges(node, nodeAllowList)
+				if matchCount < 5 {
+					fmt.Printf("\nBEFORE INTERVENTION: NodeId: %d, has %f filter sharing neighbors.", node.id, matchCount)
+					nodeVec := IDsToVector[node.id]
+					vectorIndex.addFilterTargetEdges(nodeVec, node, nodeAllowList, 128) // Grid Search on this
+					matchCount := countTargetFilterEdges(node, nodeAllowList)
+					fmt.Printf("\nAFTER INTERVENTION: NodeId: %d, now has %f filter sharing neighbors.", node.id, matchCount)
+				}
+
+				// ADD FILTERS FROM MAJORITY TO MINORITYr
+				// CHeck if this is the majority filter
+				// Hard-coded, but logic to get the majority filter is above
+				if val, ok := nodeFilter[0]; !ok || val == 0 {
+					// Majority node, connect to minority nodes
+					// Before Intervention Log
+					minorityAllowList := buildAllowList(minorityFilter, filterToIDs)
+					matchCount := countTargetFilterEdges(node, minorityAllowList)
+					if matchCount == 0 {
+						fmt.Printf("\nBEFORE INTERVENTION: NodeId: %d, has %f minority filter neighbors.", node.id, matchCount)
+						nodeVec := IDsToVector[node.id]
+						vectorIndex.addFilterTargetEdges(nodeVec, node, minorityAllowList, 1)
+						matchCount = countTargetFilterEdges(node, minorityAllowList)
+						fmt.Printf("\nAFTER INTERVENTION: NodeId: %d, has %f minority filter neighbors.", node.id, matchCount)
+					}
 				}
 			}
-			nodeAllowList := helpers.NewAllowList(nodeAllowListIDs...)
-			// COUNT FILTER SHARING NEIGHBORS
-			// IF LESS THAN K, RUN `addFilterSharingEdges`
-			matchCount := countFilterSharingEdges(node, IDsToFilter, filterToIDs)
-			if matchCount < 2 {
-				fmt.Printf("\nNodeId: %d, has %f filter sharing neighbors.", node.id, matchCount)
-				nodeVec := IDsToVector[node.id]
-				vectorIndex.addFilterSharingEdges(nodeVec, node, nodeAllowList, 128)
-				matchCount := countFilterSharingEdges(node, IDsToFilter, filterToIDs)
-				fmt.Printf("\nAfter adding edges, NodeId: %d, now has %f filter sharing neighbors.", node.id, matchCount)
-			}
-			// ADD FILTERS FROM MAJORITY TO MINORITY
-
 		}
-		// TODO
-
 		/* TEST RECALL AND LATENCY */
 		/* SET K */
 		k := 100
 		/* SET DATA STRUCTURES */
 		var relevant_retrieved int
-		totalRecallPerFilter := make(map[int]float32)
-		totalLatencyPerFilter := make(map[int]float32)
-		totalCountPerFilter := make(map[int]float32)
+		RecallPerFilter := make(map[int]map[int][]float32)
+		LatenciesPerFilter := make(map[int]map[int][]float32)
+		// Init Latencies Per Filter
+		// ToDo - Derive the filters from somewhere else rather than hardcoding them.
+		allFilters := []map[int]int{{0: 0}, {0: 1}}
+		for _, filterMap := range allFilters {
+			for outerFilter, innerFilter := range filterMap {
+				if _, exists := LatenciesPerFilter[outerFilter]; !exists {
+					LatenciesPerFilter[outerFilter] = make(map[int][]float32)
+					RecallPerFilter[outerFilter] = make(map[int][]float32)
+				}
+				LatenciesPerFilter[outerFilter][innerFilter] = []float32{}
+				RecallPerFilter[outerFilter][innerFilter] = []float32{}
+			}
+		}
 		/* CALCULATE RECALL AND LATENCY */
+		var results []uint64
 		for i := 0; i < len(queryVectorsWithFilters); i++ {
 			queryFilters := queryVectorsWithFilters[i].FilterMap
 			allowListIDs := []uint64{}
@@ -232,30 +258,33 @@ func TestFilteredRecall(t *testing.T) {
 			}
 			queryAllowList := helpers.NewAllowList(allowListIDs...)
 			queryStart := time.Now()
-			results, _, err := vectorIndex.SearchByVector(queryVectorsWithFilters[i].Vector, k, queryAllowList)
+			if hnsw_afn {
+				results, _, err = vectorIndex.FilteredSearchWithExtendedGraph(queryVectorsWithFilters[i].Vector, k, queryAllowList)
+			} else {
+				results, _, err = vectorIndex.SearchByVector(queryVectorsWithFilters[i].Vector, k, queryAllowList)
+			}
 			require.Nil(t, err)
 			local_latency := float32(time.Now().Sub(queryStart).Seconds())
 			relevant_retrieved = matchesInLists(truths[i].Truths, results)
 			/* FOR EXTERME FILTER CASES THERE MAY BE LESS THAN 100 -- REPLACE WITH `len(truths[i].Truths)` */
 			local_recall := float32(relevant_retrieved) / 100
-			for _, filter := range queryFilters {
-				if _, ok := totalRecallPerFilter[filter]; !ok {
-					totalRecallPerFilter[filter] = local_recall
-					totalLatencyPerFilter[filter] = local_latency
-					totalCountPerFilter[filter] = 1.0
-				} else {
-					totalRecallPerFilter[filter] += local_recall
-					totalLatencyPerFilter[filter] += local_latency
-					totalCountPerFilter[filter] += 1.0
-				}
+			for outerFilter, innerFilter := range queryFilters {
+				LatenciesPerFilter[outerFilter][innerFilter] = append(LatenciesPerFilter[outerFilter][innerFilter], local_latency)
+				RecallPerFilter[outerFilter][innerFilter] = append(RecallPerFilter[outerFilter][innerFilter], local_recall)
 			}
 		}
-		for filterKey, totalRecallValue := range totalRecallPerFilter {
-			RecallPerFilter := totalRecallValue / totalCountPerFilter[filterKey]
-			LatencyPerFilter := totalLatencyPerFilter[filterKey] / totalCountPerFilter[filterKey]
-			fmt.Printf("Recall for filter %d = %f \n", filterKey, RecallPerFilter)
-			fmt.Printf("Latency for filter %d = %f \n", filterKey, LatencyPerFilter)
+		fmt.Println("Saving LatenciesPerFilter and RecallPerFilter...")
+		if hnsw_afn {
+			saveJSON("LatenciesPerFilter-intervention.json", LatenciesPerFilter)
+			saveJSON("RecallPerFilter-intervention.json", RecallPerFilter)
+		} else {
+			saveJSON("LatenciesPerFilter.json", LatenciesPerFilter)
+			saveJSON("RecallPerFilter.json", RecallPerFilter)
 		}
+		// Calculate and Report Averages
+		printAverageLatencyOrRecall(LatenciesPerFilter, "Latency")
+		printAverageLatencyOrRecall(RecallPerFilter, "Recall")
+
 		/* COUNT MATCHING NEIGHBORS PER FILTER */
 		var matchLog map[int]map[int][]float32 = make(map[int]map[int][]float32)
 		for idx, node := range vectorIndex.nodes {
@@ -277,7 +306,8 @@ func TestFilteredRecall(t *testing.T) {
 				fmt.Print(node.id)
 				// can;t remember command for break put keep looping
 			}
-			count := countFilterSharingEdges(node, IDsToFilter, filterToIDs)
+			nodeAllowList := buildAllowList(nodeFilter, filterToIDs)
+			count := countTargetFilterEdges(node, nodeAllowList)
 			for filterKey, filterValue := range nodeFilter {
 				// INITIALIZE MAP ENTRY IF NIL
 				if _, exists := matchLog[filterKey]; !exists {
@@ -303,29 +333,27 @@ func TestFilteredRecall(t *testing.T) {
 		}
 		// DISPLAY COUNT AVERAGES
 		for filterKey, filterValueMap := range matchAverage {
-			for filterValue, avgLatency := range filterValueMap {
-				fmt.Printf("\nFilter [%d:%d] Average Matching Neighbors: %f\n", filterKey, filterValue, avgLatency)
+			for filterValue, avgNeighbors := range filterValueMap {
+				fmt.Printf("\nFilter [%d:%d] Average Matching Neighbors: %f\n", filterKey, filterValue, avgNeighbors)
 			}
 		}
 	})
 }
 
-// RUN FOR ONE NODE
-func countFilterSharingEdges(node *vertex, IDstoFilter map[uint64]map[int]int, filterToIDs map[int]map[int][]uint64) float32 {
-	// GET FILTER FOR NODE
-	nodeFilter, ok := IDstoFilter[node.id]
-	if !ok {
-		fmt.Print(node.id)
+func buildAllowList(filter map[int]int, filterToIDs map[int]map[int][]uint64) helpers.AllowList {
+	AllowListIDs := []uint64{}
+	for filterKey, filterValue := range filter {
+		AllowListIDs = append(AllowListIDs, filterToIDs[filterKey][filterValue]...)
 	}
-	// CONSTRUCT ALLOWLIST FOR NODE
-	nodeAllowListIDs := []uint64{}
-	for filterKey, filterValue := range nodeFilter {
-		nodeAllowListIDs = append(nodeAllowListIDs, filterToIDs[filterKey][filterValue]...)
-	}
-	nodeAllowList := helpers.NewAllowList(nodeAllowListIDs...)
+	AllowList := helpers.NewAllowList(AllowListIDs...)
+	return AllowList
+}
+
+func countTargetFilterEdges(node *vertex, allowList helpers.AllowList) float32 {
+	// COUNT NEIGHBORS ON ALLOWLIST
 	var count float32 = 0.0
 	for _, connection := range node.connections[0] {
-		if nodeAllowList.Contains(connection) {
+		if allowList.Contains(connection) {
 			count += 1.0
 		}
 	}
@@ -367,4 +395,31 @@ func matchesInLists(control []uint64, results []uint64) int {
 	}
 
 	return matches
+}
+
+func saveJSON(filename string, data interface{}) {
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		log.Fatalf("Error marshaling data to JSON: %v", err)
+	}
+	if err := ioutil.WriteFile(filename, jsonData, 0644); err != nil {
+		log.Fatalf("Error writing JSON to file: %v", err)
+	}
+}
+
+func printAverageLatencyOrRecall(data map[int]map[int][]float32, reporting string) {
+	for outerFilter, innerMap := range data {
+		for innerFilter, values := range innerMap {
+			avg := average(values)
+			fmt.Printf("Average %s for Filter %d-%d = %f\n", reporting, outerFilter, innerFilter, avg)
+		}
+	}
+}
+
+func average(values []float32) float32 {
+	var sum float32
+	for _, v := range values {
+		sum += v
+	}
+	return sum / float32(len(values))
 }
