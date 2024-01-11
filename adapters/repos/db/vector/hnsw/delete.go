@@ -234,6 +234,8 @@ func (h *hnsw) cleanUpTombstonedNodes(shouldAbort cyclemanager.ShouldAbortCallba
 	}
 
 	executed = true
+	tombstoneStart := time.Now()
+	defer h.metrics.TombstoneInterval(tombstoneStart)
 	if ok, err := h.reassignNeighborsOf(deleteList, breakCleanUpTombstonedNodes); err != nil {
 		return executed, err
 	} else if !ok {

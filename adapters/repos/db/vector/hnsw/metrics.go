@@ -19,19 +19,20 @@ import (
 )
 
 type Metrics struct {
-	enabled          bool
-	tombstones       prometheus.Gauge
-	threads          prometheus.Gauge
-	insert           prometheus.Gauge
-	insertTime       prometheus.ObserverVec
-	delete           prometheus.Gauge
-	deleteTime       prometheus.ObserverVec
-	cleaned          prometheus.Counter
-	size             prometheus.Gauge
-	grow             prometheus.Observer
-	startupProgress  prometheus.Gauge
-	startupDurations prometheus.ObserverVec
-	startupDiskIO    prometheus.ObserverVec
+	enabled           bool
+	tombstones        prometheus.Gauge
+	tombstoneInterval prometheus.Gauge
+	threads           prometheus.Gauge
+	insert            prometheus.Gauge
+	insertTime        prometheus.ObserverVec
+	delete            prometheus.Gauge
+	deleteTime        prometheus.ObserverVec
+	cleaned           prometheus.Counter
+	size              prometheus.Gauge
+	grow              prometheus.Observer
+	startupProgress   prometheus.Gauge
+	startupDurations  prometheus.ObserverVec
+	startupDiskIO     prometheus.ObserverVec
 }
 
 func NewMetrics(prom *monitoring.PrometheusMetrics,
@@ -47,6 +48,11 @@ func NewMetrics(prom *monitoring.PrometheusMetrics,
 	}
 
 	tombstones := prom.VectorIndexTombstones.With(prometheus.Labels{
+		"class_name": className,
+		"shard_name": shardName,
+	})
+
+	tombstoneInterval := prom.VectorIndexTombstoneInterval.With(prometheus.Labels{
 		"class_name": className,
 		"shard_name": shardName,
 	})
@@ -113,19 +119,20 @@ func NewMetrics(prom *monitoring.PrometheusMetrics,
 	})
 
 	return &Metrics{
-		enabled:          true,
-		tombstones:       tombstones,
-		threads:          threads,
-		cleaned:          cleaned,
-		insert:           insert,
-		insertTime:       insertTime,
-		delete:           del,
-		deleteTime:       deleteTime,
-		size:             size,
-		grow:             grow,
-		startupProgress:  startupProgress,
-		startupDurations: startupDurations,
-		startupDiskIO:    startupDiskIO,
+		enabled:           true,
+		tombstones:        tombstones,
+		tombstoneInterval: tombstoneInterval,
+		threads:           threads,
+		cleaned:           cleaned,
+		insert:            insert,
+		insertTime:        insertTime,
+		delete:            del,
+		deleteTime:        deleteTime,
+		size:              size,
+		grow:              grow,
+		startupProgress:   startupProgress,
+		startupDurations:  startupDurations,
+		startupDiskIO:     startupDiskIO,
 	}
 }
 
@@ -143,6 +150,15 @@ func (m *Metrics) RemoveTombstone() {
 	}
 
 	m.tombstones.Dec()
+}
+
+func (m *Metrics) TombstoneInterval(start time.Time) {
+	if !m.enabled {
+		return
+	}
+
+	took := float64(time.Since(start)) / float64(time.Millisecond)
+	m.tombstoneInterval.Set(took)
 }
 
 func (m *Metrics) StartCleanup(threads int) {

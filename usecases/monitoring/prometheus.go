@@ -34,6 +34,7 @@ type PrometheusMetrics struct {
 	VectorIndexTombstones              *prometheus.GaugeVec
 	VectorIndexTombstoneCleanupThreads *prometheus.GaugeVec
 	VectorIndexTombstoneCleanedCount   *prometheus.CounterVec
+	VectorIndexTombstoneInterval       *prometheus.GaugeVec
 	VectorIndexOperations              *prometheus.GaugeVec
 	VectorIndexDurations               *prometheus.SummaryVec
 	VectorIndexSize                    *prometheus.GaugeVec
@@ -102,6 +103,7 @@ func (pm *PrometheusMetrics) DeleteShard(className, shardName string) error {
 	pm.VectorIndexTombstones.DeletePartialMatch(labels)
 	pm.VectorIndexTombstoneCleanupThreads.DeletePartialMatch(labels)
 	pm.VectorIndexTombstoneCleanedCount.DeletePartialMatch(labels)
+	pm.VectorIndexTombstoneInterval.DeletePartialMatch(labels)
 	pm.VectorIndexOperations.DeletePartialMatch(labels)
 	pm.VectorIndexMaintenanceDurations.DeletePartialMatch(labels)
 	pm.VectorIndexDurations.DeletePartialMatch(labels)
@@ -248,6 +250,10 @@ func newPrometheusMetrics() *PrometheusMetrics {
 		VectorIndexTombstoneCleanedCount: promauto.NewCounterVec(prometheus.CounterOpts{
 			Name: "vector_index_tombstone_cleaned",
 			Help: "Total number of deleted objects that have been cleaned up",
+		}, []string{"class_name", "shard_name"}),
+		VectorIndexTombstoneInterval: promauto.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "vector_index_tombstone_interval_ms",
+			Help: "Time duration for last tombstone cleanup interval",
 		}, []string{"class_name", "shard_name"}),
 		VectorIndexOperations: promauto.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "vector_index_operations",
