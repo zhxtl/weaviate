@@ -17,6 +17,7 @@ package hnsw
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -35,7 +36,10 @@ import (
 	ent "github.com/weaviate/weaviate/entities/vectorindex/hnsw"
 )
 
+var HNSW_EFG *bool
+
 func init() {
+	HNSW_EFG = flag.Bool("HNSW_EFG", false, "Enable HNSW-EFG")
 	go func() {
 		runtime.SetBlockProfileRate(1)
 		http.ListenAndServe("localhost:6060", nil)
@@ -64,6 +68,16 @@ type GroundTruths struct {
 }
 
 func TestFilteredRecall(t *testing.T) {
+	/* GET HNSW-EFG TOGGLE FROM CLI */
+	flag.Parse()
+	var hnsw_efg bool
+	if *HNSW_EFG {
+		fmt.Println("Running HNSW-EFG")
+		hnsw_efg = true
+	} else {
+		fmt.Println("Running HNSW without EFG")
+		hnsw_efg = false
+	}
 	/* HNSW PARAMETERS */
 	efConstruction := 256
 	ef := 256
@@ -175,7 +189,6 @@ func TestFilteredRecall(t *testing.T) {
 		fmt.Printf("Importing took %s \n", time.Since(before))
 		/* ADDING FILTER SHARING NEIGHBORS AFTER THE GRAPH HAS BEEN BUILT */
 		// Turn off Interventions here to record original Latency / Recall
-		hnsw_efg := false
 		if hnsw_efg {
 			addEdgesTimer := time.Now()
 			// TODO, replace with deriving from data
