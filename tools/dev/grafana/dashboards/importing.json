@@ -623,7 +623,7 @@
         "type": "prometheus",
         "uid": "Prometheus"
       },
-      "description": "vector_index_tombstone_interval_ms is a gauge to this represents the time taken of the latest tombstone cleanup cycle",
+      "description": "This interval represents the duration of the most recent tombstone cleanup cycle",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -720,7 +720,7 @@
         "type": "prometheus",
         "uid": "Prometheus"
       },
-      "description": "This is an estimate of how many tombstone are cleaned up per second. Required the max of vector index tombstone to be in the time range.",
+      "description": "This is an estimate of how many tombstone are cleaned up per second. Assumes a single cleanup in time range.",
       "fieldConfig": {
         "defaults": {
           "color": {
