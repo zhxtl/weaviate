@@ -95,12 +95,12 @@ func TestFilteredRecall(t *testing.T) {
 	t.Run("Loading vectors for testing...", func(t *testing.T) {
 		/* READ VECTORS, FILTERS, AND GROUND TRUTHS FROM JSONS */
 		/* USING THE SAME INDEX VECTORS FOR ALL FILTER LEVELS */
-		indexVectorsJSON, err := ioutil.ReadFile("./datasets/filtered/indexVectors_1M.json")
+		indexVectorsJSON, err := ioutil.ReadFile("./datasets/filtered/indexVectors_100K.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(indexVectorsJSON, &indexVectors)
 		require.Nil(t, err)
 		/* ADD THE FILTERS -- TODO: TEST MORE THAN 1 FILTER % PER RUN */
-		indexFiltersJSON, err := ioutil.ReadFile("./datasets/filtered/indexFilters-1M-2-80_0.json")
+		indexFiltersJSON, err := ioutil.ReadFile("./datasets/filtered/indexFilters-100K-2-80_0.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(indexFiltersJSON, &indexFilters)
 		require.Nil(t, err)
@@ -108,18 +108,18 @@ func TestFilteredRecall(t *testing.T) {
 		indexVectorsWithFilters := mergeData(indexVectors, indexFilters)
 		/* IDEA -- SHUFFLE VECTORS TO AVOID CONFOUNDING WITH INSERT ORDER */
 		/* USE THE SAME QUERY VECTORS FOR ALL FILTER LEVELS */
-		queryVectorsJSON, err := ioutil.ReadFile("./datasets/filtered/queryVectors_1M.json")
+		queryVectorsJSON, err := ioutil.ReadFile("./datasets/filtered/queryVectors_100K.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(queryVectorsJSON, &queryVectors)
 		require.Nil(t, err)
 		/* ADD THE FILTERS -- TODO: TEST MORE THAN 1 FILTER % PER RUN */
-		queryFiltersJSON, err := ioutil.ReadFile("./datasets/filtered/queryFilters-1M-2-80_0.json")
+		queryFiltersJSON, err := ioutil.ReadFile("./datasets/filtered/queryFilters-100K-2-80_0.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(queryFiltersJSON, &queryFilters)
 		/* MERGE QUERY VECTORS WITH FILTERS */
 		queryVectorsWithFilters := mergeData(queryVectors, queryFilters)
 		/* LOAD GROUND TRUTHS */
-		truthsJSON, err := ioutil.ReadFile("./datasets/filtered/filtered_recall_truths-1M-2-80_0.json")
+		truthsJSON, err := ioutil.ReadFile("./datasets/filtered/filtered_recall_truths-100K-2-80_0.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(truthsJSON, &truths)
 		require.Nil(t, err)
@@ -194,53 +194,63 @@ func TestFilteredRecall(t *testing.T) {
 			// TODO, replace with deriving from data
 			minorityFilter := map[int]int{0: 1}
 			// ToDo Add Multi-Threaded Graph Repair
+			workerCount = runtime.GOMAXPROCS(0)
+			jobsForGraphRepairWorker := make([][]*vertex, workerCount)
 			for idx, node := range vectorIndex.nodes {
-				if idx%1000 == 999 {
-					fmt.Printf("\nCheckpoint at idx %d. Adding filter sharing edges has run for %s seconds.", idx, time.Since(addEdgesTimer))
-				}
-				// Get the Filter
-				// nodeFilter := IDToFilter[node.id]
-				// Or... node.filters (workaround for the test)
 				if node == nil {
-					fmt.Print("Nil node!!! \n")
-					fmt.Print(idx)
-					fmt.Print("\n Nil node!!!")
-					break
-				}
-				nodeFilter, ok := IDsToFilter[node.id]
-				if !ok {
-					fmt.Print(node.id)
-				}
-				nodeAllowList := buildAllowList(nodeFilter, filterToIDs)
-				// COUNT FILTER SHARING NEIGHBORS
-				// IF LESS THAN K, RUN `addFilterSharingEdges`
-
-				matchCount := countTargetFilterEdges(node, nodeAllowList)
-				if matchCount < 5 {
-					fmt.Printf("\nBEFORE INTERVENTION: NodeId: %d, has %f filter sharing neighbors.", node.id, matchCount)
-					nodeVec := IDsToVector[node.id]
-					vectorIndex.addFilterTargetEdges(nodeVec, node, nodeAllowList, 128) // Grid Search on this
-					matchCount := countTargetFilterEdges(node, nodeAllowList)
-					fmt.Printf("\nAFTER INTERVENTION: NodeId: %d, now has %f filter sharing neighbors.", node.id, matchCount)
-				}
-
-				// ADD FILTERS FROM MAJORITY TO MINORITYr
-				// CHeck if this is the majority filter
-				// Hard-coded, but logic to get the majority filter is above
-				if val, ok := nodeFilter[0]; !ok || val == 0 {
-					// Majority node, connect to minority nodes
-					// Before Intervention Log
-					minorityAllowList := buildAllowList(minorityFilter, filterToIDs)
-					matchCount := countTargetFilterEdges(node, minorityAllowList)
-					if matchCount == 0 {
-						fmt.Printf("\nBEFORE INTERVENTION: NodeId: %d, has %f minority filter neighbors.", node.id, matchCount)
-						nodeVec := IDsToVector[node.id]
-						vectorIndex.addFilterTargetEdges(nodeVec, node, minorityAllowList, 1)
-						matchCount = countTargetFilterEdges(node, minorityAllowList)
-						fmt.Printf("\nAFTER INTERVENTION: NodeId: %d, has %f minority filter neighbors.", node.id, matchCount)
-					}
+					fmt.Printf("Nil node at idx %d! \n", idx)
+				} else {
+					workerID := idx % workerCount
+					jobsForGraphRepairWorker[workerID] = append(jobsForGraphRepairWorker[workerID], node)
 				}
 			}
+			wgForGraphRepair := &sync.WaitGroup{}
+			mutexForGraphRepair := &sync.Mutex{}
+			for workerID, jobs := range jobsForGraphRepairWorker {
+				wgForGraphRepair.Add(1)
+				go func(workerID int, myJobs []*vertex) {
+					defer wgForGraphRepair.Done()
+					for _, node := range myJobs {
+						nodeFilter, ok := IDsToFilter[node.id]
+						if !ok {
+							fmt.Printf("Couldn't get filter for node %d", node.id)
+						}
+						nodeAllowList := buildAllowList(nodeFilter, filterToIDs)
+						// COUNT FILTER SHARING NEIGHBORS
+						// IF LESS THAN K, RUN `addFilterSharingEdges`
+						matchCount := countTargetFilterEdges(node, nodeAllowList)
+						if matchCount < 5 {
+							fmt.Printf("\nBEFORE INTERVENTION: NodeId: %d, has %f filter sharing neighbors.", node.id, matchCount)
+							nodeVec := IDsToVector[node.id]
+							mutexForGraphRepair.Lock()
+							vectorIndex.addFilterTargetEdges(nodeVec, node, nodeAllowList, 128) // Grid Search on this
+							mutexForGraphRepair.Unlock()
+							matchCount := countTargetFilterEdges(node, nodeAllowList)
+							fmt.Printf("\nAFTER INTERVENTION: NodeId: %d, now has %f filter sharing neighbors.", node.id, matchCount)
+						}
+						// ADD FILTERS FROM MAJORITY TO MINORITYr
+						// Check if this is the majority filter
+						// Hard-coded, but logic to get the majority filter is above
+						if val, ok := nodeFilter[0]; !ok || val == 0 {
+							// Majority node, connect to minority nodes
+							// Before Intervention Log
+							minorityAllowList := buildAllowList(minorityFilter, filterToIDs)
+							matchCount := countTargetFilterEdges(node, minorityAllowList)
+							if matchCount == 0 {
+								fmt.Printf("\nBEFORE INTERVENTION: NodeId: %d, has %f minority filter neighbors.", node.id, matchCount)
+								nodeVec := IDsToVector[node.id]
+								mutexForGraphRepair.Lock()
+								vectorIndex.addFilterTargetEdges(nodeVec, node, minorityAllowList, 1)
+								mutexForGraphRepair.Unlock()
+								matchCount = countTargetFilterEdges(node, minorityAllowList)
+								fmt.Printf("\nAFTER INTERVENTION: NodeId: %d, has %f minority filter neighbors.", node.id, matchCount)
+							}
+						}
+					}
+				}(workerID, jobs)
+			}
+			wgForGraphRepair.Wait()
+			fmt.Printf("Graph Repair took %s \n", time.Since(addEdgesTimer))
 		}
 		/* TEST RECALL AND LATENCY */
 		/* SET K */
