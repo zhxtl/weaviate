@@ -193,6 +193,7 @@ func TestFilteredRecall(t *testing.T) {
 			addEdgesTimer := time.Now()
 			// TODO, replace with deriving from data
 			minorityFilter := map[int]int{0: 1}
+			// ToDo Add Multi-Threaded Graph Repair
 			for idx, node := range vectorIndex.nodes {
 				if idx%1000 == 999 {
 					fmt.Printf("\nCheckpoint at idx %d. Adding filter sharing edges has run for %s seconds.", idx, time.Since(addEdgesTimer))
