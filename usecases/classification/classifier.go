@@ -54,6 +54,7 @@ func (f classificationFilters) TrainingSet() *libfilters.LocalFilter {
 type distancer func(a, b []float32) (float32, error)
 
 type Classifier struct {
+	classReader           func(string) *models.Class
 	schemaGetter          schemaUC.SchemaGetter
 	repo                  Repo
 	vectorRepo            vectorRepo
@@ -80,7 +81,7 @@ func New(sg schemaUC.SchemaGetter, cr Repo, vr vectorRepo, authorizer authorizer
 ) *Classifier {
 	return &Classifier{
 		logger:                logger,
-		schemaGetter:          sg,
+		classReader:           sg.ReadOnlyClass,
 		repo:                  cr,
 		vectorRepo:            vr,
 		authorizer:            authorizer,
@@ -142,7 +143,7 @@ func (c *Classifier) Schedule(ctx context.Context, principal *models.Principal, 
 		return nil, err
 	}
 
-	err = NewValidator(c.schemaGetter, params).Do()
+	err = NewValidator(c.classReader, params).Do()
 	if err != nil {
 		return nil, err
 	}
@@ -230,8 +231,7 @@ func (c *Classifier) validateFilter(filter *libfilters.LocalFilter) error {
 	if filter == nil {
 		return nil
 	}
-	sch := c.schemaGetter.GetSchemaSkipAuth()
-	return libfilters.ValidateFilters(sch.GetClass, filter)
+	return libfilters.ValidateFilters(c.classReader, filter)
 }
 
 func (c *Classifier) assignNewID(params *models.Classification) error {

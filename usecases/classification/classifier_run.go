@@ -79,8 +79,7 @@ func (c *Classifier) monitorClassification(ctx context.Context, cancelFn context
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			schema := c.schemaGetter.GetSchemaSkipAuth()
-			class := schema.FindClassByName(className)
+			class := c.classReader(className.String())
 			if class == nil {
 				cancelFn()
 				return

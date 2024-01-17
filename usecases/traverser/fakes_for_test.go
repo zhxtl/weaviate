@@ -227,6 +227,10 @@ func (f *fakeSchemaGetter) GetSchemaSkipAuth() schema.Schema {
 	return f.schema
 }
 
+func (f *fakeSchemaGetter) ReadOnlyClass(name string) *models.Class {
+	return f.schema.ReadOnlyClass(name)
+}
+
 func (f *fakeSchemaGetter) CopyShardingState(class string) *sharding.State {
 	panic("not implemented")
 }

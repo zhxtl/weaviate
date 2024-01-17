@@ -22,7 +22,6 @@ import (
 	"github.com/weaviate/weaviate/adapters/repos/db/helpers"
 	"github.com/weaviate/weaviate/adapters/repos/db/inverted"
 	"github.com/weaviate/weaviate/entities/models"
-	"github.com/weaviate/weaviate/entities/schema"
 	"github.com/weaviate/weaviate/entities/storobj"
 	"github.com/weaviate/weaviate/usecases/objects"
 )
@@ -334,10 +333,9 @@ func (b *referencesBatcher) flushWALs(ctx context.Context) {
 
 func (b *referencesBatcher) getSchemaPropsByName() (map[string]*models.Property, error) {
 	idx := b.shard.Index()
-	sch := idx.getSchema.GetSchemaSkipAuth().Objects
-	class, err := schema.GetClassByName(sch, idx.Config.ClassName.String())
-	if err != nil {
-		return nil, err
+	class := idx.getSchema.ReadOnlyClass(idx.Config.ClassName.String())
+	if class == nil {
+		return nil, fmt.Errorf("%s class not found", idx.Config.ClassName.String())
 	}
 
 	propsByName := map[string]*models.Property{}

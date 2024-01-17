@@ -40,9 +40,8 @@ func (s *Schema) FindClassByName(className ClassName) *models.Class {
 // 		return kind.Object, true
 // 	}
 
-// 	return "", false
-// }
-
+//		return "", false
+//	}
 func (s *Schema) GetProperty(className ClassName, propName PropertyName) (*models.Property, error) {
 	semSchemaClass, err := GetClassByName(s.Objects, string(className))
 	if err != nil {

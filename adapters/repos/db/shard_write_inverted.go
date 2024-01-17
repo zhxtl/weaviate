@@ -35,10 +35,9 @@ func isPropertyForLength(dt schema.DataType) bool {
 }
 
 func (s *Shard) AnalyzeObject(object *storobj.Object) ([]inverted.Property, []nilProp, error) {
-	schemaModel := s.index.getSchema.GetSchemaSkipAuth().Objects
-	c, err := schema.GetClassByName(schemaModel, object.Class().String())
-	if err != nil {
-		return nil, nil, err
+	c := s.index.getSchema.ReadOnlyClass(object.Class().String())
+	if c == nil {
+		return nil, nil, fmt.Errorf("%s class not found", object.Class().String())
 	}
 
 	var schemaMap map[string]interface{}
