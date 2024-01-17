@@ -22,7 +22,6 @@ import (
 	"github.com/weaviate/weaviate/entities/models"
 	"github.com/weaviate/weaviate/entities/modulecapabilities"
 	"github.com/weaviate/weaviate/entities/moduletools"
-	"github.com/weaviate/weaviate/entities/schema"
 	"github.com/weaviate/weaviate/entities/search"
 )
 
@@ -37,12 +36,8 @@ var (
 type Provider struct {
 	registered             map[string]modulecapabilities.Module
 	altNames               map[string]string
-	schemaGetter           schemaGetter
+	classFinder            func(string) *models.Class
 	hasMultipleVectorizers bool
-}
-
-type schemaGetter interface {
-	GetSchemaSkipAuth() schema.Schema
 }
 
 func NewProvider() *Provider {
@@ -92,8 +87,8 @@ func (p *Provider) GetAllExclude(module string) []modulecapabilities.Module {
 	return filtered
 }
 
-func (p *Provider) SetSchemaGetter(sg schemaGetter) {
-	p.schemaGetter = sg
+func (p *Provider) SetClassFinder(fn func(string) *models.Class) {
+	p.classFinder = fn
 }
 
 func (p *Provider) Init(ctx context.Context,
@@ -748,8 +743,7 @@ func (p *Provider) GetMeta() (map[string]interface{}, error) {
 }
 
 func (p *Provider) getClass(className string) (*models.Class, error) {
-	sch := p.schemaGetter.GetSchemaSkipAuth()
-	class := sch.FindClassByName(schema.ClassName(className))
+	class := p.classFinder(className)
 	if class == nil {
 		return nil, errors.Errorf("class %q not found in schema", className)
 	}

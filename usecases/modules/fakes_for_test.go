@@ -135,8 +135,17 @@ func (m dummyNonVectorizerModule) Type() modulecapabilities.ModuleType {
 
 type fakeSchemaGetter struct{ schema schema.Schema }
 
-func (f *fakeSchemaGetter) GetSchemaSkipAuth() schema.Schema {
-	return f.schema
+func (f *fakeSchemaGetter) ReadOnlyClass(name string) *models.Class {
+	if f.schema.Objects.Classes == nil {
+		return nil
+	}
+
+	for _, c := range f.schema.Objects.Classes {
+		if c.Class == name {
+			return c
+		}
+	}
+	return nil
 }
 
 type fakeObjectsRepo struct {

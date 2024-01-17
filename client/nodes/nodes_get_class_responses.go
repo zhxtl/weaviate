@@ -26,13 +26,13 @@ import (
 	"github.com/weaviate/weaviate/entities/models"
 )
 
-// NodesGetClassReader is a Reader for the NodesGetClass structure.
-type NodesGetClassReader struct {
+// NodesGetclassFinder is a Reader for the NodesGetClass structure.
+type NodesGetclassFinder struct {
 	formats strfmt.Registry
 }
 
 // ReadResponse reads a server response into the received o.
-func (o *NodesGetClassReader) ReadResponse(response runtime.ClientResponse, consumer runtime.Consumer) (interface{}, error) {
+func (o *NodesGetclassFinder) ReadResponse(response runtime.ClientResponse, consumer runtime.Consumer) (interface{}, error) {
 	switch response.Code() {
 	case 200:
 		result := NewNodesGetClassOK()
@@ -132,7 +132,6 @@ func (o *NodesGetClassOK) GetPayload() *models.NodesStatusResponse {
 }
 
 func (o *NodesGetClassOK) readResponse(response runtime.ClientResponse, consumer runtime.Consumer, formats strfmt.Registry) error {
-
 	o.Payload = new(models.NodesStatusResponse)
 
 	// response payload
@@ -153,8 +152,7 @@ NodesGetClassUnauthorized describes a response with status code 401, with defaul
 
 Unauthorized or invalid credentials.
 */
-type NodesGetClassUnauthorized struct {
-}
+type NodesGetClassUnauthorized struct{}
 
 // IsSuccess returns true when this nodes get class unauthorized response has a 2xx status code
 func (o *NodesGetClassUnauthorized) IsSuccess() bool {
@@ -195,7 +193,6 @@ func (o *NodesGetClassUnauthorized) String() string {
 }
 
 func (o *NodesGetClassUnauthorized) readResponse(response runtime.ClientResponse, consumer runtime.Consumer, formats strfmt.Registry) error {
-
 	return nil
 }
 
@@ -256,7 +253,6 @@ func (o *NodesGetClassForbidden) GetPayload() *models.ErrorResponse {
 }
 
 func (o *NodesGetClassForbidden) readResponse(response runtime.ClientResponse, consumer runtime.Consumer, formats strfmt.Registry) error {
-
 	o.Payload = new(models.ErrorResponse)
 
 	// response payload
@@ -324,7 +320,6 @@ func (o *NodesGetClassNotFound) GetPayload() *models.ErrorResponse {
 }
 
 func (o *NodesGetClassNotFound) readResponse(response runtime.ClientResponse, consumer runtime.Consumer, formats strfmt.Registry) error {
-
 	o.Payload = new(models.ErrorResponse)
 
 	// response payload
@@ -392,7 +387,6 @@ func (o *NodesGetClassUnprocessableEntity) GetPayload() *models.ErrorResponse {
 }
 
 func (o *NodesGetClassUnprocessableEntity) readResponse(response runtime.ClientResponse, consumer runtime.Consumer, formats strfmt.Registry) error {
-
 	o.Payload = new(models.ErrorResponse)
 
 	// response payload
@@ -460,7 +454,6 @@ func (o *NodesGetClassInternalServerError) GetPayload() *models.ErrorResponse {
 }
 
 func (o *NodesGetClassInternalServerError) readResponse(response runtime.ClientResponse, consumer runtime.Consumer, formats strfmt.Registry) error {
-
 	o.Payload = new(models.ErrorResponse)
 
 	// response payload

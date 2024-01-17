@@ -303,7 +303,7 @@ func MakeAppState(ctx context.Context, options *swag.CommandLineOptionsGroup) *s
 
 	vectorRepo.SetSchemaGetter(schemaManager)
 	explorer.SetSchemaGetter(schemaManager)
-	appState.Modules.SetSchemaGetter(schemaManager)
+	appState.Modules.SetClassFinder(schemaManager.ReadOnlyClass)
 
 	// TODO-RAFT START
 

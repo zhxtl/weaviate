@@ -96,7 +96,7 @@ func (t *Traverser) validateExploreDistanceParams(params ExploreParams, distType
 }
 
 func (t *Traverser) validateGetDistanceParams(params dto.GetParams) error {
-	class := t.classReader(params.ClassName)
+	class := t.classFinder(params.ClassName)
 	if class == nil {
 		return fmt.Errorf("failed to find class '%s' in schema", params.ClassName)
 	}

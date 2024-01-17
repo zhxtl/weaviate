@@ -26,14 +26,14 @@ const (
 )
 
 type Validator struct {
-	classReader func(string) *models.Class
+	classFinder func(string) *models.Class
 	errors      *errorcompounder.SafeErrorCompounder
 	subject     models.Classification
 }
 
 func NewValidator(fn func(string) *models.Class, subject models.Classification) *Validator {
 	return &Validator{
-		classReader: fn,
+		classFinder: fn,
 		errors:      &errorcompounder.SafeErrorCompounder{},
 		subject:     subject,
 	}
@@ -56,7 +56,7 @@ func (v *Validator) validate() {
 		return
 	}
 
-	class := v.classReader(v.subject.Class)
+	class := v.classFinder(v.subject.Class)
 	if class == nil {
 		v.errors.Addf("class '%s' not found in schema", v.subject.Class)
 		return
@@ -112,7 +112,7 @@ func (v *Validator) basedOnProperty(class *models.Class, propName string) {
 		return
 	}
 
-	dt, err := schema.FindPropertyDataTypeWithRefs(v.classReader, prop.DataType, false, "")
+	dt, err := schema.FindPropertyDataTypeWithRefs(v.classFinder, prop.DataType, false, "")
 	if err != nil {
 		v.errors.Addf("basedOnProperties: %v", err)
 		return
@@ -147,7 +147,7 @@ func (v *Validator) classifyProperty(class *models.Class, propName string) {
 		return
 	}
 
-	dt, err := schema.FindPropertyDataTypeWithRefs(v.classReader, prop.DataType, false, "")
+	dt, err := schema.FindPropertyDataTypeWithRefs(v.classFinder, prop.DataType, false, "")
 	if err != nil {
 		v.errors.Addf("classifyProperties: %v", err)
 		return

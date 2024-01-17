@@ -74,7 +74,7 @@ func (t *Traverser) Aggregate(ctx context.Context, principal *models.Principal,
 	}
 
 	if params.Filters != nil {
-		if err := filters.ValidateFilters(t.classReader, params.Filters); err != nil {
+		if err := filters.ValidateFilters(t.classFinder, params.Filters); err != nil {
 			return nil, errors.Wrap(err, "invalid 'where' filter")
 		}
 	}

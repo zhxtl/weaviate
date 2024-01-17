@@ -228,7 +228,16 @@ func (f *fakeSchemaGetter) GetSchemaSkipAuth() schema.Schema {
 }
 
 func (f *fakeSchemaGetter) ReadOnlyClass(name string) *models.Class {
-	return f.schema.ReadOnlyClass(name)
+	if f.schema.Objects.Classes == nil {
+		return nil
+	}
+
+	for _, c := range f.schema.Objects.Classes {
+		if c.Class == name {
+			return c
+		}
+	}
+	return nil
 }
 
 func (f *fakeSchemaGetter) CopyShardingState(class string) *sharding.State {

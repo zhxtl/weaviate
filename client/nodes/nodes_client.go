@@ -103,7 +103,7 @@ func (a *Client) NodesGetClass(params *NodesGetClassParams, authInfo runtime.Cli
 		ConsumesMediaTypes: []string{"application/json", "application/yaml"},
 		Schemes:            []string{"https"},
 		Params:             params,
-		Reader:             &NodesGetClassReader{formats: a.formats},
+		Reader:             &NodesGetclassFinder{formats: a.formats},
 		AuthInfo:           authInfo,
 		Context:            params.Context,
 		Client:             params.HTTPClient,

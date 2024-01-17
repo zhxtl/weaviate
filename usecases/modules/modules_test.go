@@ -40,7 +40,7 @@ func TestModulesProvider(t *testing.T) {
 			Classes: []*models.Class{class},
 		}
 		schemaGetter := getFakeSchemaGetter()
-		modulesProvider.SetSchemaGetter(schemaGetter)
+		modulesProvider.SetClassFinder(schemaGetter.ReadOnlyClass)
 
 		params := map[string]interface{}{}
 		params["nearArgumentSomeParam"] = string("doesn't matter here")
@@ -69,7 +69,7 @@ func TestModulesProvider(t *testing.T) {
 		// given
 		modulesProvider := NewProvider()
 		schemaGetter := getFakeSchemaGetter()
-		modulesProvider.SetSchemaGetter(schemaGetter)
+		modulesProvider.SetClassFinder(schemaGetter.ReadOnlyClass)
 
 		// when
 		modulesProvider.Register(newGraphQLModule("mod1").withArg("nearArgument"))
@@ -85,7 +85,7 @@ func TestModulesProvider(t *testing.T) {
 		// given
 		modulesProvider := NewProvider()
 		schemaGetter := getFakeSchemaGetter()
-		modulesProvider.SetSchemaGetter(schemaGetter)
+		modulesProvider.SetClassFinder(schemaGetter.ReadOnlyClass)
 
 		// when
 		modulesProvider.Register(newGraphQLModule("mod1").withArg("nearArgument"))
@@ -112,7 +112,7 @@ func TestModulesProvider(t *testing.T) {
 		// given
 		modulesProvider := NewProvider()
 		schemaGetter := getFakeSchemaGetter()
-		modulesProvider.SetSchemaGetter(schemaGetter)
+		modulesProvider.SetClassFinder(schemaGetter.ReadOnlyClass)
 
 		// when
 		modulesProvider.Register(newGraphQLModule("mod1").withArg("nearArgument"))
@@ -147,7 +147,7 @@ func TestModulesProvider(t *testing.T) {
 			Classes: []*models.Class{class},
 		}
 		schemaGetter := getFakeSchemaGetter()
-		modulesProvider.SetSchemaGetter(schemaGetter)
+		modulesProvider.SetClassFinder(schemaGetter.ReadOnlyClass)
 
 		params := map[string]interface{}{}
 		params["nearArgumentSomeParam"] = string("doesn't matter here")
@@ -189,7 +189,7 @@ func TestModulesProvider(t *testing.T) {
 		// given
 		modulesProvider := NewProvider()
 		schemaGetter := getFakeSchemaGetter()
-		modulesProvider.SetSchemaGetter(schemaGetter)
+		modulesProvider.SetClassFinder(schemaGetter.ReadOnlyClass)
 
 		// when
 		modulesProvider.Register(newGraphQLAdditionalModule("mod1").
@@ -213,7 +213,7 @@ func TestModulesProvider(t *testing.T) {
 		// given
 		modulesProvider := NewProvider()
 		schemaGetter := getFakeSchemaGetter()
-		modulesProvider.SetSchemaGetter(schemaGetter)
+		modulesProvider.SetClassFinder(schemaGetter.ReadOnlyClass)
 
 		// when
 		modulesProvider.Register(newGraphQLAdditionalModule("mod1").withArg("nearArgument"))
@@ -268,7 +268,7 @@ func TestModulesProvider(t *testing.T) {
 		// given
 		modulesProvider := NewProvider()
 		schemaGetter := getFakeSchemaGetter()
-		modulesProvider.SetSchemaGetter(schemaGetter)
+		modulesProvider.SetClassFinder(schemaGetter.ReadOnlyClass)
 
 		// when
 		modulesProvider.Register(newGraphQLAdditionalModule("mod1").
@@ -445,7 +445,7 @@ func (m *dummyAdditionalModule) AdditionalProperties() map[string]modulecapabili
 	return m.additionalProperties
 }
 
-func getFakeSchemaGetter() schemaGetter {
+func getFakeSchemaGetter() *fakeSchemaGetter {
 	sch := enitiesSchema.Schema{
 		Objects: &models.Schema{
 			Classes: []*models.Class{

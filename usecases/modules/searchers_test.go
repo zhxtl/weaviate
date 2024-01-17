@@ -45,9 +45,9 @@ func TestModulesWithSearchers(t *testing.T) {
 
 	t.Run("get a vector for a class", func(t *testing.T) {
 		p := NewProvider()
-		p.SetSchemaGetter(&fakeSchemaGetter{
-			schema: sch,
-		})
+		fake := &fakeSchemaGetter{sch}
+		p.SetClassFinder(fake.ReadOnlyClass)
+
 		p.Register(newSearcherModule("mod").
 			withArg("nearGrape").
 			withSearcher("nearGrape", func(ctx context.Context, params interface{},
@@ -77,9 +77,8 @@ func TestModulesWithSearchers(t *testing.T) {
 
 	t.Run("get a vector across classes", func(t *testing.T) {
 		p := NewProvider()
-		p.SetSchemaGetter(&fakeSchemaGetter{
-			schema: sch,
-		})
+		fake := &fakeSchemaGetter{sch}
+		p.SetClassFinder(fake.ReadOnlyClass)
 		p.Register(newSearcherModule("mod").
 			withArg("nearGrape").
 			withSearcher("nearGrape", func(ctx context.Context, params interface{},

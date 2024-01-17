@@ -27,7 +27,7 @@ func (c *Classifier) classifyItemUsingZeroShot(item search.Result, itemIndex int
 	defer cancel()
 
 	properties := params.ClassifyProperties
-	class := c.classReader(item.ClassName)
+	class := c.classFinder(item.ClassName)
 
 	classifyProp := []string{}
 	for _, prop := range properties {

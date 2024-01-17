@@ -79,7 +79,7 @@ func (c *Classifier) monitorClassification(ctx context.Context, cancelFn context
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			class := c.classReader(className.String())
+			class := c.classFinder(className.String())
 			if class == nil {
 				cancelFn()
 				return

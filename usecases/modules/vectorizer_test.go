@@ -83,7 +83,8 @@ func TestProvider_UsingRef2Vec(t *testing.T) {
 			}},
 		}}
 		p := NewProvider()
-		p.SetSchemaGetter(&fakeSchemaGetter{sch})
+		fake := &fakeSchemaGetter{sch}
+		p.SetClassFinder(fake.ReadOnlyClass)
 		p.Register(mod)
 		assert.True(t, p.UsingRef2Vec(className))
 	})
@@ -101,7 +102,8 @@ func TestProvider_UsingRef2Vec(t *testing.T) {
 			}},
 		}}
 		p := NewProvider()
-		p.SetSchemaGetter(&fakeSchemaGetter{sch})
+		fake := &fakeSchemaGetter{sch}
+		p.SetClassFinder(fake.ReadOnlyClass)
 		p.Register(mod)
 		assert.False(t, p.UsingRef2Vec(className))
 	})
@@ -111,7 +113,8 @@ func TestProvider_UsingRef2Vec(t *testing.T) {
 		mod := newDummyModule("", "")
 
 		p := NewProvider()
-		p.SetSchemaGetter(&fakeSchemaGetter{schema.Schema{}})
+		fake := &fakeSchemaGetter{schema.Schema{}}
+		p.SetClassFinder(fake.ReadOnlyClass)
 		p.Register(mod)
 		assert.False(t, p.UsingRef2Vec(className))
 	})
@@ -126,7 +129,8 @@ func TestProvider_UsingRef2Vec(t *testing.T) {
 			}},
 		}}
 		p := NewProvider()
-		p.SetSchemaGetter(&fakeSchemaGetter{sch})
+		fake := &fakeSchemaGetter{sch}
+		p.SetClassFinder(fake.ReadOnlyClass)
 		p.Register(mod)
 		assert.False(t, p.UsingRef2Vec(className))
 	})
@@ -143,7 +147,8 @@ func TestProvider_UsingRef2Vec(t *testing.T) {
 			}},
 		}}
 		p := NewProvider()
-		p.SetSchemaGetter(&fakeSchemaGetter{sch})
+		fake := &fakeSchemaGetter{sch}
+		p.SetClassFinder(fake.ReadOnlyClass)
 		assert.False(t, p.UsingRef2Vec(className))
 	})
 }
@@ -171,7 +176,8 @@ func TestProvider_UpdateVector(t *testing.T) {
 
 		p := NewProvider()
 		p.Register(mod)
-		p.SetSchemaGetter(&fakeSchemaGetter{sch})
+		fake := &fakeSchemaGetter{sch}
+		p.SetClassFinder(fake.ReadOnlyClass)
 
 		obj := &models.Object{Class: className, ID: newUUID()}
 		err := p.UpdateVector(ctx, obj, &class, nil, repo.Object, logger)
@@ -199,7 +205,8 @@ func TestProvider_UpdateVector(t *testing.T) {
 
 		p := NewProvider()
 		p.Register(mod)
-		p.SetSchemaGetter(&fakeSchemaGetter{sch})
+		fake := &fakeSchemaGetter{sch}
+		p.SetClassFinder(fake.ReadOnlyClass)
 
 		obj := &models.Object{Class: className, ID: newUUID()}
 		err := p.UpdateVector(ctx, obj, class, nil, repo.Object, logger)
@@ -218,7 +225,8 @@ func TestProvider_UpdateVector(t *testing.T) {
 
 		p := NewProvider()
 		p.Register(mod)
-		p.SetSchemaGetter(&fakeSchemaGetter{schema.Schema{}})
+		fake := &fakeSchemaGetter{schema.Schema{}}
+		p.SetClassFinder(fake.ReadOnlyClass)
 
 		obj := &models.Object{Class: "Other Class", ID: newUUID()}
 		err := p.UpdateVector(ctx, obj, class, nil, repo.Object, logger)
@@ -246,7 +254,8 @@ func TestProvider_UpdateVector(t *testing.T) {
 
 		p := NewProvider()
 		p.Register(mod)
-		p.SetSchemaGetter(&fakeSchemaGetter{sch})
+		fake := &fakeSchemaGetter{sch}
+		p.SetClassFinder(fake.ReadOnlyClass)
 
 		obj := &models.Object{Class: className, ID: newUUID()}
 		err := p.UpdateVector(ctx, obj, class, nil, repo.Object, logger)

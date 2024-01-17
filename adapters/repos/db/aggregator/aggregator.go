@@ -39,7 +39,7 @@ type Aggregator struct {
 	params                 aggregation.Params
 	getSchema              schemaUC.SchemaGetter
 	classSearcher          inverted.ClassSearcher // to support ref-filters
-	classReader            func(string) *models.Class
+	classFinder            func(string) *models.Class
 	vectorIndex            vectorIndex
 	stopwords              stopwords.StopwordDetector
 	shardVersion           uint16
