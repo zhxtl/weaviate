@@ -30,6 +30,7 @@ const (
 	Text2TextGenerative ModuleType = "Text2TextGenerative"
 	Text2TextSummarize  ModuleType = "Text2TextSummarize"
 	Text2TextReranker   ModuleType = "Text2TextReranker"
+	Text2TextLLMReranker ModuleType = "Text2TextLLMReranker"
 	Text2TextNER        ModuleType = "Text2TextNER"
 	Text2TextQnA        ModuleType = "Text2TextQnA"
 	Text2Vec            ModuleType = "Text2Vec"
