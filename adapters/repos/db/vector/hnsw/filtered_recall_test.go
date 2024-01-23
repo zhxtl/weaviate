@@ -95,12 +95,12 @@ func TestFilteredRecall(t *testing.T) {
 	t.Run("Loading vectors for testing...", func(t *testing.T) {
 		/* READ VECTORS, FILTERS, AND GROUND TRUTHS FROM JSONS */
 		/* USING THE SAME INDEX VECTORS FOR ALL FILTER LEVELS */
-		indexVectorsJSON, err := ioutil.ReadFile("./datasets/filtered/indexVectors_100K.json")
+		indexVectorsJSON, err := ioutil.ReadFile("./datasets/filtered/indexVectors_1M.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(indexVectorsJSON, &indexVectors)
 		require.Nil(t, err)
 		/* ADD THE FILTERS -- TODO: TEST MORE THAN 1 FILTER % PER RUN */
-		indexFiltersJSON, err := ioutil.ReadFile("./datasets/filtered/indexFilters-100K-2-80_0.json")
+		indexFiltersJSON, err := ioutil.ReadFile("./datasets/filtered/indexFilters-1M-2-80_0.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(indexFiltersJSON, &indexFilters)
 		require.Nil(t, err)
@@ -108,18 +108,18 @@ func TestFilteredRecall(t *testing.T) {
 		indexVectorsWithFilters := mergeData(indexVectors, indexFilters)
 		/* IDEA -- SHUFFLE VECTORS TO AVOID CONFOUNDING WITH INSERT ORDER */
 		/* USE THE SAME QUERY VECTORS FOR ALL FILTER LEVELS */
-		queryVectorsJSON, err := ioutil.ReadFile("./datasets/filtered/queryVectors_100K.json")
+		queryVectorsJSON, err := ioutil.ReadFile("./datasets/filtered/queryVectors_1M.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(queryVectorsJSON, &queryVectors)
 		require.Nil(t, err)
 		/* ADD THE FILTERS -- TODO: TEST MORE THAN 1 FILTER % PER RUN */
-		queryFiltersJSON, err := ioutil.ReadFile("./datasets/filtered/queryFilters-100K-2-80_0.json")
+		queryFiltersJSON, err := ioutil.ReadFile("./datasets/filtered/queryFilters-1M-2-80_0.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(queryFiltersJSON, &queryFilters)
 		/* MERGE QUERY VECTORS WITH FILTERS */
 		queryVectorsWithFilters := mergeData(queryVectors, queryFilters)
 		/* LOAD GROUND TRUTHS */
-		truthsJSON, err := ioutil.ReadFile("./datasets/filtered/filtered_recall_truths-100K-2-80_0.json")
+		truthsJSON, err := ioutil.ReadFile("./datasets/filtered/filtered_recall_truths-1M-2-80_0.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(truthsJSON, &truths)
 		require.Nil(t, err)
