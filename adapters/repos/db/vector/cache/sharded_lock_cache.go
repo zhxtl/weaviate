@@ -13,6 +13,7 @@ package cache
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -27,7 +28,6 @@ type shardedLockCache[T float32 | byte | uint64] struct {
 	shardedLocks     *common.ShardedRWLocks
 	cache            [][][]T
 	vectorForID      common.VectorForID[T]
-	normalizeOnRead  bool
 	maxSize          int64
 	count            int64
 	cancel           chan bool
@@ -37,13 +37,16 @@ type shardedLockCache[T float32 | byte | uint64] struct {
 	// The maintenanceLock makes sure that only one maintenance operation, such
 	// as growing the cache or clearing the cache happens at the same time.
 	maintenanceLock sync.RWMutex
+
+	// The pageLock makes sure that only one goroutine can create a page at the
+	// same time.
+	pageLock sync.Mutex
 }
 
 const (
-	InitialSize             = 1000
+	pageSize                = 1024
+	InitialSize             = pageSize
 	MinimumIndexGrowthDelta = 2000
-	indexGrowthRate         = 1.25
-	pageSize                = 4096
 )
 
 func NewShardedFloat32LockCache(vecForID common.VectorForID[float32], maxSize int,
@@ -61,12 +64,11 @@ func NewShardedFloat32LockCache(vecForID common.VectorForID[float32], maxSize in
 			return vec, nil
 		},
 		cache:            make([][][]float32, 1),
-		normalizeOnRead:  normalizeOnRead,
 		count:            0,
 		maxSize:          int64(maxSize),
 		cancel:           make(chan bool),
 		logger:           logger,
-		shardedLocks:     common.NewShardedRWLocks(pageSize),
+		shardedLocks:     common.NewDefaultShardedRWLocks(),
 		maintenanceLock:  sync.RWMutex{},
 		deletionInterval: deletionInterval,
 	}
@@ -83,7 +85,6 @@ func NewShardedByteLockCache(vecForID common.VectorForID[byte], maxSize int,
 	vc := &shardedLockCache[byte]{
 		vectorForID:      vecForID,
 		cache:            make([][][]byte, 1),
-		normalizeOnRead:  false,
 		count:            0,
 		maxSize:          int64(maxSize),
 		cancel:           make(chan bool),
@@ -105,7 +106,6 @@ func NewShardedUInt64LockCache(vecForID common.VectorForID[uint64], maxSize int,
 	vc := &shardedLockCache[uint64]{
 		vectorForID:      vecForID,
 		cache:            make([][][]uint64, 1),
-		normalizeOnRead:  false,
 		count:            0,
 		maxSize:          int64(maxSize),
 		cancel:           make(chan bool),
@@ -156,14 +156,44 @@ func (s *shardedLockCache[T]) upsert(id uint64, update func(page [][]T, idx int)
 	s.shardedLocks.Lock(id)
 
 	page, idx := s.getPageForID(id)
-	if page == nil {
-		// page doesn't exist yet, create it
-		pageIdx := id / pageSize
-		page = make([][]T, pageSize)
-		s.cache[pageIdx] = page
-		idx = int(id % pageSize)
+	if page != nil {
+		err := update(page, idx)
+		s.shardedLocks.Unlock(id)
+		return err
+	}
+	s.shardedLocks.Unlock(id)
+
+	s.pageLock.Lock()
+	defer s.pageLock.Unlock()
+
+	fmt.Println("upsert for page", id/pageSize)
+
+	// try again in case the page was created in the meantime.
+	// this is to avoid acquiring a large number of locks
+	// when multiple goroutines try to create the same page.
+	s.shardedLocks.Lock(id)
+	page, idx = s.getPageForID(id)
+	if page != nil {
+		err := update(page, idx)
+		s.shardedLocks.Unlock(id)
+		return err
+	}
+	s.shardedLocks.Unlock(id)
+
+	// try again, this time with all locks held
+	s.shardedLocks.LockAll()
+	page, idx = s.getPageForID(id)
+	if page != nil {
+		err := update(page, idx)
+		s.shardedLocks.UnlockAll()
+		return err
 	}
 
+	// page doesn't exist yet, create it
+	pageIdx := id / pageSize
+	page = make([][]T, pageSize)
+	s.cache[pageIdx] = page
+	idx = int(id % pageSize)
 	err := update(page, idx)
 
 	s.shardedLocks.Unlock(id)
@@ -282,7 +312,7 @@ func (s *shardedLockCache[T]) Grow(node uint64) {
 	s.shardedLocks.LockAll()
 	defer s.shardedLocks.UnlockAll()
 
-	pages := node/pageSize + 1
+	pages := len(s.cache) + int((node+MinimumIndexGrowthDelta)/pageSize)
 	newCache := make([][][]T, pages)
 	copy(newCache, s.cache)
 	s.cache = newCache
