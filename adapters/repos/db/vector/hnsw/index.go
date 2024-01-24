@@ -226,7 +226,7 @@ func New(cfg Config, uc ent.UserConfig, tombstoneCallbacks, shardCompactionCallb
 		normalizeOnRead = true
 	}
 
-	vectorCache := cache.NewShardedFloat32LockCache(cfg.VectorForIDThunk, uc.VectorCacheMaxObjects,
+	vectorCache := cache.NewPaginatedFloat32Cache(cfg.VectorForIDThunk, uc.VectorCacheMaxObjects,
 		cfg.Logger, normalizeOnRead, cache.DefaultDeletionInterval)
 
 	resetCtx, resetCtxCancel := context.WithCancel(context.Background())
@@ -290,6 +290,9 @@ func New(cfg Config, uc ent.UserConfig, tombstoneCallbacks, shardCompactionCallb
 		index.compressed.Store(true)
 		index.cache.Drop()
 		index.cache = nil
+	}
+	if uc.PQ.Enabled {
+		index.compressedVectorsCache = cache.NewPaginatedByteCache(index.getCompressedVectorForID, uc.VectorCacheMaxObjects, cfg.Logger, 0)
 	}
 
 	if err := index.init(cfg); err != nil {
