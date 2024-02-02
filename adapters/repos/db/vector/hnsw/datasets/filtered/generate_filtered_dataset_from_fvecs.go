@@ -3,12 +3,16 @@ package main
 import (
 	"encoding/binary"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"math"
 	"os"
+	"runtime"
 	"sort"
+	"strconv"
+	"sync"
 	"time"
 )
 
@@ -22,7 +26,7 @@ type Filters struct {
 	FilterMap map[int]int `json:"filterMap"`
 }
 
-type vecWithFilters struct {
+type VecWithFilters struct {
 	ID        int         `json:"id"`
 	Vector    []float32   `json:"vector"`
 	FilterMap map[int]int `json:"filterMap"`
@@ -34,26 +38,35 @@ type GroundTruth struct {
 }
 
 func main() {
-	// Read base vectors from file
+	// CLI flags
+	//filePath := flag.String("DataPath", "./sift-data/sift_base.fvecs", "Path to the data file")
+	numVectors := flag.Int("numVectors", 100_000, "Number of vectors to process")
+	majorityPct := flag.Float64("majorityPct", 95.0, "Minority filter percentage of the dataset")
+	//vectorDimension := flag.Int("vectorDim", 128, "Dimension of the vectors")
 
-	// NOTE WE ARE CURRENTLY ONL TESTING 100K VECTORS
-	vectors := ReadSiftVecsFrom("./sift-data/sift_base.fvecs", 100_000, 128)
+	// parse the flags
+	flag.Parse()
+
+	// Read base vectors from file
+	vectors := ReadSiftVecsFrom("./sift-data/sift_base.fvecs", *numVectors, 128)
 
 	saveIndexVectors := make([]Vector, len(vectors))
 	saveIndexFilters := make([]Filters, len(vectors))
-	indexForBruteForce := make([]vecWithFilters, len(vectors))
+	indexForBruteForce := make([]VecWithFilters, len(vectors))
+
+	majority_pct := (100.0 - *majorityPct) / 100.0
+	majority_cutoff := 10_000 * int(majority_pct)
 
 	for jdx, vector := range vectors {
 		nodeFilterMap := make(map[int]int)
-		// Uniform -- nodeFilterMap[0] = jdx % 20
-		//nodeFilterMap[0] = index_to_filter_map[jdx%20]
+		// ToDo -- extend to K filters, with a parameterized filter distribution (power-law)
 		hash := jdx % 10_000
-		if hash < 9_000 {
+		if hash < majority_cutoff {
 			nodeFilterMap[0] = 0
 		} else {
 			nodeFilterMap[0] = 1
 		}
-		indexForBruteForce[jdx] = vecWithFilters{
+		indexForBruteForce[jdx] = VecWithFilters{
 			ID:        jdx,
 			FilterMap: nodeFilterMap,
 			Vector:    vector,
@@ -69,12 +82,14 @@ func main() {
 	}
 
 	saveIndexVectorsJSON, _ := json.Marshal(saveIndexVectors)
-	ioutil.WriteFile("indexVectors_100K.json", saveIndexVectorsJSON, 0o644)
+	index_save_path := "indexVectors-" + strconv.Itoa(*numVectors) + ".json"
+	ioutil.WriteFile(index_save_path, saveIndexVectorsJSON, 0o644)
+	index_with_filters_save_path := "indexFilters-" + strconv.Itoa(*numVectors) + "-2-90_0.json"
 	saveIndexFiltersJSON, _ := json.Marshal(saveIndexFilters)
-	ioutil.WriteFile("indexFilters-100K-2-90_0.json", saveIndexFiltersJSON, 0o644)
+	ioutil.WriteFile(index_with_filters_save_path, saveIndexFiltersJSON, 0o644)
 
 	// Read the query vectors from files
-	_, queryVectors := ReadVecs(1_000_000, 10_000, 128, "sift") // probably should separate ReadVecs into two separate calls lmao
+	_, queryVectors := ReadVecs(*numVectors, 10_000, 128, "sift") // probably should separate ReadVecs into two separate calls lmao
 
 	saveQueryVectors := make([]Vector, len(queryVectors))
 	saveQueryFilters := make([]Filters, len(queryVectors))
@@ -82,59 +97,75 @@ func main() {
 	//golang doesn't like this - race condition: var queryFilter map[int]int
 	// For each query vector, perform search and calculate recall
 
-	startTime := time.Now()
-
 	groundTruths := make([]GroundTruth, len(queryVectors))
 
-	for idx, queryVector := range queryVectors {
-		if idx%1_000 == 999 {
-			elapsed := time.Since(startTime)
-			fmt.Print("Elapsed time: ", elapsed)
-			fmt.Print(idx)
-		}
-		// Calculate nearest neighbors
+	fmt.Println("Brute forcing...")
+	fmt.Println(len(queryVectors))
+
+	workerCount := runtime.GOMAXPROCS(0)
+	jobsForWorker := make([][]VecWithFilters, workerCount)
+	for i, queryVector := range queryVectors {
+		workerID := i % workerCount
 		queryFilters := make(map[int]int)
-		//queryFilters[0] = index_to_filter_map[idx%20]
-		//queryFilters[0] = idx % 20
-		queryHash := idx % 10_000
-		if queryHash < 9_000 {
+		queryHash := workerID % 10_000
+		if queryHash < majority_cutoff {
 			queryFilters[0] = 0
 		} else {
 			queryFilters[0] = 1
 		}
-		saveQueryVectors[idx] = Vector{
-			ID:     idx,
+		saveQueryVectors[i] = Vector{
+			ID:     i,
 			Vector: queryVector,
 		}
-		saveQueryFilters[idx] = Filters{
-			ID:        idx,
+		saveQueryFilters[i] = Filters{
+			ID:        i,
 			FilterMap: queryFilters,
 		}
-
-		nearestNeighbors := calculateNearestNeighborsWithFilters(queryVector, indexForBruteForce, 100, queryFilters)
-		// Store the nearest neighbors in the slice
-		newGroundTruthJSON := GroundTruth{
-			QueryID: idx,
-			Truths:  nearestNeighbors,
-		}
-		groundTruths[idx] = newGroundTruthJSON
+		queryVectorWithFilters := VecWithFilters{i, queryVector, queryFilters}
+		jobsForWorker[workerID] = append(jobsForWorker[workerID], queryVectorWithFilters)
 	}
 
+	wg := &sync.WaitGroup{}
+	mutex := &sync.Mutex{}
+	before := time.Now()
+	for workerID, jobs := range jobsForWorker {
+		wg.Add(1)
+		go func(workerID int, myJobs []VecWithFilters) {
+			defer wg.Done()
+			for i, vecWithFilters := range myJobs {
+				originalIndex := (i * workerCount) + workerID
+				nearestNeighbors := calculateNearestNeighborsWithFilters(vecWithFilters.Vector, indexForBruteForce, 100, vecWithFilters.FilterMap)
+				newGroundTruthJSON := GroundTruth{
+					QueryID: originalIndex,
+					Truths:  nearestNeighbors,
+				}
+				mutex.Lock()
+				groundTruths[originalIndex] = newGroundTruthJSON
+				mutex.Unlock()
+			}
+		}(workerID, jobs)
+	}
+	wg.Wait()
+	fmt.Printf("Brute forcing took %s \n", time.Since(before))
+	fmt.Printf("Saving...\n")
 	saveQueryVectorsJSON, _ := json.Marshal(saveQueryVectors)
-	ioutil.WriteFile("queryVectors100K.json", saveQueryVectorsJSON, 0o644)
+	query_vectors_save_path := "queryVectors_" + strconv.Itoa(*numVectors) + ".json"
+	ioutil.WriteFile(query_vectors_save_path, saveQueryVectorsJSON, 0o644)
+	query_vectors_with_filters_save_path := "queryVectors-" + strconv.Itoa(*numVectors) + "-2-90_0.json"
 	saveQueryFiltersJSON, _ := json.Marshal(saveQueryFilters)
-	ioutil.WriteFile("queryFilters100K.json", saveQueryFiltersJSON, 0o644)
+	ioutil.WriteFile(query_vectors_with_filters_save_path, saveQueryFiltersJSON, 0o644)
 
 	// Save all nearest neighbors to a JSON file
 	saveGroundTruthsJSON, _ := json.Marshal(groundTruths)
-	ioutil.WriteFile("filtered_recall_truths100K.json", saveGroundTruthsJSON, 0o644)
+	ground_truth_save_path := "filtered-recall-truths-" + strconv.Itoa(*numVectors) + ".json"
+	ioutil.WriteFile(ground_truth_save_path, saveGroundTruthsJSON, 0o644)
 
-	fmt.Println("Finished computing nearest neighbors.")
+	fmt.Println("Finished.\n")
 }
 
 // Function to calculate nearest neighbors of a vector using brute force
-func calculateNearestNeighborsWithFilters(query []float32, indexVectors []vecWithFilters, numNeighbors int, queryFilters map[int]int) []int {
-	filteredIndex := make([]vecWithFilters, 0)
+func calculateNearestNeighborsWithFilters(query []float32, indexVectors []VecWithFilters, numNeighbors int, queryFilters map[int]int) []int {
+	filteredIndex := make([]VecWithFilters, 0)
 	for _, v := range indexVectors {
 		matches := true
 		for queryFilterKey, queryFilterValue := range queryFilters {
