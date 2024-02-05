@@ -16,36 +16,36 @@ import (
 
 	"github.com/weaviate/weaviate/entities/modulecapabilities"
 	"github.com/weaviate/weaviate/entities/moduletools"
-	rankerrank "github.com/weaviate/weaviate/usecases/modulecomponents/additional/rank"
+	rerank "github.com/weaviate/weaviate/usecases/modulecomponents/additional/rankllm"
 	"github.com/weaviate/weaviate/usecases/modulecomponents/ent"
 )
 
-type reRankerClient interface {
-	Rank(ctx context.Context, query string, documents []string, cfg moduletools.ClassConfig) (*ent.RankResult, error)
+type rerankerClient interface {
+	Rerank(ctx context.Context, query string, documents []string, cfg moduletools.ClassConfig) (*ent.RankResult, error)
 }
 
-type GraphQLAdditionalRankerProvider struct {
-	ReRankerProvider AdditionalProperty
+type GraphQLAdditionalRerankerProvider struct {
+	RerankerProvider AdditionalProperty
 }
 
-func NewRankerProvider(client reRankerClient) *GraphQLAdditionalRankerProvider {
-	return &GraphQLAdditionalRankerProvider{rankerrank.New(client)}
+func NewRerankerProvider(client rerankerClient) *GraphQLAdditionalRankerProvider {
+	return &GraphQLAdditionalRankerProvider{rerank.New(client)}
 }
 
-func (p *GraphQLAdditionalRankerProvider) AdditionalProperties() map[string]modulecapabilities.AdditionalProperty {
+func (p *GraphQLAdditionalRerankerProvider) AdditionalProperties() map[string]modulecapabilities.AdditionalProperty {
 	additionalProperties := map[string]modulecapabilities.AdditionalProperty{}
-	additionalProperties["rerank"] = p.getReRanker()
+	additionalProperties["rerank"] = p.getReranker()
 	return additionalProperties
 }
 
-func (p *GraphQLAdditionalRankerProvider) getReRanker() modulecapabilities.AdditionalProperty {
+func (p *GraphQLAdditionalRerankerProvider) getReranker() modulecapabilities.AdditionalProperty {
 	return modulecapabilities.AdditionalProperty{
 		GraphQLNames:           []string{"rerank"},
-		GraphQLFieldFunction:   p.ReRankerProvider.AdditionalFieldFn,
-		GraphQLExtractFunction: p.ReRankerProvider.ExtractAdditionalFn,
+		GraphQLFieldFunction:   p.RerankerProvider.AdditionalFieldFn,
+		GraphQLExtractFunction: p.RerankerProvider.ExtractAdditionalFn,
 		SearchFunctions: modulecapabilities.AdditionalSearch{
-			ExploreGet:  p.ReRankerProvider.AdditionalPropertyFn,
-			ExploreList: p.ReRankerProvider.AdditionalPropertyFn,
+			ExploreGet:  p.RerankerProvider.AdditionalPropertyFn,
+			ExploreList: p.RerankerProvider.AdditionalPropertyFn,
 		},
 	}
 }
