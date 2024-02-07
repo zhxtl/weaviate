@@ -1,3 +1,17 @@
+//                           _       _
+// __      _____  __ ___   ___  __ _| |_ ___
+// \ \ /\ / / _ \/ _` \ \ / / |/ _` | __/ _ \
+//  \ V  V /  __/ (_| |\ V /| | (_| | ||  __/
+//   \_/\_/ \___|\__,_| \_/ |_|\__,_|\__\___|
+//
+//  Copyright © 2016 - 2023 Weaviate B.V. All rights reserved.
+//
+//  CONTACT: hello@weaviate.io
+//
+
+//go:build ignore
+// +build ignore
+
 package main
 
 import (
@@ -12,6 +26,7 @@ import (
 	"runtime"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -44,8 +59,13 @@ func main() {
 	majorityPct := flag.Float64("majorityPct", 95.0, "Minority filter percentage of the dataset")
 	//vectorDimension := flag.Int("vectorDim", 128, "Dimension of the vectors")
 
-	// parse the flags
 	flag.Parse()
+
+	numLabels := "2"                                                 // ToDo extend to multiple labels
+	majorityPct_str := strconv.FormatFloat(*majorityPct, 'f', 1, 64) // used for save path
+	majorityPct_str = strings.ReplaceAll(majorityPct_str, ".", "_")  // prefer e.g. `95_0` save path
+	print(majorityPct_str)
+	// parse the flags
 
 	// Read base vectors from file
 	vectors := ReadSiftVecsFrom("./sift-data/sift_base.fvecs", *numVectors, 128)
@@ -54,8 +74,8 @@ func main() {
 	saveIndexFilters := make([]Filters, len(vectors))
 	indexForBruteForce := make([]VecWithFilters, len(vectors))
 
-	majority_pct := (100.0 - *majorityPct) / 100.0
-	majority_cutoff := 10_000 * int(majority_pct)
+	majority_pct := *majorityPct / 100.0
+	majority_cutoff := int(10_000 * majority_pct)
 
 	for jdx, vector := range vectors {
 		nodeFilterMap := make(map[int]int)
@@ -81,10 +101,15 @@ func main() {
 		}
 	}
 
+	saveNumVectors := map[int]string{
+		100000:  "100K",
+		1000000: "1M",
+	}
 	saveIndexVectorsJSON, _ := json.Marshal(saveIndexVectors)
-	index_save_path := "indexVectors-" + strconv.Itoa(*numVectors) + ".json"
+	index_save_path := "indexVectors-" + saveNumVectors[*numVectors] + ".json"
 	ioutil.WriteFile(index_save_path, saveIndexVectorsJSON, 0o644)
-	index_with_filters_save_path := "indexFilters-" + strconv.Itoa(*numVectors) + "-2-90_0.json"
+	// ToDo - Use num labels and majority pct in save path
+	index_with_filters_save_path := "indexFilters-" + saveNumVectors[*numVectors] + "-" + numLabels + "-" + majorityPct_str + ".json"
 	saveIndexFiltersJSON, _ := json.Marshal(saveIndexFilters)
 	ioutil.WriteFile(index_with_filters_save_path, saveIndexFiltersJSON, 0o644)
 
@@ -107,7 +132,7 @@ func main() {
 	for i, queryVector := range queryVectors {
 		workerID := i % workerCount
 		queryFilters := make(map[int]int)
-		queryHash := workerID % 10_000
+		queryHash := i % 10_000
 		if queryHash < majority_cutoff {
 			queryFilters[0] = 0
 		} else {
@@ -149,18 +174,18 @@ func main() {
 	fmt.Printf("Brute forcing took %s \n", time.Since(before))
 	fmt.Printf("Saving...\n")
 	saveQueryVectorsJSON, _ := json.Marshal(saveQueryVectors)
-	query_vectors_save_path := "queryVectors_" + strconv.Itoa(*numVectors) + ".json"
+	query_vectors_save_path := "queryVectors-" + saveNumVectors[*numVectors] + ".json"
 	ioutil.WriteFile(query_vectors_save_path, saveQueryVectorsJSON, 0o644)
-	query_vectors_with_filters_save_path := "queryVectors-" + strconv.Itoa(*numVectors) + "-2-90_0.json"
+	query_vectors_with_filters_save_path := "queryFilters-" + saveNumVectors[*numVectors] + "-" + numLabels + "-" + majorityPct_str + ".json"
 	saveQueryFiltersJSON, _ := json.Marshal(saveQueryFilters)
 	ioutil.WriteFile(query_vectors_with_filters_save_path, saveQueryFiltersJSON, 0o644)
 
 	// Save all nearest neighbors to a JSON file
 	saveGroundTruthsJSON, _ := json.Marshal(groundTruths)
-	ground_truth_save_path := "filtered-recall-truths-" + strconv.Itoa(*numVectors) + ".json"
+	ground_truth_save_path := "filtered-recall-truths-" + saveNumVectors[*numVectors] + "-" + numLabels + "-" + majorityPct_str + ".json"
 	ioutil.WriteFile(ground_truth_save_path, saveGroundTruthsJSON, 0o644)
 
-	fmt.Println("Finished.\n")
+	fmt.Print("\n Finished.")
 }
 
 // Function to calculate nearest neighbors of a vector using brute force
