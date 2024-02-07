@@ -54,18 +54,16 @@ type GroundTruth struct {
 
 func main() {
 	// CLI flags
-	//filePath := flag.String("DataPath", "./sift-data/sift_base.fvecs", "Path to the data file")
 	numVectors := flag.Int("numVectors", 100_000, "Number of vectors to process")
 	majorityPct := flag.Float64("majorityPct", 95.0, "Minority filter percentage of the dataset")
 	//vectorDimension := flag.Int("vectorDim", 128, "Dimension of the vectors")
+	//filePath := flag.String("DataPath", "./sift-data/sift_base.fvecs", "Path to the data file")
 
 	flag.Parse()
 
 	numLabels := "2"                                                 // ToDo extend to multiple labels
 	majorityPct_str := strconv.FormatFloat(*majorityPct, 'f', 1, 64) // used for save path
 	majorityPct_str = strings.ReplaceAll(majorityPct_str, ".", "_")  // prefer e.g. `95_0` save path
-	print(majorityPct_str)
-	// parse the flags
 
 	// Read base vectors from file
 	vectors := ReadSiftVecsFrom("./sift-data/sift_base.fvecs", *numVectors, 128)
@@ -108,19 +106,15 @@ func main() {
 	saveIndexVectorsJSON, _ := json.Marshal(saveIndexVectors)
 	index_save_path := "indexVectors-" + saveNumVectors[*numVectors] + ".json"
 	ioutil.WriteFile(index_save_path, saveIndexVectorsJSON, 0o644)
-	// ToDo - Use num labels and majority pct in save path
 	index_with_filters_save_path := "indexFilters-" + saveNumVectors[*numVectors] + "-" + numLabels + "-" + majorityPct_str + ".json"
 	saveIndexFiltersJSON, _ := json.Marshal(saveIndexFilters)
 	ioutil.WriteFile(index_with_filters_save_path, saveIndexFiltersJSON, 0o644)
 
 	// Read the query vectors from files
-	_, queryVectors := ReadVecs(*numVectors, 10_000, 128, "sift") // probably should separate ReadVecs into two separate calls lmao
+	_, queryVectors := ReadVecs(*numVectors, 10_000, 128, "sift")
 
 	saveQueryVectors := make([]Vector, len(queryVectors))
 	saveQueryFilters := make([]Filters, len(queryVectors))
-
-	//golang doesn't like this - race condition: var queryFilter map[int]int
-	// For each query vector, perform search and calculate recall
 
 	groundTruths := make([]GroundTruth, len(queryVectors))
 
