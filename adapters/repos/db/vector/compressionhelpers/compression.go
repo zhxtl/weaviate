@@ -230,7 +230,7 @@ func NewPQCompressor(
 		compressedStore: store,
 	}
 	pqVectorsCompressor.initCompressedStore()
-	pqVectorsCompressor.cache = cache.NewShardedByteLockCache(pqVectorsCompressor.getCompressedVectorForID, vectorCacheMaxObjects, logger, 0)
+	pqVectorsCompressor.cache = cache.NewPaginatedByteCache(pqVectorsCompressor.getCompressedVectorForID, vectorCacheMaxObjects, logger, 0)
 	pqVectorsCompressor.cache.Grow(uint64(len(data)))
 	quantizer.Fit(data)
 	return pqVectorsCompressor, nil
@@ -254,7 +254,7 @@ func RestorePQCompressor(
 		compressedStore: store,
 	}
 	pqVectorsCompressor.initCompressedStore()
-	pqVectorsCompressor.cache = cache.NewShardedByteLockCache(pqVectorsCompressor.getCompressedVectorForID, vectorCacheMaxObjects, logger, 0)
+	pqVectorsCompressor.cache = cache.NewPaginatedByteCache(pqVectorsCompressor.getCompressedVectorForID, vectorCacheMaxObjects, logger, 0)
 	return pqVectorsCompressor, nil
 }
 
@@ -270,7 +270,7 @@ func NewBQCompressor(
 		compressedStore: store,
 	}
 	bqVectorsCompressor.initCompressedStore()
-	bqVectorsCompressor.cache = cache.NewShardedUInt64LockCache(bqVectorsCompressor.getCompressedVectorForID, vectorCacheMaxObjects, logger, 0)
+	bqVectorsCompressor.cache = cache.NewPaginatedUInt64Cache(bqVectorsCompressor.getCompressedVectorForID, vectorCacheMaxObjects, logger, 0)
 	return bqVectorsCompressor, nil
 }
 

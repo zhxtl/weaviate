@@ -238,27 +238,26 @@ func New(cfg Config, uc ent.UserConfig, tombstoneCallbacks, shardCompactionCallb
 		maximumConnectionsLayerZero: 2 * uc.MaxConnections,
 
 		// inspired by c++ implementation
-		levelNormalizer:        1 / math.Log(float64(uc.MaxConnections)),
-		efConstruction:         uc.EFConstruction,
-		flatSearchCutoff:       int64(uc.FlatSearchCutoff),
-		nodes:                  make([]*vertex, InitialSize),
-		cache:                  vectorCache,
-		vectorForID:            vectorCache.Get,
-		multiVectorForID:       vectorCache.MultiGet,
-		compressedVectorsCache: compressedVectorsCache,
-		id:                     cfg.ID,
-		rootPath:               cfg.RootPath,
-		tombstones:             map[uint64]struct{}{},
-		logger:                 cfg.Logger,
-		distancerProvider:      cfg.DistanceProvider,
-		deleteLock:             &sync.Mutex{},
-		tombstoneLock:          &sync.RWMutex{},
-		resetLock:              &sync.Mutex{},
-		resetCtx:               resetCtx,
-		resetCtxCancel:         resetCtxCancel,
-		shutdownCtx:            shutdownCtx,
-		shutdownCtxCancel:      shutdownCtxCancel,
-		initialInsertOnce:      &sync.Once{},
+		levelNormalizer:   1 / math.Log(float64(uc.MaxConnections)),
+		efConstruction:    uc.EFConstruction,
+		flatSearchCutoff:  int64(uc.FlatSearchCutoff),
+		nodes:             make([]*vertex, InitialSize),
+		cache:             vectorCache,
+		vectorForID:       vectorCache.Get,
+		multiVectorForID:  vectorCache.MultiGet,
+		id:                cfg.ID,
+		rootPath:          cfg.RootPath,
+		tombstones:        map[uint64]struct{}{},
+		logger:            cfg.Logger,
+		distancerProvider: cfg.DistanceProvider,
+		deleteLock:        &sync.Mutex{},
+		tombstoneLock:     &sync.RWMutex{},
+		resetLock:         &sync.Mutex{},
+		resetCtx:          resetCtx,
+		resetCtxCancel:    resetCtxCancel,
+		shutdownCtx:       shutdownCtx,
+		shutdownCtxCancel: shutdownCtxCancel,
+		initialInsertOnce: &sync.Once{},
 
 		ef:       int64(uc.EF),
 		efMin:    int64(uc.DynamicEFMin),
@@ -290,9 +289,6 @@ func New(cfg Config, uc ent.UserConfig, tombstoneCallbacks, shardCompactionCallb
 		index.compressed.Store(true)
 		index.cache.Drop()
 		index.cache = nil
-	}
-	if uc.PQ.Enabled {
-		index.compressedVectorsCache = cache.NewPaginatedByteCache(index.getCompressedVectorForID, uc.VectorCacheMaxObjects, cfg.Logger, 0)
 	}
 
 	if err := index.init(cfg); err != nil {
