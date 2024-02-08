@@ -55,15 +55,15 @@ type GroundTruth struct {
 func main() {
 	// CLI flags
 	numVectors := flag.Int("numVectors", 100_000, "Number of vectors to process")
-	majorityPct := flag.Float64("majorityPct", 95.0, "Minority filter percentage of the dataset")
+	numLabels := flag.Int("numLabels", 2, "The number of filters to create")
+	alpha := flag.Float64("alpha", 95.0, "Distribution of filter values")
 	//vectorDimension := flag.Int("vectorDim", 128, "Dimension of the vectors")
 	//filePath := flag.String("DataPath", "./sift-data/sift_base.fvecs", "Path to the data file")
 
 	flag.Parse()
-
-	numLabels := "2"                                                 // ToDo extend to multiple labels
-	majorityPct_str := strconv.FormatFloat(*majorityPct, 'f', 1, 64) // used for save path
-	majorityPct_str = strings.ReplaceAll(majorityPct_str, ".", "_")  // prefer e.g. `95_0` save path
+	// ToDo extend to multiple labels
+	majorityPct_str := strconv.FormatFloat(*alpha, 'f', 1, 64)      // used for save path
+	majorityPct_str = strings.ReplaceAll(majorityPct_str, ".", "_") // prefer e.g. `95_0` save path
 
 	// Read base vectors from file
 	vectors := ReadSiftVecsFrom("./sift-data/sift_base.fvecs", *numVectors, 128)
@@ -72,7 +72,30 @@ func main() {
 	saveIndexFilters := make([]Filters, len(vectors))
 	indexForBruteForce := make([]VecWithFilters, len(vectors))
 
-	majority_pct := *majorityPct / 100.0
+	// New approach, count occurrences
+
+	labelProportions := CalculatePowerLawDistributions(*numLabels, *alpha) // add special case for numLabels=2
+	fmt.Println("Label propotions: ", labelProportions)
+
+	labelCounts := make([]int, *numLabels)
+	for i, proportion := range labelProportions {
+		count := int(proportion / 100 * float64(*numVectors))
+		labelCounts[i] = count
+	}
+	fmt.Println("Label counts: ", labelCounts)
+
+	currentLabel := 0
+	for jdx, vector := range vectors {
+		if labelCounts[currentLabel] == 0 {
+			currentLabel++
+		}
+		labelCounts[currentLabel]--
+
+		nodeFilterMap := make(map[int]int)
+		nodeFilterMap[0] = currentLabel
+	}
+
+	majority_pct := *alpha / 100.0
 	majority_cutoff := int(10_000 * majority_pct)
 
 	for jdx, vector := range vectors {
@@ -381,4 +404,23 @@ func float32FromBytes(bytes []byte) float32 {
 	bits := binary.LittleEndian.Uint32(bytes)
 	float := math.Float32frombits(bits)
 	return float
+}
+
+func CalculatePowerLawDistributions(numLabels int, alpha float64) []float64 {
+	unnormalizedWeights := make([]float64, numLabels)
+
+	var totalWeight float64
+	for i := 1; i <= numLabels; i++ {
+		weight := math.Pow(float64(i), -alpha)
+		unnormalizedWeights[i-1] = weight
+		totalWeight += weight
+	}
+
+	normalizedProportions := make([]float64, numLabels)
+
+	for i, weight := range unnormalizedWeights {
+		normalizedProportions[i] = (weight / totalWeight) * 100
+	}
+
+	return normalizedProportions
 }
