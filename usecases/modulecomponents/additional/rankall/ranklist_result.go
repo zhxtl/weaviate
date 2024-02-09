@@ -9,7 +9,7 @@
 //  CONTACT: hello@weaviate.io
 //
 
-package rerank
+package rerankall
 
 import (
 	"context"
@@ -20,7 +20,7 @@ import (
 	"github.com/weaviate/weaviate/entities/search"
 )
 
-func (p *ReRankerProvider) getScore(ctx context.Context, cfg moduletools.ClassConfig,
+func (p *ReRankerAllProvider) getRerankedResults(ctx context.Context, cfg moduletools.ClassConfig,
 	in []search.Result, params *Params,
 ) ([]search.Result, error) {
 	if len(in) == 0 {
@@ -30,11 +30,11 @@ func (p *ReRankerProvider) getScore(ctx context.Context, cfg moduletools.ClassCo
 		return nil, fmt.Errorf("no params provided")
 	}
 
-	rankProperty := params.GetProperty()
-	query := params.GetQuery()
+	rankPrompt := params.GetRankPrompt()
+	properties := params.GetProperties()
 
 	// check if user parameter values are valid
-	if len(rankProperty) == 0 {
+	if len(properties) == 0 {
 		return in, errors.New("no properties provided")
 	}
 
@@ -54,7 +54,7 @@ func (p *ReRankerProvider) getScore(ctx context.Context, cfg moduletools.ClassCo
 	}
 
 	// rank results
-	rerankerResults, err := p.client.Rank(ctx, query, documents, cfg)
+	rerankerResults, err := p.client.RankAll(ctx, query, documents, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("error ranking: %w", err)
 	}

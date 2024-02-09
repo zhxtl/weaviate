@@ -9,7 +9,7 @@
 //  CONTACT: hello@weaviate.io
 //
 
-package rerank
+package rerankall
 
 import (
 	"context"
@@ -23,36 +23,36 @@ import (
 )
 
 // const maximumNumberOfGoroutines = 10
-type ReRankerClient interface {
-	Rank(ctx context.Context, query string, documents []string, cfg moduletools.ClassConfig) (*ent.RankResult, error)
+type ReRankerAllClient interface {
+	RankAll(ctx context.Context, query string, documents []string, cfg moduletools.ClassConfig) (*ent.RankAllResult, error)
 }
 
-type ReRankerProvider struct {
-	client ReRankerClient
+type ReRankerAllProvider struct {
+	client ReRankerAllClient
 }
 
-func New(reranker ReRankerClient) *ReRankerProvider {
-	return &ReRankerProvider{reranker}
+func New(rerankerall ReRankerAllClient) *ReRankerAllProvider {
+	return &ReRankerAllProvider{rerankerall}
 }
 
-func (p *ReRankerProvider) AdditionalPropertyDefaultValue() interface{} {
+func (p *ReRankerAllProvider) AdditionalPropertyDefaultValue() interface{} {
 	return &Params{}
 }
 
-func (p *ReRankerProvider) ExtractAdditionalFn(param []*ast.Argument) interface{} {
-	return p.parseReRankerArguments(param)
+func (p *ReRankerAllProvider) ExtractAdditionalFn(param []*ast.Argument) interface{} {
+	return p.parseReRankerAllArguments(param)
 }
 
-func (p *ReRankerProvider) AdditionalFieldFn(classname string) *graphql.Field {
-	return p.additionalReRankerField(classname)
+func (p *ReRankerAllProvider) AdditionalFieldFn(classname string) *graphql.Field {
+	return p.additionalReRankerAllField(classname)
 }
 
-func (p *ReRankerProvider) AdditionalPropertyFn(ctx context.Context,
+func (p *ReRankerAllProvider) AdditionalPropertyFn(ctx context.Context,
 	in []search.Result, params interface{}, limit *int,
 	argumentModuleParams map[string]interface{}, cfg moduletools.ClassConfig,
 ) ([]search.Result, error) {
 	if parameters, ok := params.(*Params); ok {
-		return p.getScore(ctx, cfg, in, parameters)
+		return p.getRerankedResults(ctx, cfg, in, parameters)
 	}
 	return nil, errors.New("wrong parameters")
 }

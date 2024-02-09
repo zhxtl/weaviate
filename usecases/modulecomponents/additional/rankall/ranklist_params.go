@@ -9,23 +9,23 @@
 //  CONTACT: hello@weaviate.io
 //
 
-package rerank
+package rerankall
 
 type Params struct {
-	Property *string
-	Query    *string
+	RankPrompt *string
+	Properties *[]string
 }
 
-func (n Params) GetQuery() string {
-	if n.Query != nil {
-		return *n.Query
+func (n Params) GetRankPrompt() string {
+	if n.RankPrompt != nil {
+		return *n.RankPrompt
 	}
 	return ""
 }
 
-func (n Params) GetProperty() string {
-	if n.Property != nil {
-		return *n.Property
+func (n Params) GetProperties() []string {
+	if n.Properties != nil {
+		return *n.Properties
 	}
-	return ""
+	return []{""}
 }

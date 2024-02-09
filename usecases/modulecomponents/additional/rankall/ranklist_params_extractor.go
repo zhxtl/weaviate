@@ -9,21 +9,21 @@
 //  CONTACT: hello@weaviate.io
 //
 
-package rerank
+package rerankall
 
 import (
 	"github.com/tailor-inc/graphql/language/ast"
 )
 
-func (p *ReRankerProvider) parseReRankerArguments(args []*ast.Argument) *Params {
+func (p *ReRankerAllProvider) parseReRankerAllArguments(args []*ast.Argument) *Params {
 	out := &Params{}
 
 	for _, arg := range args {
 		switch arg.Name.Value {
-		case "query":
-			out.Query = &arg.Value.(*ast.StringValue).Value
-		case "property":
-			out.Property = &arg.Value.(*ast.StringValue).Value
+		case "rankPrompt":
+			out.RankPrompt = &arg.Value.(*ast.StringValue).Value
+		case "properties":
+			out.Properties = &arg.Value.(*ast.StringValue).Value
 		}
 	}
 

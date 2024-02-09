@@ -9,7 +9,7 @@
 //  CONTACT: hello@weaviate.io
 //
 
-package rerank
+package rerankall
 
 import (
 	"fmt"
@@ -17,24 +17,24 @@ import (
 	"github.com/tailor-inc/graphql"
 )
 
-func (p *ReRankerProvider) additionalReRankerField(classname string) *graphql.Field {
+func (p *ReRankerAllProvider) additionalReRankerAllField(classname string) *graphql.Field {
 	return &graphql.Field{
 		Args: graphql.FieldConfigArgument{
-			"query": &graphql.ArgumentConfig{
+			"rankPrompt": &graphql.ArgumentConfig{
 				Description:  "Properties which contains text",
 				Type:         graphql.String,
 				DefaultValue: nil,
 			},
-			"property": &graphql.ArgumentConfig{
+			"properties": &graphql.ArgumentConfig{
 				Description:  "Property to rank from",
 				Type:         graphql.String,
 				DefaultValue: nil,
 			},
 		},
 		Type: graphql.NewList(graphql.NewObject(graphql.ObjectConfig{
-			Name: fmt.Sprintf("%sAdditionalReranker", classname),
+			Name: fmt.Sprintf("%sAdditionalRerankerAll", classname),
 			Fields: graphql.Fields{
-				"score": &graphql.Field{Type: graphql.Float},
+				"explanation": &graphql.Field{Type: graphql.String},
 			},
 		})),
 	}
