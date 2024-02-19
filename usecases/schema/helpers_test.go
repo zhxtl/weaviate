@@ -134,13 +134,13 @@ func (f *fakeScaleOutManager) SetSchemaManager(sm scaler.SchemaManager) {
 
 type fakeValidator struct{}
 
-func (f *fakeValidator) ValidateVectorIndexConfigUpdate(
+func (f *fakeValidator) ValidateVectorIndexConfigUpdate(ctx context.Context,
 	old, updated schemaConfig.VectorIndexConfig,
 ) error {
 	return nil
 }
 
-func (f *fakeValidator) ValidateInvertedIndexConfigUpdate(
+func (f *fakeValidator) ValidateInvertedIndexConfigUpdate(ctx context.Context,
 	old, updated *models.InvertedIndexConfig,
 ) error {
 	return nil
@@ -344,6 +344,11 @@ func (f *fakeMigrator) UpdateVectorIndexConfig(ctx context.Context, className st
 
 func (f *fakeMigrator) UpdateInvertedIndexConfig(ctx context.Context, className string, updated *models.InvertedIndexConfig) error {
 	args := f.Called(ctx, className, updated)
+	return args.Error(0)
+}
+
+func (f *fakeMigrator) UpdateIndex(ctx context.Context, class *models.Class, state *sharding.State) error {
+	args := f.Called(ctx, class, state)
 	return args.Error(0)
 }
 

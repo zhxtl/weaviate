@@ -78,13 +78,8 @@ type Indexer interface {
 	Close(context.Context) error
 }
 
-// Parser parses concrete class fields after deserialization
 type Parser interface {
-	// ParseClassUpdate parses a class after unmarshaling by setting concrete types for the fields
 	ParseClass(class *models.Class) error
-
-	// ParseClass parses new updates by providing the current class data.
-	ParseClassUpdate(class, update *models.Class) (*models.Class, error)
 }
 
 type Config struct {
@@ -126,7 +121,7 @@ type Store struct {
 
 	nodeID   string
 	host     string
-	db       *localDB
+	db       localDB
 	log      *slog.Logger
 	logLevel string
 
@@ -159,7 +154,7 @@ func New(cfg Config, cluster cluster.Reader) Store {
 		nodeID:            cfg.NodeID,
 		host:              cfg.Host,
 		cluster:           cluster,
-		db:                &localDB{NewSchema(cfg.NodeID, cfg.DB), cfg.DB, cfg.Parser},
+		db:                localDB{NewSchema(cfg.NodeID, cfg.DB), cfg.DB, cfg.Parser},
 		log:               cfg.Logger,
 		logLevel:          cfg.LogLevel,
 	}
@@ -236,15 +231,7 @@ func (st *Store) Open(ctx context.Context) (err error) {
 			"snapshot_index", snapshotIndex(snapshotStore),
 			"last_applied_log_index", st.initialLastAppliedIndex)
 
-		// FSM passed to RecoverCluster has to be temporary one
-		// because it will be left in state shouldn't be used by the application.
-		if err := raft.RecoverCluster(st.raftConfig(), &Store{
-			nodeID:   st.nodeID,
-			host:     st.host,
-			db:       st.db,
-			log:      st.log,
-			logLevel: st.logLevel,
-		}, logCache, st.logStore, snapshotStore, st.transport, raft.Configuration{
+		if err := raft.RecoverCluster(st.raftConfig(), st, logCache, st.logStore, snapshotStore, st.transport, raft.Configuration{
 			Servers: servers,
 		}); err != nil {
 			return fmt.Errorf("raft recovery failed: %w", err)

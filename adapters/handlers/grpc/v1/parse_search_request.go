@@ -282,7 +282,7 @@ func searchParamsFromProto(req *pb.SearchRequest, getClass func(string) *models.
 			return dto.GetParams{}, err
 		}
 		filter := &filters.LocalFilter{Root: &clause}
-		if err := filters.ValidateFilters(getClass, filter); err != nil {
+		if err := filters.ValidateFilters(scheme.GetClass, filter); err != nil {
 			return dto.GetParams{}, err
 		}
 		out.Filters = filter
@@ -428,11 +428,7 @@ func extractPropertiesRequest(reqProps *pb.PropertiesRequest, getClass func(stri
 	}
 
 	if len(reqProps.RefProperties) > 0 {
-		class := getClass(className)
-		if class == nil {
-			return nil, fmt.Errorf("could not find class %s in schema", className)
-		}
-
+		class := scheme.GetClass(className)
 		for _, prop := range reqProps.RefProperties {
 			normalizedRefPropName := schema.LowercaseFirstLetter(prop.ReferenceProperty)
 			schemaProp, err := schema.GetPropertyByName(class, normalizedRefPropName)
@@ -516,11 +512,7 @@ func extractPropertiesRequestDeprecated(reqProps *pb.PropertiesRequest, getClass
 	}
 
 	if reqProps.RefProperties != nil && len(reqProps.RefProperties) > 0 {
-		class := getClass(className)
-		if class == nil {
-			return []search.SelectProperty{}, fmt.Errorf("could not find class %s in schema", className)
-		}
-
+		class := scheme.GetClass(className)
 		for _, prop := range reqProps.RefProperties {
 			normalizedRefPropName := schema.LowercaseFirstLetter(prop.ReferenceProperty)
 			schemaProp, err := schema.GetPropertyByName(class, normalizedRefPropName)
@@ -657,10 +649,7 @@ func isIdOnlyRequest(metadata *pb.MetadataRequest) bool {
 
 func getAllNonRefNonBlobProperties(getClass func(string) *models.Class, className string) ([]search.SelectProperty, error) {
 	var props []search.SelectProperty
-	class := getClass(className)
-	if class == nil {
-		return []search.SelectProperty{}, fmt.Errorf("could not find class %s in schema", className)
-	}
+	class := scheme.GetClass(className)
 
 	for _, prop := range class.Properties {
 		dt, err := schema.GetPropertyDataType(class, prop.Name)

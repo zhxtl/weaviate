@@ -51,7 +51,7 @@ func batchDeleteParamsFromProto(req *pb.BatchDeleteRequest, getClass func(string
 		return objects.BatchDeleteParams{}, err
 	}
 	filter := &filters.LocalFilter{Root: &clause}
-	if err := filters.ValidateFilters(getClass, filter); err != nil {
+	if err := filters.ValidateFilters(scheme.GetClass, filter); err != nil {
 		return objects.BatchDeleteParams{}, err
 	}
 	params.Filters = filter

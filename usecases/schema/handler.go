@@ -62,8 +62,10 @@ type metaReader interface {
 }
 
 type validator interface {
-	ValidateVectorIndexConfigUpdate(old, updated schemaConfig.VectorIndexConfig) error
-	ValidateInvertedIndexConfigUpdate(old, updated *models.InvertedIndexConfig) error
+	ValidateVectorIndexConfigUpdate(ctx context.Context,
+		old, updated schemaConfig.VectorIndexConfig) error
+	ValidateInvertedIndexConfigUpdate(ctx context.Context,
+		old, updated *models.InvertedIndexConfig) error
 }
 
 // The handler manages API requests for manipulating class schemas.
@@ -103,7 +105,7 @@ func NewHandler(
 		config:                  config,
 		metaWriter:              store,
 		metaReader:              metaReader,
-		parser:                  Parser{clusterState: clusterState, configParser: configParser, validator: validator},
+		parser:                  Parser{clusterState: clusterState, configParser: configParser},
 		validator:               validator,
 		logger:                  logger,
 		Authorizer:              authorizer,

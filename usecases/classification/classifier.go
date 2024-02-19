@@ -230,7 +230,8 @@ func (c *Classifier) validateFilter(filter *libfilters.LocalFilter) error {
 	if filter == nil {
 		return nil
 	}
-	return libfilters.ValidateFilters(c.schemaGetter.ReadOnlyClass, filter)
+	sch := c.schemaGetter.GetSchemaSkipAuth()
+	return libfilters.ValidateFilters(sch.GetClass, filter)
 }
 
 func (c *Classifier) assignNewID(params *models.Classification) error {

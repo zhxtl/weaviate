@@ -748,7 +748,11 @@ func (e *Explorer) crossClassVectorFromModules(ctx context.Context,
 }
 
 func (e *Explorer) checkCertaintyCompatibility(className string) error {
-	class := e.schemaGetter.ReadOnlyClass(className)
+	s := e.schemaGetter.GetSchemaSkipAuth()
+	if s.Objects == nil {
+		return errors.Errorf("failed to get schema")
+	}
+	class := s.GetClass(className)
 	if class == nil {
 		return errors.Errorf("failed to get class: %s", className)
 	}
@@ -767,9 +771,9 @@ func (e *Explorer) replicationEnabled(params dto.GetParams) (bool, error) {
 	if e.schemaGetter == nil {
 		return false, fmt.Errorf("schemaGetter not set")
 	}
-
-	class := e.schemaGetter.ReadOnlyClass(params.ClassName)
-	if class == nil {
+	sch := e.schemaGetter.GetSchemaSkipAuth()
+	cls := sch.GetClass(params.ClassName)
+	if cls == nil {
 		return false, fmt.Errorf("class not found in schema: %q", params.ClassName)
 	}
 

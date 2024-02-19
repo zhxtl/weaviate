@@ -114,16 +114,10 @@ func (s *Shard) initDimensionTracking() {
 	}
 }
 
-func getDimensionCategory(cfg schemaConfig.VectorIndexConfig) (DimensionCategory, int) {
-	// We have special dimension tracking for BQ and PQ to represent reduced costs
-	// these are published under the separate vector_segments_dimensions metric
-	if hnswUserConfig, ok := cfg.(hnswent.UserConfig); ok {
-		if hnswUserConfig.PQ.Enabled {
-			return DimensionCategoryPQ, hnswUserConfig.PQ.Segments
-		}
-		if hnswUserConfig.BQ.Enabled {
-			return DimensionCategoryBQ, 0
-		}
+func getPQSegments(cfg schemaConfig.VectorIndexConfig) (bool, int) {
+	// Detect if vector index is HNSW
+	if hnswUserConfig, ok := cfg.(hnswent.UserConfig); ok && hnswUserConfig.PQ.Enabled {
+		return true, hnswUserConfig.PQ.Segments
 	}
 	return DimensionCategoryStandard, 0
 }

@@ -376,11 +376,6 @@ func FromEnv(config *Config) error {
 		return err
 	}
 
-	config.DisableTelemetry = false
-	if Enabled(os.Getenv("DISABLE_TELEMETRY")) {
-		config.DisableTelemetry = true
-	}
-
 	return nil
 }
 

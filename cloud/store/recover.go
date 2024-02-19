@@ -34,11 +34,8 @@ type Peer struct {
 // genPeersFileFromBolt checks if there was an existing raft.db and has persisted config
 // so it generates peers.jon file to be used for raft.RecoverCluster to recover the cluster on start.
 func (st *Store) genPeersFileFromBolt(raftDBPath, peerFilePath string) error {
-	if _, err := os.Stat(peerFilePath); err == nil {
-		// peers.json file exists, don't overwrite
-		return nil
-	}
 	if _, err := os.Stat(raftDBPath); err != nil {
+		st.log.Error("can not generate peers file from existed bolt db", err)
 		// if files doesn't exist we bail out early
 		return nil
 	}
@@ -149,6 +146,7 @@ func (st *Store) genPeersFileFromBolt(raftDBPath, peerFilePath string) error {
 func (st *Store) configViaPeers(peerFilePath string) (raft.Configuration, error) {
 	var configuration raft.Configuration
 	if _, err := os.Stat(peerFilePath); err != nil {
+		st.log.Error("either file doesn't exist, or there an error", err)
 		// if files doesn't exist we bail out early
 		return configuration, nil
 	}
@@ -172,6 +170,7 @@ func (st *Store) configViaPeers(peerFilePath string) (raft.Configuration, error)
 // recoverable validates that the peers.json file servers are is still alive
 func (st *Store) recoverable(peers []raft.Server) ([]raft.Server, bool) {
 	if len(peers) == 0 {
+		st.log.Warn("provided server list is empty, recovery is not possible")
 		return nil, false
 	}
 
@@ -182,7 +181,7 @@ func (st *Store) recoverable(peers []raft.Server) ([]raft.Server, bool) {
 	for {
 		select {
 		case <-t.C:
-			return aliveServes, len(aliveServes) > 1
+			return aliveServes, len(aliveServes) > 0
 		default:
 			st.log.Info("existing members in memberlist", "IPs", fmt.Sprintf("%v", st.cluster.AllHostnames()))
 			for _, s := range peers {
@@ -201,7 +200,7 @@ func (st *Store) recoverable(peers []raft.Server) ([]raft.Server, bool) {
 			}
 
 			if len(aliveServes) == len(peers) {
-				return aliveServes, len(aliveServes) > 1
+				return aliveServes, true
 			}
 			time.Sleep(500 * time.Millisecond)
 		}

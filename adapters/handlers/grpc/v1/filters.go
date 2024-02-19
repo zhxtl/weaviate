@@ -257,11 +257,8 @@ func extractPath(className string, on []string) (*filters.Path, error) {
 	return &filters.Path{Class: schema.ClassName(className), Property: schema.PropertyName(on[0]), Child: nil}, nil
 }
 
-func extractPathNew(getClass func(string) *models.Class, className string, target *pb.FilterTarget, operator filters.Operator) (*filters.Path, schema.DataType, error) {
-	class := getClass(className)
-	if class == nil {
-		return nil, "", fmt.Errorf("could not find class %s in schema", className)
-	}
+func extractPathNew(scheme schema.Schema, className string, target *pb.FilterTarget, operator filters.Operator) (*filters.Path, schema.DataType, error) {
+	class := scheme.GetClass(className)
 	switch target.Target.(type) {
 	case *pb.FilterTarget_Property:
 		dt, err := extractDataType(getClass, operator, className, []string{target.GetProperty()})

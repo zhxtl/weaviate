@@ -29,10 +29,8 @@ func (c *Classifier) classifyItemUsingZeroShot(item search.Result, itemIndex int
 
 	properties := params.ClassifyProperties
 
-	class := c.schemaGetter.ReadOnlyClass(item.ClassName)
-	if class == nil {
-		return fmt.Errorf("zeroshot: search: could not find class %s in schema", item.ClassName)
-	}
+	s := c.schemaGetter.GetSchemaSkipAuth()
+	class := s.GetClass(item.ClassName)
 
 	classifyProp := []string{}
 	for _, prop := range properties {

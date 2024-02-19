@@ -39,6 +39,8 @@ type Migrator struct {
 	logger logrus.FieldLogger
 }
 
+// AddClass it creates index with necessary properties and config
+// it is idempotent by nature.
 func (m *Migrator) AddClass(ctx context.Context, class *models.Class,
 	shardState *sharding.State,
 ) error {
@@ -368,7 +370,7 @@ func (m *Migrator) UpdateVectorIndexConfig(ctx context.Context,
 	return idx.updateVectorIndexConfig(ctx, updated)
 }
 
-func (m *Migrator) ValidateVectorIndexConfigUpdate(
+func (m *Migrator) ValidateVectorIndexConfigUpdate(ctx context.Context,
 	old, updated schemaConfig.VectorIndexConfig,
 ) error {
 	switch old.IndexType() {
@@ -688,4 +690,10 @@ func (m *Migrator) WaitForStartup(ctx context.Context) error {
 
 func (m *Migrator) Shutdown(ctx context.Context) error {
 	return m.db.Shutdown(ctx)
+}
+
+// UpdateIndex creates index if not exists and idempotent in nature.
+func (m *Migrator) UpdateIndex(ctx context.Context, class *models.Class, state *sharding.State) error {
+	// add class is idempotent
+	return m.AddClass(ctx, class, state)
 }

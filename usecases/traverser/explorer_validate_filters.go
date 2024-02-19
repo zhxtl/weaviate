@@ -19,5 +19,6 @@ func (e *Explorer) validateFilters(filter *filters.LocalFilter) error {
 	if filter == nil {
 		return nil
 	}
-	return filters.ValidateFilters(e.schemaGetter.ReadOnlyClass, filter)
+	sch := e.schemaGetter.GetSchemaSkipAuth()
+	return filters.ValidateFilters(sch.GetClass, filter)
 }

@@ -548,6 +548,7 @@ func extractPropertiesAnswer(getClass func(string) *models.Class, results map[st
 		Fields: make(map[string]*pb.Value, 0),
 	}
 	refProps := make([]*pb.RefPropertiesResult, 0)
+	class := scheme.GetClass(className)
 	for _, prop := range properties {
 		propRaw, ok := results[prop.Name]
 
@@ -732,7 +733,7 @@ func extractArrayTypesRoot(getClass func(string) *models.Class, className string
 		return fmt.Errorf("could not find class %s in schema", className)
 	}
 	for propName := range rawProps {
-		dataType, err := schema.GetPropertyDataType(class, propName)
+		dataType, err := schema.GetPropertyDataType(scheme.GetClass(className), propName)
 		if err != nil {
 			return err
 		}

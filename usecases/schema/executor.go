@@ -61,6 +61,7 @@ func (e *executor) AddClass(pl cluster.AddClassRequest) error {
 func (e *executor) UpdateClass(req cluster.UpdateClassRequest) error {
 	className := req.Class.Class
 	ctx := context.Background()
+
 	if err := e.migrator.UpdateVectorIndexConfig(ctx, className,
 		req.Class.VectorIndexConfig.(schemaConfig.VectorIndexConfig)); err != nil {
 		return errors.Wrap(err, "vector index config")
@@ -136,7 +137,6 @@ func (e *executor) UpdateTenants(class string, req *cluster.UpdateTenantsRequest
 	if err != nil {
 		e.logger.WithField("action", "update_tenants").
 			WithField("class", class).Error(err)
-		return err
 	}
 
 	commit(true) // commit update of tenants

@@ -114,7 +114,6 @@ type Config struct {
 	DisableGraphQL                      bool                     `json:"disable_graphql" yaml:"disable_graphql"`
 	AvoidMmap                           bool                     `json:"avoid_mmap" yaml:"avoid_mmap"`
 	CORS                                CORS                     `json:"cors" yaml:"cors"`
-	DisableTelemetry                    bool                     `json:"disable_telemetry" yaml:"disable_telemetry"`
 
 	// Raft Specific configuration
 	// TODO-RAFT: Do we want to be able to specify these with config file as well ?

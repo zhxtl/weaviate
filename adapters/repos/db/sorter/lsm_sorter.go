@@ -43,7 +43,7 @@ func NewLSMSorter(store *lsmkv.Store, fn func(string) *models.Class, className s
 	if bucket == nil {
 		return nil, fmt.Errorf("lsm sorter - bucket %s for class %s not found", helpers.ObjectsBucketLSM, className)
 	}
-	class := fn(className.String())
+	class := sch.GetClass(schema.ClassName(className).String())
 	if class == nil {
 		return nil, fmt.Errorf("lsm sorter - class %s not found", className)
 	}

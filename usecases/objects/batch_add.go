@@ -185,21 +185,8 @@ func (b *BatchManager) validateObject(ctx context.Context, principal *models.Pri
 			return err
 		}
 
-		compFactory := func() (moduletools.VectorizablePropsComparator, error) {
-			searchObj, err := b.vectorRepo.Object(ctx, object.Class, id, nil, additional.Properties{}, repl, object.Tenant)
-			if err != nil {
-				return nil, err
-			}
-			if searchObj != nil {
-				prevObj := searchObj.Object()
-				return moduletools.NewVectorizablePropsComparator(class.Properties,
-					object.Properties, prevObj.Properties, prevObj.Vector), nil
-			}
-			return moduletools.NewVectorizablePropsComparatorDummy(class.Properties, object.Properties), nil
-		}
-
 		// update vector only if we passed validation
-		err = b.modulesProvider.UpdateVector(ctx, object, class, compFactory, b.findObject, b.logger)
+		err = b.modulesProvider.UpdateVector(ctx, object, class, nil, b.findObject, b.logger)
 		if err != nil {
 			return err
 		}
