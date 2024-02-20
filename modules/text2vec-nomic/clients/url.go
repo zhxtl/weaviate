@@ -21,7 +21,7 @@ type nomicUrlBuilder struct {
 func newNomicUrlBuilder() *nomicUrlBuilder {
 	return &nomicUrlBuilder{
 		origin:   "https://api.nomic.ai",
-		pathMask: "/v1/embeddings",
+		pathMask: "/v1/embeddings/text",
 	}
 }
 
