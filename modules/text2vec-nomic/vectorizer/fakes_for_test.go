@@ -14,7 +14,7 @@ package vectorizer
 import (
 	"context"
 
-	"github.com/weaviate/weaviate/modules/text2vec-openai/ent"
+	"github.com/weaviate/weaviate/modules/text2vec-cohere/ent"
 )
 
 type fakeClient struct {
@@ -23,14 +23,14 @@ type fakeClient struct {
 }
 
 func (c *fakeClient) Vectorize(ctx context.Context,
-	text string, cfg ent.VectorizationConfig,
+	text []string, cfg ent.VectorizationConfig,
 ) (*ent.VectorizationResult, error) {
-	c.lastInput = []string{text}
+	c.lastInput = text
 	c.lastConfig = cfg
 	return &ent.VectorizationResult{
-		Vector:     [][]float32{{0, 1, 2, 3}},
+		Vectors:    [][]float32{{0, 1, 2, 3}},
 		Dimensions: 4,
-		Text:       []string{text},
+		Text:       text,
 	}, nil
 }
 
@@ -40,7 +40,7 @@ func (c *fakeClient) VectorizeQuery(ctx context.Context,
 	c.lastInput = text
 	c.lastConfig = cfg
 	return &ent.VectorizationResult{
-		Vector:     [][]float32{{0.1, 1.1, 2.1, 3.1}},
+		Vectors:    [][]float32{{0.1, 1.1, 2.1, 3.1}},
 		Dimensions: 4,
 		Text:       text,
 	}, nil
@@ -48,13 +48,24 @@ func (c *fakeClient) VectorizeQuery(ctx context.Context,
 
 type fakeClassConfig struct {
 	classConfig           map[string]interface{}
+	vectorizeClassName    bool
 	vectorizePropertyName bool
 	skippedProperty       string
 	excludedProperty      string
+	// module specific settings
+	cohereModel  string
+	truncateType string
+	baseURL      string
 }
 
 func (f fakeClassConfig) Class() map[string]interface{} {
-	return f.classConfig
+	classSettings := map[string]interface{}{
+		"vectorizeClassName": f.vectorizeClassName,
+		"model":              f.cohereModel,
+		"truncate":           f.truncateType,
+		"baseURL":            f.baseURL,
+	}
+	return classSettings
 }
 
 func (f fakeClassConfig) ClassByModuleName(moduleName string) map[string]interface{} {

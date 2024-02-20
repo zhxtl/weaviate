@@ -13,7 +13,7 @@ package vectorizer
 
 import (
 	"context"
-	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -30,14 +30,11 @@ func TestVectorizingObjects(t *testing.T) {
 		name                string
 		input               *models.Object
 		expectedClientCall  string
-		expectedOpenAIType  string
-		expectedOpenAIModel string
+		expectedCohereModel string
 		noindex             string
 		excludedProperty    string // to simulate a schema where property names aren't vectorized
 		excludedClass       string // to simulate a schema where class names aren't vectorized
-		openAIType          string
-		openAIModel         string
-		openAIModelVersion  string
+		cohereModel         string
 	}
 
 	propsSchema := []*models.Property{
@@ -69,10 +66,8 @@ func TestVectorizingObjects(t *testing.T) {
 			input: &models.Object{
 				Class: "Car",
 			},
-			openAIType:          "text",
-			openAIModel:         "ada",
-			expectedOpenAIType:  "text",
-			expectedOpenAIModel: "ada",
+			cohereModel:         "large",
+			expectedCohereModel: "large",
 			expectedClientCall:  "car",
 		},
 		{
@@ -206,58 +201,27 @@ func TestVectorizingObjects(t *testing.T) {
 
 			v := New(client)
 
-			cfg := &fakeClassConfig{
-				classConfig: map[string]interface{}{
-					"vectorizeClassName": test.excludedClass != "Car",
-					"type":               test.openAIType,
-					"model":              test.openAIModel,
-					"modelVersion":       test.openAIModelVersion,
-				},
-				vectorizePropertyName: true,
-				skippedProperty:       test.noindex,
+			ic := &fakeClassConfig{
 				excludedProperty:      test.excludedProperty,
+				skippedProperty:       test.noindex,
+				vectorizeClassName:    test.excludedClass != "Car",
+				cohereModel:           test.cohereModel,
+				vectorizePropertyName: true,
 			}
 			comp := moduletools.NewVectorizablePropsComparatorDummy(propsSchema, test.input.Properties)
-			err := v.Object(context.Background(), test.input, comp, cfg)
+			err := v.Object(context.Background(), test.input, comp, ic)
 
 			require.Nil(t, err)
 			assert.Equal(t, models.C11yVector{0, 1, 2, 3}, test.input.Vector)
-			assert.Equal(t, []string{test.expectedClientCall}, client.lastInput)
-			assert.Equal(t, test.expectedOpenAIType, client.lastConfig.Type)
-			assert.Equal(t, test.expectedOpenAIModel, client.lastConfig.Model)
+			expected := strings.Split(test.expectedClientCall, " ")
+			actual := strings.Split(client.lastInput[0], " ")
+			assert.Equal(t, expected, actual)
+			assert.Equal(t, test.expectedCohereModel, client.lastConfig.Model)
 		})
 	}
 }
 
-func TestClassSettings(t *testing.T) {
-	type testCase struct {
-		expectedBaseURL string
-		cfg             moduletools.ClassConfig
-	}
-	tests := []testCase{
-		{
-			cfg: fakeClassConfig{
-				classConfig: make(map[string]interface{}),
-			},
-			expectedBaseURL: DefaultBaseURL,
-		},
-		{
-			cfg: fakeClassConfig{
-				classConfig: map[string]interface{}{
-					"baseURL": "https://proxy.weaviate.dev",
-				},
-			},
-			expectedBaseURL: "https://proxy.weaviate.dev",
-		},
-	}
-
-	for _, tt := range tests {
-		ic := NewClassSettings(tt.cfg)
-		assert.Equal(t, tt.expectedBaseURL, ic.BaseURL())
-	}
-}
-
-func TestVectorizingObjectWithDiff(t *testing.T) {
+func TestVectorizingObjectsWithDiff(t *testing.T) {
 	type testCase struct {
 		name              string
 		input             *models.Object
@@ -315,7 +279,7 @@ func TestVectorizingObjectWithDiff(t *testing.T) {
 			expectedVectorize: false,
 		},
 		{
-			name: "one vectorizable prop changed (1)",
+			name: "diff one vectorizable prop changed (1)",
 			input: &models.Object{
 				Class:      "Car",
 				Properties: props,
@@ -387,14 +351,14 @@ func TestVectorizingObjectWithDiff(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			cfg := &fakeClassConfig{
+			ic := &fakeClassConfig{
 				skippedProperty: test.skipped,
 			}
 
 			client := &fakeClient{}
 			v := New(client)
 
-			err := v.Object(context.Background(), test.input, test.comp, cfg)
+			err := v.Object(context.Background(), test.input, test.comp, ic)
 
 			require.Nil(t, err)
 			if test.expectedVectorize {
@@ -406,74 +370,4 @@ func TestVectorizingObjectWithDiff(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestValidateModelVersion(t *testing.T) {
-	type test struct {
-		model    string
-		docType  string
-		version  string
-		possible bool
-	}
-
-	tests := []test{
-		// 001 models
-		{"ada", "text", "001", true},
-		{"ada", "code", "001", true},
-		{"babbage", "text", "001", true},
-		{"babbage", "code", "001", true},
-		{"curie", "text", "001", true},
-		{"curie", "code", "001", true},
-		{"davinci", "text", "001", true},
-		{"davinci", "code", "001", true},
-
-		// 002 models
-		{"ada", "text", "002", true},
-		{"davinci", "text", "002", true},
-		{"ada", "code", "002", false},
-		{"babbage", "text", "002", false},
-		{"babbage", "code", "002", false},
-		{"curie", "text", "002", false},
-		{"curie", "code", "002", false},
-		{"davinci", "code", "002", false},
-
-		// 003
-		{"davinci", "text", "003", true},
-		{"ada", "text", "003", false},
-		{"babbage", "text", "003", false},
-
-		// 004
-		{"davinci", "text", "004", false},
-		{"ada", "text", "004", false},
-		{"babbage", "text", "004", false},
-	}
-
-	for _, test := range tests {
-		name := fmt.Sprintf("model=%s docType=%s version=%s", test.model, test.docType, test.version)
-		t.Run(name, func(t *testing.T) {
-			err := (&classSettings{}).validateModelVersion(test.version, test.model, test.docType)
-			if test.possible {
-				assert.Nil(t, err, "this combination should be possible")
-			} else {
-				assert.NotNil(t, err, "this combination should not be possible")
-			}
-		})
-	}
-}
-
-func TestPickDefaultModelVersion(t *testing.T) {
-	t.Run("ada with text", func(t *testing.T) {
-		version := PickDefaultModelVersion("ada", "text")
-		assert.Equal(t, "002", version)
-	})
-
-	t.Run("ada with code", func(t *testing.T) {
-		version := PickDefaultModelVersion("ada", "code")
-		assert.Equal(t, "001", version)
-	})
-
-	t.Run("with curie", func(t *testing.T) {
-		version := PickDefaultModelVersion("curie", "text")
-		assert.Equal(t, "001", version)
-	})
 }

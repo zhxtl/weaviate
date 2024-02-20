@@ -13,6 +13,7 @@ package vectorizer
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/weaviate/weaviate/entities/models"
 	"github.com/weaviate/weaviate/entities/moduletools"
@@ -34,7 +35,7 @@ func New(client Client) *Vectorizer {
 }
 
 type Client interface {
-	Vectorize(ctx context.Context, input string,
+	Vectorize(ctx context.Context, input []string,
 		config ent.VectorizationConfig) (*ent.VectorizationResult, error)
 	VectorizeQuery(ctx context.Context, input []string,
 		config ent.VectorizationConfig) (*ent.VectorizationResult, error)
@@ -46,12 +47,7 @@ type ClassSettings interface {
 	VectorizePropertyName(propertyName string) bool
 	VectorizeClassName() bool
 	Model() string
-	Type() string
-	ModelVersion() string
-	ResourceName() string
-	DeploymentID() string
 	BaseURL() string
-	IsAzure() bool
 }
 
 func (v *Vectorizer) Object(ctx context.Context, object *models.Object,
@@ -75,23 +71,20 @@ func (v *Vectorizer) object(ctx context.Context, className string,
 		return vector, nil
 	}
 	// vectorize text
-	res, err := v.client.Vectorize(ctx, text, v.getVectorizationConfig(cfg))
+	icheck := NewClassSettings(cfg)
+	res, err := v.client.Vectorize(ctx, []string{text}, ent.VectorizationConfig{
+		Model:   icheck.Model(),
+		BaseURL: icheck.BaseURL(),
+	})
 	if err != nil {
 		return nil, err
 	}
-
-	if len(res.Vector) > 1 {
-		return libvectorizer.CombineVectors(res.Vector), nil
+	if len(res.Vectors) == 0 {
+		return nil, fmt.Errorf("no vectors generated")
 	}
-	return res.Vector[0], nil
-}
 
-func (v *Vectorizer) getVectorizationConfig(cfg moduletools.ClassConfig) ent.VectorizationConfig {
-	settings := NewClassSettings(cfg)
-	return ent.VectorizationConfig{
-		Type:       settings.Type(),
-		Model:      settings.Model(),
-		BaseURL:    settings.BaseURL(),
-		Dimensions: settings.Dimensions(),
+	if len(res.Vectors) > 1 {
+		return libvectorizer.CombineVectors(res.Vectors), nil
 	}
+	return res.Vectors[0], nil
 }

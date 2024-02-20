@@ -14,6 +14,6 @@ package clients
 func (v *vectorizer) MetaInfo() (map[string]interface{}, error) {
 	return map[string]interface{}{
 		"name":              "Nomic Module",
-		"documentationHref": "https://docs.nomic.ai/reference/endpoints/nomic-embed-text",
+		"documentationHref": "https://docs.nomic.ai/atlas/models/text-embedding",
 	}, nil
 }

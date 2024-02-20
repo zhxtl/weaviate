@@ -12,9 +12,7 @@
 package vectorizer
 
 import (
-	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -24,38 +22,24 @@ import (
 	"github.com/weaviate/weaviate/entities/schema"
 )
 
+/*
+	Note, we may want to work in optional `task_type` and `dimensionality` arguments later on
+
+From the Nomic docs, "Notably, RAG workflows should use search_query for queries and search_document for documents."
+*/
 const (
-	DefaultNomicDocumentType     = "text"
+	DefaultBaseURL               = "https://api-atlas.nomic.ai"
 	DefaultNomicModel            = "nomic-embed-text-v1"
 	DefaultVectorizeClassName    = true
 	DefaultPropertyIndexed       = true
 	DefaultVectorizePropertyName = false
-	DefaultBaseURL               = "https://api-atlas.nomic.ai/"
-)
-
-// ToDo -- a lot of ToDo here
-const (
-	TextEmbedding3Small = "text-embedding-3-small"
-	TextEmbedding3Large = "text-embedding-3-large"
 )
 
 var (
-	TextEmbedding3SmallDefaultDimensions int64 = 1536
-	TextEmbedding3LargeDefaultDimensions int64 = 3072
+	availableNomicModels = []string{
+		"nomic-embed-text-v1",
+	}
 )
-
-var availableNomicTypes = []string{"text", "code"}
-
-var availableV3Models = []string{
-	// new v3 models
-	TextEmbedding3Small,
-	TextEmbedding3Large,
-}
-
-var availableV3ModelsDimensions = map[string][]int64{
-	TextEmbedding3Small: {512, TextEmbedding3SmallDefaultDimensions},
-	TextEmbedding3Large: {256, 1024, TextEmbedding3LargeDefaultDimensions},
-}
 
 type classSettings struct {
 	cfg moduletools.ClassConfig
@@ -106,22 +90,8 @@ func (cs *classSettings) Model() string {
 	return cs.getProperty("model", DefaultNomicModel)
 }
 
-func (cs *classSettings) Type() string {
-	return cs.getProperty("type", DefaultNomicDocumentType)
-}
-
-func (cs *classSettings) ModelVersion() string {
-	defaultVersion := PickDefaultModelVersion(cs.Model(), cs.Type())
-	return cs.getProperty("modelVersion", defaultVersion)
-}
-
 func (cs *classSettings) BaseURL() string {
 	return cs.getProperty("baseURL", DefaultBaseURL)
-}
-
-func (cs *classSettings) Dimensions() *int64 {
-	defaultValue := PickDefaultDimensions(cs.Model())
-	return cs.getPropertyAsInt("dimensions", defaultValue)
 }
 
 func (cs *classSettings) VectorizeClassName() bool {
@@ -149,34 +119,12 @@ func (cs *classSettings) Validate(class *models.Class) error {
 		return errors.New("empty config")
 	}
 
-	docType := cs.Type()
-	if !validateNomicSetting[string](docType, availableNomicTypes) {
-		return errors.Errorf("wrong Nomic type name, available model names are: %v", availableNomicTypes)
-	}
-
-	availableModels := append(availableNomicModels, availableNomicModels...)
 	model := cs.Model()
-	if !validateNomicSetting[string](model, availableModels) {
-		return errors.Errorf("wrong Nomic model name, available model names are: %v", availableModels)
+	if !cs.validateNomicSetting(model, availableNomicModels) {
+		return errors.Errorf("wrong Nomic model name, available model names are: %v", availableNomicModels)
 	}
 
-	dimensions := cs.Dimensions()
-	if dimensions != nil {
-		if !validateNomicSetting[string](model, availableV3Models) {
-			return errors.Errorf("dimensions setting can only be used with V3 embedding models: %v", availableV3Models)
-		}
-		availableDimensions := availableV3ModelsDimensions[model]
-		if !validateNomicSetting[int64](*dimensions, availableDimensions) {
-			return errors.Errorf("wrong dimensions setting for %s model, available dimensions are: %v", model, availableDimensions)
-		}
-	}
-
-	version := cs.ModelVersion()
-	if err := cs.validateModelVersion(version, model, docType); err != nil {
-		return err
-	}
-
-	err = cs.validateIndexState(class, cs)
+	err := cs.validateIndexState(class, cs)
 	if err != nil {
 		return err
 	}
@@ -184,40 +132,13 @@ func (cs *classSettings) Validate(class *models.Class) error {
 	return nil
 }
 
-func (cs *classSettings) validateModelVersion(version, model, docType string) error {
-	for i := range availableV3Models {
-		if model == availableV3Models[i] {
-			return nil
+func (cs *classSettings) validateNomicSetting(value string, availableValues []string) bool {
+	for i := range availableValues {
+		if value == availableValues[i] {
+			return true
 		}
 	}
-
-	if version == "001" {
-		// no restrictions
-		return nil
-	}
-
-	if version == "002" {
-		// only ada/davinci 002
-		if model != "ada" && model != "davinci" {
-			return fmt.Errorf("unsupported version %s", version)
-		}
-	}
-
-	if version == "003" && model != "davinci" {
-		// only davinci 003
-		return fmt.Errorf("unsupported version %s", version)
-	}
-
-	if version != "002" && version != "003" {
-		// all other fallback
-		return fmt.Errorf("model %s is only available in version 001", model)
-	}
-
-	if docType != "text" {
-		return fmt.Errorf("ada-002 no longer distinguishes between text/code, use 'text' for all use cases")
-	}
-
-	return nil
+	return false
 }
 
 func (cs *classSettings) getProperty(name, defaultValue string) string {
@@ -226,42 +147,19 @@ func (cs *classSettings) getProperty(name, defaultValue string) string {
 		return defaultValue
 	}
 
-	value, ok := cs.cfg.Class()[name]
+	model, ok := cs.cfg.Class()[name]
 	if ok {
-		asString, ok := value.(string)
+		asString, ok := model.(string)
+		// Marcin could you please take a look at this? I'm not sure what the context has been for `truncate`
 		if ok {
-			return strings.ToLower(asString)
-		}
-	}
-
-	return defaultValue
-}
-
-func (cs *classSettings) getPropertyAsInt(name string, defaultValue *int64) *int64 {
-	if cs.cfg == nil {
-		// we would receive a nil-config on cross-class requests, such as Explore{}
-		return defaultValue
-	}
-
-	value, ok := cs.cfg.Class()[name]
-	if ok {
-		asNumber, ok := value.(json.Number)
-		if ok {
-			if asInt64, err := asNumber.Int64(); err == nil {
-				return &asInt64
+			if name == "truncate" {
+				return asString
+			} else {
+				return strings.ToLower(asString)
 			}
 		}
-		asInt, ok := value.(int)
-		if ok {
-			asInt64 := int64(asInt)
-			return &asInt64
-		}
-		asString := cs.getProperty(name, "")
-		if asInt, err := strconv.Atoi(asString); err == nil {
-			asInt64 := int64(asInt)
-			return &asInt64
-		}
 	}
+
 	return defaultValue
 }
 
@@ -298,44 +196,5 @@ func (cs *classSettings) validateIndexState(class *models.Class, settings ClassS
 		"used to determine the vector position. To fix this, set 'vectorizeClassName' " +
 		"to true if the class name is contextionary-valid. Alternatively add at least " +
 		"contextionary-valid text/string property which is not excluded from " +
-		"indexing.")
-}
-
-func (cs *classSettings) validateAzureConfig(resourceName string, deploymentId string) error {
-	if (resourceName == "" && deploymentId != "") || (resourceName != "" && deploymentId == "") {
-		return fmt.Errorf("both resourceName and deploymentId must be provided")
-	}
-	return nil
-}
-
-func validateNomicSetting[T string | int64](value T, availableValues []T) bool {
-	for i := range availableValues {
-		if value == availableValues[i] {
-			return true
-		}
-	}
-	return false
-}
-
-func PickDefaultModelVersion(model, docType string) string {
-	for i := range availableV3Models {
-		if model == availableV3Models[i] {
-			return ""
-		}
-	}
-	if model == "ada" && docType == "text" {
-		return "002"
-	}
-	// for all other combinations stick with "001"
-	return "001"
-}
-
-func PickDefaultDimensions(model string) *int64 {
-	if model == TextEmbedding3Small {
-		return &TextEmbedding3SmallDefaultDimensions
-	}
-	if model == TextEmbedding3Large {
-		return &TextEmbedding3LargeDefaultDimensions
-	}
-	return nil
+		"indexing")
 }

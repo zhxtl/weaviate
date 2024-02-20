@@ -18,99 +18,78 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"time"
 
 	"github.com/weaviate/weaviate/usecases/modulecomponents"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"github.com/weaviate/weaviate/modules/text2vec-openai/ent"
+	"github.com/weaviate/weaviate/modules/text2vec-nomic/ent"
 )
 
+// ToDo, add `task_type`, `dimensionality`
 type embeddingsRequest struct {
-	Texts    []string `json:"texts"`
-	Model    string   `json:"model"`
-	TaskType string   `json:"task_type,omitempty"`
+	Texts []string `json:"texts"`
+	Model string   `json:"model"`
 }
 
-type embedding struct {
-	Object string          `json:"object"`
-	Data   []embeddingData `json:"data,omitempty"`
-	Error  *nomicApiError  `json:"error,omitempty"`
-}
-
-type embeddingData struct {
-	Object    string    `json:"object"`
-	Index     int       `json:"index"`
-	Embedding []float32 `json:"embedding"`
-}
-
-// need to check this
-type nomicApiError struct {
-}
-
-// ToDo
-func buildUrl(baseURL string) (string, error) {
-	host := baseURL
-	path := "/v1/embeddings/text"
-	return url.JoinPath(host, path)
+type embeddingsResponse struct {
+	Embeddings [][]float32 `json:"embeddings,omitempty"`
+	Usage      string      `json:"usage,omitempty"`
 }
 
 type vectorizer struct {
-	nomicApiKey string
-	httpClient  *http.Client
-	buildUrlFn  func(baseURL string) (string, error)
-	logger      logrus.FieldLogger
+	apiKey     string
+	httpClient *http.Client
+	urlBuilder *nomicUrlBuilder
+	logger     logrus.FieldLogger
 }
 
-func New(nomicApiKey string, timeout time.Duration, logger logrus.FieldLogger) *vectorizer {
+func New(apiKey string, timeout time.Duration, logger logrus.FieldLogger) *vectorizer {
 	return &vectorizer{
-		nomicApiKey: nomicApiKey,
+		apiKey: apiKey,
 		httpClient: &http.Client{
 			Timeout: timeout,
 		},
-		buildUrlFn: buildUrl,
+		urlBuilder: newNomicUrlBuilder(),
 		logger:     logger,
 	}
 }
 
-func (v *vectorizer) Vectorize(ctx context.Context, input string,
+func (v *vectorizer) Vectorize(ctx context.Context, input []string,
 	config ent.VectorizationConfig,
 ) (*ent.VectorizationResult, error) {
-	return v.vectorize(ctx, []string{input}, v.getModelString(config.Type, config.Model, "document", config.ModelVersion), config)
+	return v.vectorize(ctx, input, config.Model, config.BaseURL)
 }
 
 func (v *vectorizer) VectorizeQuery(ctx context.Context, input []string,
 	config ent.VectorizationConfig,
 ) (*ent.VectorizationResult, error) {
-	return v.vectorize(ctx, input, v.getModelString(config.Type, config.Model, "query", config.ModelVersion), config)
+	return v.vectorize(ctx, input, config.Model, config.BaseURL)
 }
 
-func (v *vectorizer) vectorize(ctx context.Context, input []string, model string, config ent.VectorizationConfig) (*ent.VectorizationResult, error) {
-	body, err := json.Marshal(v.getEmbeddingsRequest(input, model, config.IsAzure, config.Dimensions))
+func (v *vectorizer) vectorize(ctx context.Context, input []string,
+	model, truncate, baseURL string,
+) (*ent.VectorizationResult, error) {
+	body, err := json.Marshal(embeddingsRequest{
+		Texts: input,
+		Model: model,
+	})
 	if err != nil {
-		return nil, errors.Wrap(err, "marshal body")
+		return nil, errors.Wrapf(err, "marshal body")
 	}
 
-	endpoint, err := v.buildURL(ctx, config)
-	if err != nil {
-		return nil, errors.Wrap(err, "join OpenAI API host and path")
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", endpoint,
+	url := v.getNomicUrl(ctx, baseURL)
+	req, err := http.NewRequestWithContext(ctx, "POST", url,
 		bytes.NewReader(body))
 	if err != nil {
 		return nil, errors.Wrap(err, "create POST request")
 	}
-	apiKey, err := v.getApiKey(ctx, config.IsAzure)
+	apiKey, err := v.getApiKey(ctx)
 	if err != nil {
-		return nil, errors.Wrap(err, "API Key")
+		return nil, errors.Wrapf(err, "Nomic API Key")
 	}
-	req.Header.Add(v.getApiKeyHeaderAndValue(apiKey, config.IsAzure))
-	if openAIOrganization := v.getOpenAIOrganization(ctx); openAIOrganization != "" {
-		req.Header.Add("OpenAI-Organization", openAIOrganization)
-	}
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", apiKey))
 	req.Header.Add("Content-Type", "application/json")
 
 	res, err := v.httpClient.Do(req)
@@ -118,77 +97,47 @@ func (v *vectorizer) vectorize(ctx context.Context, input []string, model string
 		return nil, errors.Wrap(err, "send POST request")
 	}
 	defer res.Body.Close()
-
 	bodyBytes, err := io.ReadAll(res.Body)
 	if err != nil {
 		return nil, errors.Wrap(err, "read response body")
 	}
-
-	var resBody embedding
+	var resBody embeddingsResponse
 	if err := json.Unmarshal(bodyBytes, &resBody); err != nil {
 		return nil, errors.Wrap(err, "unmarshal response body")
 	}
 
-	if res.StatusCode != 200 || resBody.Error != nil {
-		return nil, v.getError(res.StatusCode, resBody.Error, config.IsAzure)
+	if res.StatusCode >= 500 {
+		errorMessage := getErrorMessage(res.StatusCode, resBody.Message, "connection to Nomic failed with status: %d error: %v")
+		return nil, errors.Errorf(errorMessage)
+	} else if res.StatusCode > 200 {
+		errorMessage := getErrorMessage(res.StatusCode, resBody.Message, "failed with status: %d error: %v")
+		return nil, errors.Errorf(errorMessage)
 	}
 
-	texts := make([]string, len(resBody.Data))
-	embeddings := make([][]float32, len(resBody.Data))
-	for i := range resBody.Data {
-		texts[i] = resBody.Data[i].Object
-		embeddings[i] = resBody.Data[i].Embedding
+	if len(resBody.Embeddings) == 0 {
+		return nil, errors.Errorf("empty embeddings response")
 	}
 
 	return &ent.VectorizationResult{
-		Text:       texts,
-		Dimensions: len(resBody.Data[0].Embedding),
-		Vector:     embeddings,
+		Text:       input,
+		Dimensions: len(resBody.Embeddings[0]),
+		Vectors:    resBody.Embeddings,
 	}, nil
 }
 
-func (v *vectorizer) buildURL(ctx context.Context, config ent.VectorizationConfig) (string, error) {
-	baseURL := config.BaseURL
+func (v *vectorizer) getNomicUrl(ctx context.Context, baseURL string) string {
+	passedBaseURL := baseURL
 	if headerBaseURL := v.getValueFromContext(ctx, "X-Nomic-Baseurl"); headerBaseURL != "" {
-		baseURL = headerBaseURL
+		passedBaseURL = headerBaseURL
 	}
-	return v.buildUrlFn(baseURL)
+	return v.urlBuilder.url(passedBaseURL)
 }
 
-func (v *vectorizer) getError(statusCode int, resBodyError *nomicApiError, isAzure bool) error {
-	endpoint := "Nomic API"
-	if resBodyError != nil {
-		return fmt.Errorf("connection to: %s failed with status: %d error: %v", endpoint, statusCode, resBodyError.Message)
+func getErrorMessage(statusCode int, resBodyError string, errorTemplate string) string {
+	if resBodyError != "" {
+		return fmt.Sprintf(errorTemplate, statusCode, resBodyError)
 	}
-	return fmt.Errorf("connection to: %s failed with status: %d", endpoint, statusCode)
-}
-
-func (v *vectorizer) getEmbeddingsRequest(input []string, model string, dimensions *int64) embeddingsRequest {
-	return embeddingsRequest{Texts: input, Model: model}
-}
-
-func (v *vectorizer) getApiKeyHeaderAndValue(apiKey string, isAzure bool) (string, string) {
-	if isAzure {
-		return "api-key", apiKey
-	}
-	return "Authorization", fmt.Sprintf("Bearer %s", apiKey)
-}
-
-func (v *vectorizer) getApiKey(ctx context.Context, isAzure bool) (string, error) {
-	var apiKey, envVar string
-	apiKey = "X-Nomic-Api-Key"
-	envVar = "NOMIC_APIKEY"
-	if len(v.nomicApiKey) > 0 {
-		return v.nomicApiKey, nil
-	}
-	return v.getApiKeyFromContext(ctx, apiKey, envVar)
-}
-
-func (v *vectorizer) getApiKeyFromContext(ctx context.Context, apiKey, envVar string) (string, error) {
-	if apiKeyValue := v.getValueFromContext(ctx, apiKey); apiKeyValue != "" {
-		return apiKeyValue, nil
-	}
-	return "", fmt.Errorf("no api key found neither in request header: %s nor in environment variable under %s", apiKey, envVar)
+	return fmt.Sprintf(errorTemplate, statusCode)
 }
 
 func (v *vectorizer) getValueFromContext(ctx context.Context, key string) string {
@@ -201,11 +150,17 @@ func (v *vectorizer) getValueFromContext(ctx context.Context, key string) string
 	if apiKey := modulecomponents.GetValueFromGRPC(ctx, key); len(apiKey) > 0 && len(apiKey[0]) > 0 {
 		return apiKey[0]
 	}
-
 	return ""
 }
 
-// Todo
-func (v *vectorizer) getModelString(docType, model, action, version string) string {
-	return "nomic-embed-text-v1"
+func (v *vectorizer) getApiKey(ctx context.Context) (string, error) {
+	if apiKey := v.getValueFromContext(ctx, "X-Nomic-Api-Key"); apiKey != "" {
+		return apiKey, nil
+	}
+	if v.apiKey != "" {
+		return v.apiKey, nil
+	}
+	return "", errors.New("no api key found " +
+		"neither in request header: X-Nomic-Api-Key " +
+		"nor in environment variable under COHERE_APIKEY")
 }

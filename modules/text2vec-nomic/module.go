@@ -99,9 +99,8 @@ func (m *NomicModule) InitExtension(modules []modulecapabilities.Module) error {
 func (m *NomicModule) initVectorizer(ctx context.Context, timeout time.Duration,
 	logger logrus.FieldLogger,
 ) error {
-	nomicApiKey := os.Getenv("NOMIC_APIKEY")
-
-	client := clients.New(nomicApiKey, timeout, logger)
+	apiKey := os.Getenv("COHERE_APIKEY")
+	client := clients.New(apiKey, timeout, logger)
 
 	m.vectorizer = vectorizer.New(client)
 	m.metaProvider = client
@@ -129,14 +128,14 @@ func (m *NomicModule) MetaInfo() (map[string]interface{}, error) {
 	return m.metaProvider.MetaInfo()
 }
 
-func (m *NomicModule) AdditionalProperties() map[string]modulecapabilities.AdditionalProperty {
-	return m.additionalPropertiesProvider.AdditionalProperties()
-}
-
 func (m *NomicModule) VectorizeInput(ctx context.Context,
 	input string, cfg moduletools.ClassConfig,
 ) ([]float32, error) {
 	return m.vectorizer.Texts(ctx, []string{input}, cfg)
+}
+
+func (m *NomicModule) AdditionalProperties() map[string]modulecapabilities.AdditionalProperty {
+	return m.additionalPropertiesProvider.AdditionalProperties()
 }
 
 // verify we implement the modules.Module interface
@@ -146,4 +145,5 @@ var (
 	_ = modulecapabilities.MetaProvider(New())
 	_ = modulecapabilities.Searcher(New())
 	_ = modulecapabilities.GraphQLArguments(New())
+	_ = modulecapabilities.InputVectorizer(New())
 )
