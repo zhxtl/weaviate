@@ -69,7 +69,7 @@ func (v *vectorizer) VectorizeQuery(ctx context.Context, input []string,
 }
 
 func (v *vectorizer) vectorize(ctx context.Context, input []string,
-	model, truncate, baseURL string,
+	model, baseURL string,
 ) (*ent.VectorizationResult, error) {
 	body, err := json.Marshal(embeddingsRequest{
 		Texts: input,
