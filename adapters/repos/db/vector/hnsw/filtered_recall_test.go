@@ -95,12 +95,14 @@ func TestFilteredRecall(t *testing.T) {
 	t.Run("Loading vectors for testing...", func(t *testing.T) {
 		/* READ VECTORS, FILTERS, AND GROUND TRUTHS FROM JSONS */
 		/* USING THE SAME INDEX VECTORS FOR ALL FILTER LEVELS */
-		indexVectorsJSON, err := ioutil.ReadFile("./datasets/filtered/indexVectors-1M.json")
+		fmt.Println("Loading vectors...")
+		indexVectorsJSON, err := ioutil.ReadFile("./datasets/filtered/OpenAI-DBPedia-indexVectors-1M.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(indexVectorsJSON, &indexVectors)
 		require.Nil(t, err)
+		fmt.Println("Loading vectors...")
 		/* ADD THE FILTERS -- TODO: TEST MORE THAN 1 FILTER % PER RUN */
-		indexFiltersJSON, err := ioutil.ReadFile("./datasets/filtered/indexFilters-1M-2-95_0.json")
+		indexFiltersJSON, err := ioutil.ReadFile("./datasets/filtered/OpenAI-DBPedia-indexFilters-1M-2-80_0.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(indexFiltersJSON, &indexFilters)
 		require.Nil(t, err)
@@ -108,18 +110,21 @@ func TestFilteredRecall(t *testing.T) {
 		indexVectorsWithFilters := mergeData(indexVectors, indexFilters)
 		/* IDEA -- SHUFFLE VECTORS TO AVOID CONFOUNDING WITH INSERT ORDER */
 		/* USE THE SAME QUERY VECTORS FOR ALL FILTER LEVELS */
-		queryVectorsJSON, err := ioutil.ReadFile("./datasets/filtered/queryVectors-1M.json")
+		fmt.Println("Loading vectors...")
+		queryVectorsJSON, err := ioutil.ReadFile("./datasets/filtered/OpenAI-DBPedia-queryVectors-1M.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(queryVectorsJSON, &queryVectors)
 		require.Nil(t, err)
 		/* ADD THE FILTERS -- TODO: TEST MORE THAN 1 FILTER % PER RUN */
-		queryFiltersJSON, err := ioutil.ReadFile("./datasets/filtered/queryFilters-1M-2-95_0.json")
+		fmt.Println("Loading vectors...")
+		queryFiltersJSON, err := ioutil.ReadFile("./datasets/filtered/OpenAI-DBPedia-queryFilters-1M-2-80_0.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(queryFiltersJSON, &queryFilters)
 		/* MERGE QUERY VECTORS WITH FILTERS */
 		queryVectorsWithFilters := mergeData(queryVectors, queryFilters)
 		/* LOAD GROUND TRUTHS */
-		truthsJSON, err := ioutil.ReadFile("./datasets/filtered/filtered-recall-truths-1M-2-95_0.json")
+		fmt.Println("Loading vectors...")
+		truthsJSON, err := ioutil.ReadFile("./datasets/filtered/OpenAI-DBPedia-filtered-recall-truths-1M-2-80_0.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(truthsJSON, &truths)
 		require.Nil(t, err)
@@ -162,6 +167,7 @@ func TestFilteredRecall(t *testing.T) {
 				defer wg.Done()
 				for i, vec := range myJobs {
 					originalIndex := (i * workerCount) + workerID
+					fmt.Println(originalIndex)
 					nodeId := uint64(originalIndex)
 					err := vectorIndex.Add(nodeId, vec.Vector)
 					require.Nil(t, err)
@@ -275,6 +281,7 @@ func TestFilteredRecall(t *testing.T) {
 		/* CALCULATE RECALL AND LATENCY */
 		var results []uint64
 		for i := 0; i < len(queryVectorsWithFilters); i++ {
+			fmt.Println(i)
 			queryFilters := queryVectorsWithFilters[i].FilterMap
 			allowListIDs := []uint64{}
 			for filterKey, filterValue := range queryFilters {

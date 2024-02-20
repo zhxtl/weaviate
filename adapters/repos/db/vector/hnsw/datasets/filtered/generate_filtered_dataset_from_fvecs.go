@@ -65,7 +65,6 @@ func main() {
 	majorityPct_str := strconv.FormatFloat(*majorityPct, 'f', 1, 64) // used for save path
 	majorityPct_str = strings.ReplaceAll(majorityPct_str, ".", "_")  // prefer e.g. `95_0` save path
 
-	// Read base vectors from file
 	vectors := ReadSiftVecsFrom("./sift-data/sift_base.fvecs", *numVectors, 128)
 
 	saveIndexVectors := make([]Vector, len(vectors))

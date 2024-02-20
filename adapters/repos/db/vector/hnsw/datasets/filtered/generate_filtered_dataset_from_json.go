@@ -15,14 +15,12 @@
 package main
 
 import (
-	"encoding/binary"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"math"
-	"os"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
@@ -30,6 +28,10 @@ import (
 	"sync"
 	"time"
 )
+
+type EmbeddingEntry struct {
+	Embedding []float64 `json:"text-embedding-3-large-1536-embedding"`
+}
 
 type Vector struct {
 	ID     int       `json:"id"`
@@ -66,7 +68,14 @@ func main() {
 	majorityPct_str = strings.ReplaceAll(majorityPct_str, ".", "_")  // prefer e.g. `95_0` save path
 
 	// Read base vectors from file
-	vectors := ReadSiftVecsFrom("./sift-data/sift_base.fvecs", *numVectors, 128)
+
+	all_vectors, err := ReadJSONVectors("./DBPedia-OpenAI-1M-1536-JSON")
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println(len(all_vectors))
+	vectors := all_vectors[:990_000]
+	queryVectors := all_vectors[990_000:]
 
 	saveIndexVectors := make([]Vector, len(vectors))
 	saveIndexFilters := make([]Filters, len(vectors))
@@ -75,6 +84,7 @@ func main() {
 	majority_pct := *majorityPct / 100.0
 	majority_cutoff := int(10_000 * majority_pct)
 
+	fmt.Println("Adding filters to indexed vectors.")
 	for jdx, vector := range vectors {
 		nodeFilterMap := make(map[int]int)
 		// ToDo -- extend to K filters, with a parameterized filter distribution (power-law)
@@ -104,14 +114,14 @@ func main() {
 		1000000: "1M",
 	}
 	saveIndexVectorsJSON, _ := json.Marshal(saveIndexVectors)
-	index_save_path := "indexVectors-" + saveNumVectors[*numVectors] + ".json"
+	index_save_path := "OpenAI-DBedia-indexVectors-" + saveNumVectors[*numVectors] + ".json"
 	ioutil.WriteFile(index_save_path, saveIndexVectorsJSON, 0o644)
-	index_with_filters_save_path := "indexFilters-" + saveNumVectors[*numVectors] + "-" + numLabels + "-" + majorityPct_str + ".json"
+	index_with_filters_save_path := "OpenAI-DBedia-indexFilters-" + saveNumVectors[*numVectors] + "-" + numLabels + "-" + majorityPct_str + ".json"
 	saveIndexFiltersJSON, _ := json.Marshal(saveIndexFilters)
 	ioutil.WriteFile(index_with_filters_save_path, saveIndexFiltersJSON, 0o644)
 
 	// Read the query vectors from files
-	_, queryVectors := ReadVecs(*numVectors, 10_000, 128, "sift")
+	//_, queryVectors := ReadVecs(*numVectors, 10_000, 128, "sift")
 
 	saveQueryVectors := make([]Vector, len(queryVectors))
 	saveQueryFilters := make([]Filters, len(queryVectors))
@@ -153,6 +163,7 @@ func main() {
 			defer wg.Done()
 			for i, vecWithFilters := range myJobs {
 				originalIndex := (i * workerCount) + workerID
+				fmt.Println(originalIndex)
 				nearestNeighbors := calculateNearestNeighborsWithFilters(vecWithFilters.Vector, indexForBruteForce, 100, vecWithFilters.FilterMap)
 				newGroundTruthJSON := GroundTruth{
 					QueryID: originalIndex,
@@ -168,15 +179,15 @@ func main() {
 	fmt.Printf("Brute forcing took %s \n", time.Since(before))
 	fmt.Printf("Saving...\n")
 	saveQueryVectorsJSON, _ := json.Marshal(saveQueryVectors)
-	query_vectors_save_path := "queryVectors-" + saveNumVectors[*numVectors] + ".json"
+	query_vectors_save_path := "OpenAI-DBedia-queryVectors-" + saveNumVectors[*numVectors] + ".json"
 	ioutil.WriteFile(query_vectors_save_path, saveQueryVectorsJSON, 0o644)
-	query_vectors_with_filters_save_path := "queryFilters-" + saveNumVectors[*numVectors] + "-" + numLabels + "-" + majorityPct_str + ".json"
+	query_vectors_with_filters_save_path := "OpenAI-DBedia-queryFilters-" + saveNumVectors[*numVectors] + "-" + numLabels + "-" + majorityPct_str + ".json"
 	saveQueryFiltersJSON, _ := json.Marshal(saveQueryFilters)
 	ioutil.WriteFile(query_vectors_with_filters_save_path, saveQueryFiltersJSON, 0o644)
 
 	// Save all nearest neighbors to a JSON file
 	saveGroundTruthsJSON, _ := json.Marshal(groundTruths)
-	ground_truth_save_path := "filtered-recall-truths-" + saveNumVectors[*numVectors] + "-" + numLabels + "-" + majorityPct_str + ".json"
+	ground_truth_save_path := "OpenAI-DBedia-filtered-recall-truths-" + saveNumVectors[*numVectors] + "-" + numLabels + "-" + majorityPct_str + ".json"
 	ioutil.WriteFile(ground_truth_save_path, saveGroundTruthsJSON, 0o644)
 
 	fmt.Print("\n Finished.")
@@ -239,146 +250,45 @@ func BFeuclideanDistance(a, b []float32) float32 {
 	return float32(math.Sqrt(float64(sum)))
 }
 
-// Function to write integer vectors to a SIFT formatted binary file
-func writeSiftIVecsToFile(filename string, vectors [][]int) error {
-	file, err := os.Create(filename)
+func ReadJSONVectors(folderPath string) (imported_vectors [][]float32, err error) {
+
+	files, err := ioutil.ReadDir(folderPath)
 	if err != nil {
-		return err
+		fmt.Println("Error reading directory:", err)
+		return nil, err
 	}
-	defer file.Close()
 
-	for _, vec := range vectors {
-		err = writeSiftInt(file, vec)
-		if err != nil {
-			return err
+	var vectors [][]float32 // This will store all embeddings from all files
+
+	for file_idx, file := range files {
+		fmt.Println("Reading file: ", file_idx)
+		if !file.IsDir() {
+			filePath := filepath.Join(folderPath, file.Name())
+
+			content, err := ioutil.ReadFile(filePath)
+			if err != nil {
+				fmt.Printf("Error reading file %s: %v\n", file.Name(), err)
+				continue // Skip files that cannot be read
+			}
+
+			var embeddings []EmbeddingEntry
+			err = json.Unmarshal(content, &embeddings)
+			if err != nil {
+				fmt.Printf("Error decoding JSON in file %s: %v\n", file.Name(), err)
+				continue // Skip files that cannot be unmarshalled
+			}
+
+			// Convert and append embeddings
+			for _, entry := range embeddings {
+				innerSlice := make([]float32, len(entry.Embedding))
+				for j, v := range entry.Embedding {
+					innerSlice[j] = float32(v)
+				}
+				vectors = append(vectors, innerSlice)
+			}
 		}
 	}
 
-	return nil
-}
-
-func writeSiftInt(w io.Writer, vector []int) error {
-	// Convert vector to []int32
-	vectorInt32 := make([]int32, len(vector))
-	for i, v := range vector {
-		vectorInt32[i] = int32(v)
-	}
-
-	// Write vector dimension
-	if err := binary.Write(w, binary.LittleEndian, int32(len(vectorInt32))); err != nil {
-		return err
-	}
-
-	// Write vector
-	if err := binary.Write(w, binary.LittleEndian, vectorInt32); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// Function to read SIFT formatted vector data from a given path
-func ReadSiftVecsFrom(path string, size int, dimensions int) [][]float32 {
-	// print progress
-	fmt.Printf("generating %d vectors...", size)
-
-	// read the vectors
-	vectors := readSiftFloat(path, size, dimensions)
-
-	// print completion
-	fmt.Printf(" done\n")
-
-	// return the vectors
-	return vectors
-}
-
-// Function to read base and query vector data from a given path
-func ReadVecs(size int, queriesSize int, dimensions int, db string, path ...string) ([][]float32, [][]float32) {
-	// print progress
-	fmt.Printf("generating %d vectors...", size+queriesSize)
-
-	// set the base uri as db
-	uri := db
-
-	// if a path is provided, prepend it to uri
-	if len(path) > 0 {
-		uri = fmt.Sprintf("%s/%s", path[0], uri)
-	}
-
-	// read base vectors
-	vectors := readSiftFloat(fmt.Sprintf("sift-data/%s_base.fvecs", db), size, dimensions)
-
-	// read query vectors
-	queries := readSiftFloat(fmt.Sprintf("sift-data/%s_query.fvecs", db), queriesSize, dimensions)
-
-	// print completion
-	fmt.Printf(" done\n")
-
-	// return vectors and queries
-	return vectors, queries
-}
-
-// Function to read SIFT formatted vector data from a given binary file
-func readSiftFloat(file string, maxObjects int, vectorLengthFloat int) [][]float32 {
-	// open the file
-	f, err := os.Open(file)
-
-	// ensure file gets closed after the function exits
-	defer f.Close()
-
-	// check for file open error
-	if err != nil {
-		panic(err)
-	}
-
-	// Allocate memory for objects and vectorBytes
-	objects := make([][]float32, maxObjects)
-	vectorBytes := make([]byte, 4+vectorLengthFloat*4)
-
-	// read the vectors from the file
-	for i := 0; i >= 0; i++ {
-		_, err = f.Read(vectorBytes)
-
-		// break the loop if we have reached end of file
-		if err == io.EOF {
-			break
-		} else if err != nil {
-			panic(err)
-		}
-
-		// check if the vector length matches expected length
-		if int32FromBytes(vectorBytes[0:4]) != vectorLengthFloat {
-			panic("Each vector must have 128 entries.")
-		}
-
-		// read each float from the vector
-		vectorFloat := make([]float32, vectorLengthFloat)
-		for j := 0; j < vectorLengthFloat; j++ {
-			start := (j + 1) * 4 // first 4 bytes are length of vector
-			vectorFloat[j] = float32FromBytes(vectorBytes[start : start+4])
-		}
-
-		// save the vector
-		objects[i] = vectorFloat
-
-		// break the loop if we have reached maximum number of objects
-		if i >= maxObjects-1 {
-			break
-		}
-	}
-
-	// return the objects read from file
-	return objects
-}
-
-// Function to convert a byte slice to int
-func int32FromBytes(bytes []byte) int {
-	return int(binary.LittleEndian.Uint32(bytes))
-}
-
-// Function to convert a byte slice to float32
-func float32FromBytes(bytes []byte) float32 {
-	bits := binary.LittleEndian.Uint32(bytes)
-	float := math.Float32frombits(bits)
-	return float
+	fmt.Println(len(vectors))
+	return vectors, nil
 }
