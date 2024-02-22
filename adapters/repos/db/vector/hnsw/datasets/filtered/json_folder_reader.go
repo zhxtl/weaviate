@@ -21,7 +21,7 @@ func main() {
 	fmt.Println(len(vectors))
 }
 
-func ReadJSONVectors(folderPath string) ([][]float32, err error) {
+func ReadJSONVectors(folderPath string) (outputVectors [][]float32, err error) {
 
 	files, err := ioutil.ReadDir(folderPath)
 	if err != nil {

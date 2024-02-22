@@ -96,13 +96,13 @@ func TestFilteredRecall(t *testing.T) {
 		/* READ VECTORS, FILTERS, AND GROUND TRUTHS FROM JSONS */
 		/* USING THE SAME INDEX VECTORS FOR ALL FILTER LEVELS */
 		fmt.Println("Loading vectors...")
-		indexVectorsJSON, err := ioutil.ReadFile("./datasets/filtered/OpenAI-DBPedia-indexVectors-1M.json")
+		indexVectorsJSON, err := ioutil.ReadFile("./datasets/filtered/indexVectors-1M.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(indexVectorsJSON, &indexVectors)
 		require.Nil(t, err)
 		fmt.Println("Loading vectors...")
 		/* ADD THE FILTERS -- TODO: TEST MORE THAN 1 FILTER % PER RUN */
-		indexFiltersJSON, err := ioutil.ReadFile("./datasets/filtered/OpenAI-DBPedia-indexFilters-1M-2-80_0.json")
+		indexFiltersJSON, err := ioutil.ReadFile("./datasets/filtered/indexFilters-1M-5-2_0.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(indexFiltersJSON, &indexFilters)
 		require.Nil(t, err)
@@ -111,20 +111,20 @@ func TestFilteredRecall(t *testing.T) {
 		/* IDEA -- SHUFFLE VECTORS TO AVOID CONFOUNDING WITH INSERT ORDER */
 		/* USE THE SAME QUERY VECTORS FOR ALL FILTER LEVELS */
 		fmt.Println("Loading vectors...")
-		queryVectorsJSON, err := ioutil.ReadFile("./datasets/filtered/OpenAI-DBPedia-queryVectors-1M.json")
+		queryVectorsJSON, err := ioutil.ReadFile("./datasets/filtered/queryVectors-1M.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(queryVectorsJSON, &queryVectors)
 		require.Nil(t, err)
 		/* ADD THE FILTERS -- TODO: TEST MORE THAN 1 FILTER % PER RUN */
 		fmt.Println("Loading vectors...")
-		queryFiltersJSON, err := ioutil.ReadFile("./datasets/filtered/OpenAI-DBPedia-queryFilters-1M-2-80_0.json")
+		queryFiltersJSON, err := ioutil.ReadFile("./datasets/filtered/queryFilters-1M-5-2_0.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(queryFiltersJSON, &queryFilters)
 		/* MERGE QUERY VECTORS WITH FILTERS */
 		queryVectorsWithFilters := mergeData(queryVectors, queryFilters)
 		/* LOAD GROUND TRUTHS */
 		fmt.Println("Loading vectors...")
-		truthsJSON, err := ioutil.ReadFile("./datasets/filtered/OpenAI-DBPedia-filtered-recall-truths-1M-2-80_0.json")
+		truthsJSON, err := ioutil.ReadFile("./datasets/filtered/filtered-recall-truths-1M-5-2_0.json")
 		require.Nil(t, err)
 		err = json.Unmarshal(truthsJSON, &truths)
 		require.Nil(t, err)
@@ -198,7 +198,7 @@ func TestFilteredRecall(t *testing.T) {
 		if hnsw_efg {
 			addEdgesTimer := time.Now()
 			// TODO, replace with deriving from data
-			minorityFilter := map[int]int{0: 1}
+			minorityFilter := map[int]int{0: 4} // Now this is really a ToDo
 			// ToDo Add Multi-Threaded Graph Repair
 			workerCount = runtime.GOMAXPROCS(0)
 			jobsForGraphRepairWorker := make([][]*vertex, workerCount)
@@ -237,7 +237,11 @@ func TestFilteredRecall(t *testing.T) {
 						// ADD FILTERS FROM MAJORITY TO MINORITYr
 						// Check if this is the majority filter
 						// Hard-coded, but logic to get the majority filter is above
-						if val, ok := nodeFilter[0]; !ok || val == 0 {
+
+						/*
+							Note: CHANGED VAL == 0 TO VAL != 4 FOR MULTI-LABEL, CONNECT ALL MAJORITY NODES
+						*/
+						if val, ok := nodeFilter[0]; !ok || val != 4 {
 							// Majority node, connect to minority nodes
 							// Before Intervention Log
 							minorityAllowList := buildAllowList(minorityFilter, filterToIDs)
@@ -267,7 +271,8 @@ func TestFilteredRecall(t *testing.T) {
 		LatenciesPerFilter := make(map[int]map[int][]float32)
 		// Init Latencies Per Filter
 		// ToDo - Derive the filters from somewhere else rather than hardcoding them.
-		allFilters := []map[int]int{{0: 0}, {0: 1}}
+		// AGAIN, GET THIS FROM THE DATA!!
+		allFilters := []map[int]int{{0: 0}, {0: 1}, {0: 2}, {0: 3}, {0: 4}}
 		for _, filterMap := range allFilters {
 			for outerFilter, innerFilter := range filterMap {
 				if _, exists := LatenciesPerFilter[outerFilter]; !exists {
@@ -290,7 +295,11 @@ func TestFilteredRecall(t *testing.T) {
 			queryAllowList := helpers.NewAllowList(allowListIDs...)
 			queryStart := time.Now()
 			if hnsw_efg {
-				results, _, err = vectorIndex.FilteredSearchWithExtendedGraph(queryVectorsWithFilters[i].Vector, k, queryAllowList)
+				if queryFilters[0] == 4 {
+					results, _, err = vectorIndex.FilteredSearchWithExtendedGraph(queryVectorsWithFilters[i].Vector, k, queryAllowList)
+				} else {
+					results, _, err = vectorIndex.SearchByVector(queryVectorsWithFilters[i].Vector, k, queryAllowList)
+				}
 			} else {
 				results, _, err = vectorIndex.SearchByVector(queryVectorsWithFilters[i].Vector, k, queryAllowList)
 			}
