@@ -43,9 +43,11 @@ func Test_L2_DistanceImplementation(t *testing.T) {
 				y[i] = rand.Float32()
 			}
 
+			fmt.Println("-------")
 			control := L2PureGo(x, y)
 			asmResult := asm.L2(x, y)
 
+			fmt.Println("dim", length, "control", control, "res", asmResult)
 			assert.InEpsilon(t, control, asmResult, 0.01)
 		})
 	}
@@ -85,17 +87,22 @@ func Benchmark_L2_PureGo_VS_Neon(b *testing.B) {
 
 			b.ResetTimer()
 
-			b.Run("pure go", func(b *testing.B) {
-				for i := 0; i < b.N; i++ {
-					L2PureGo(x, y)
-				}
-			})
+			for i := 0; i < b.N; i++ {
+				asm.L2(x, y)
+				// L2PureGo(x, y)
+			}
 
-			b.Run("asm Neon", func(b *testing.B) {
-				for i := 0; i < b.N; i++ {
-					asm.L2(x, y)
-				}
-			})
+			// b.Run("pure go", func(b *testing.B) {
+			// 	for i := 0; i < b.N; i++ {
+			// 		L2PureGo(x, y)
+			// 	}
+			// })
+
+			// b.Run("asm Neon", func(b *testing.B) {
+			// 	for i := 0; i < b.N; i++ {
+			// 		asm.L2(x, y)
+			// 	}
+			// })
 		})
 	}
 }

@@ -9,65 +9,82 @@
 //  CONTACT: hello@weaviate.io
 //
 
-#include <arm_neon.h>
+#include <arm_sve.h>
 
 // l2 only works with length >= 16
 void l2(float *a, float *b, float *res, long *len)
 {
-    int size = *len;
+    uint64_t size = *len;
+
+    uint64_t vsize = svcntw();
+    uint64_t vsizex4 = vsize * 4;
 
     // use the vectorized version for the first n - (n % 4) elements
-    int l = size - (size % 4);
+    uint64_t l = size - (size % vsize);
 
     // create 4*4 registers to store the result
-    float32x4_t res_vec0 = vdupq_n_f32(0);
-    float32x4_t res_vec1 = vdupq_n_f32(0);
-    float32x4_t res_vec2 = vdupq_n_f32(0);
-    float32x4_t res_vec3 = vdupq_n_f32(0);
+    svfloat32_t res_vec0 = svdup_n_f32(0.0f);
+    svfloat32_t res_vec1 = svdup_n_f32(0.0f);
+    svfloat32_t res_vec2 = svdup_n_f32(0.0f);
+    svfloat32_t res_vec3 = svdup_n_f32(0.0f);
 
-    int i = 0;
+    svbool_t pred = svptrue_b32();
 
-    // load 4*4 floats at a time
-    while (i + 16 <= l)
+    uint64_t i = 0;
+
+    // load 4*vsize floats at a time
+    while (i + vsizex4 <= l)
     {
-        float32x4x4_t a4 = vld1q_f32_x4(a + i);
-        float32x4x4_t b4 = vld1q_f32_x4(b + i);
+        svfloat32_t a0 = svld1_f32(pred, a + i);
+        svfloat32_t a1 = svld1_f32(pred, a + i + vsize);
+        svfloat32_t a2 = svld1_f32(pred, a + i + vsize*2);
+        svfloat32_t a3 = svld1_f32(pred, a + i + vsize*3);
+        svfloat32_t b0 = svld1_f32(pred, b + i);
+        svfloat32_t b1 = svld1_f32(pred, b + i + vsize);
+        svfloat32_t b2 = svld1_f32(pred, b + i + vsize*2);
+        svfloat32_t b3 = svld1_f32(pred, b + i + vsize*3);
 
-        float32x4_t diff0 = vsubq_f32(a4.val[0], b4.val[0]);
-        float32x4_t diff1 = vsubq_f32(a4.val[1], b4.val[1]);
-        float32x4_t diff2 = vsubq_f32(a4.val[2], b4.val[2]);
-        float32x4_t diff3 = vsubq_f32(a4.val[3], b4.val[3]);
-        res_vec0 += vmulq_f32(diff0, diff0);
-        res_vec1 += vmulq_f32(diff1, diff1);
-        res_vec2 += vmulq_f32(diff2, diff2);
-        res_vec3 += vmulq_f32(diff3, diff3);
+        svfloat32_t diff0 = svsub_f32_x(pred, a0, b0);
+        svfloat32_t diff1 = svsub_f32_x(pred, a1, b1);
+        svfloat32_t diff2 = svsub_f32_x(pred, a2, b2);
+        svfloat32_t diff3 = svsub_f32_x(pred, a3, b3);
 
-        i += 16;
+        res_vec0 = svmla_f32_x(pred, res_vec0, diff0, diff0);
+        res_vec1 = svmla_f32_x(pred, res_vec1, diff1, diff1);
+        res_vec2 = svmla_f32_x(pred, res_vec2, diff2, diff2);
+        res_vec3 = svmla_f32_x(pred, res_vec3, diff3, diff3);
+
+        i += vsizex4;
     }
 
     while (i < l)
     {
-        float32x4_t a_vec = vld1q_f32(a + i);
-        float32x4_t b_vec = vld1q_f32(b + i);
-        float32x4_t diff = vsubq_f32(a_vec, b_vec);
-        res_vec0 += vmulq_f32(diff, diff);
+        svfloat32_t a_vec = svld1_f32(pred, a + i);
+        svfloat32_t b_vec = svld1_f32(pred, b + i);
+        svfloat32_t diff = svsub_f32_x(pred, a_vec, b_vec);
+        res_vec0 = svmla_f32_x(pred, res_vec0, diff, diff);
 
-        i += 4;
+        i += vsize;
     }
 
-    // convert to scalar
-    float sum = vaddvq_f32(res_vec0);
-    sum += vaddvq_f32(res_vec1);
-    sum += vaddvq_f32(res_vec2);
-    sum += vaddvq_f32(res_vec3);
+    // reduce
+    float32_t sum = svaddv_f32(pred, res_vec0);
+    sum += svaddv_f32(pred, res_vec1);
+    sum += svaddv_f32(pred, res_vec2);
+    sum += svaddv_f32(pred, res_vec3);
 
     // add the remaining vectors
-    for (int i = l; i < size; i++)
+    for (i = l; i < size; i++)
     {
-        float diff = a[i] - b[i];
-        float sq = diff * diff;
+        float32_t diff = a[i] - b[i];
+        float32_t sq = diff * diff;
         sum += sq;
     }
+
+    // res[1] = i;
+    // res[2] = l;
+    // res[3] = size;
+    // res[4] = vsizex4;
 
     res[0] = sum;
 }

@@ -12,7 +12,6 @@
 package asm
 
 import (
-	"reflect"
 	"unsafe"
 )
 
@@ -20,7 +19,7 @@ import (
 //   go install github.com/gorse-io/goat@v0.1.0
 //   go generate
 
-//go:generate goat ../c/l2_arm64.c -O3 -e="-mfpu=neon-fp-armv8" -e="-mfloat-abi=hard" -e="--target=arm64" -e="-march=armv8-a+simd+fp"
+//go:generate goat ../c/l2_arm64.c -O3 -e="-mcpu=neoverse-v1" -e="--target=arm64" -e="-march=armv8-a+sve"
 
 // L2 calculates the L2 distance between two vectors
 // using SIMD instructions when possible.
@@ -76,16 +75,12 @@ func L2(x []float32, y []float32) float32 {
 
 	var res float32
 
-	// The C function expects pointers to the underlying array, not slices.
-	hdrx := (*reflect.SliceHeader)(unsafe.Pointer(&x))
-	hdry := (*reflect.SliceHeader)(unsafe.Pointer(&y))
-
 	l := len(x)
 	l2(
 		// The slice header contains the address of the underlying array.
 		// We only need to cast it to a pointer.
-		unsafe.Pointer(hdrx.Data),
-		unsafe.Pointer(hdry.Data),
+		unsafe.Pointer(unsafe.SliceData(x)),
+		unsafe.Pointer(unsafe.SliceData(y)),
 		// The C function expects pointers to the result and the length of the arrays.
 		unsafe.Pointer(&res),
 		unsafe.Pointer(&l))
