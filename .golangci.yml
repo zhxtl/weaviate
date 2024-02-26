@@ -16,7 +16,7 @@ linters-settings:
     default-signifies-exhaustive: true  
   custom:
     nilaway:
-      path: ./nilaway.so
+      path: .plugins/nilaway.so
 issues:
   exclude-rules:
     # Exclude some staticcheck messages
