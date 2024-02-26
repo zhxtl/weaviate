@@ -11,8 +11,8 @@
 
 #include <arm_sve.h>
 
-// l2 only works with length >= 16
-void l2(float *a, float *b, float *res, long *len)
+// l2_sve only works with length >= 16
+void l2_sve(float *a, float *b, float *res, long *len)
 {
     uint64_t size = *len;
 
@@ -81,10 +81,6 @@ void l2(float *a, float *b, float *res, long *len)
         sum += sq;
     }
 
-    // res[1] = i;
-    // res[2] = l;
-    // res[3] = size;
-    // res[4] = vsizex4;
-
     res[0] = sum;
 }
+
