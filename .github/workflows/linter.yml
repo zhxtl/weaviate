@@ -6,7 +6,7 @@ on:
     tags:
       - '**'
   pull_request:
-jobs:
+jobs:  
   golangci:
     name: golangci
     runs-on: ubuntu-latest
@@ -21,6 +21,9 @@ jobs:
           # Required: the version of golangci-lint is required and must be specified without patch version: we always use the latest patch version.
           version: v1.54
           args: --timeout=5m
+      - name: golangci-lint-build-plugin
+        run: |
+          go version -m $(which golangci-lint)
   protolint:
     name: protolint
     runs-on: ubuntu-latest
