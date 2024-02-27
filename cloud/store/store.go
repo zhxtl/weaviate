@@ -173,11 +173,11 @@ func (st *Store) Open(ctx context.Context) (err error) {
 	}
 	defer func() { st.open.Store(err == nil) }()
 
-	if err := st.genPeersFileFromBolt(
-		filepath.Join(st.raftDir, raftDBName),
-		filepath.Join(st.raftDir, peersFileName)); err != nil {
-		return err
-	}
+	// if err := st.genPeersFileFromBolt(
+	// 	filepath.Join(st.raftDir, raftDBName),
+	// 	filepath.Join(st.raftDir, peersFileName)); err != nil {
+	// 	return err
+	// }
 
 	if err = os.MkdirAll(st.raftDir, 0o755); err != nil {
 		return fmt.Errorf("mkdir %s: %w", st.raftDir, err)
@@ -225,42 +225,42 @@ func (st *Store) Open(ctx context.Context) (err error) {
 		st.loadDatabase(ctx)
 	}
 
-	existedConfig, err := st.configViaPeers(filepath.Join(st.raftDir, peersFileName))
-	if err != nil {
-		return err
-	}
+	// existedConfig, err := st.configViaPeers(filepath.Join(st.raftDir, peersFileName))
+	// if err != nil {
+	// 	return err
+	// }
 
-	if servers, recover := st.recoverable(existedConfig.Servers); recover {
-		st.log.Info("recovery: start recovery with provided",
-			"peers", servers,
-			"snapshot_index", snapshotIndex(snapshotStore),
-			"last_applied_log_index", st.initialLastAppliedIndex)
+	// if servers, recover := st.recoverable(existedConfig.Servers); recover {
+	// 	st.log.Info("recovery: start recovery with provided",
+	// 		"peers", servers,
+	// 		"snapshot_index", snapshotIndex(snapshotStore),
+	// 		"last_applied_log_index", st.initialLastAppliedIndex)
 
-		// FSM passed to RecoverCluster has to be temporary one
-		// because it will be left in state shouldn't be used by the application.
-		if err := raft.RecoverCluster(st.raftConfig(), &Store{
-			nodeID:   st.nodeID,
-			host:     st.host,
-			db:       st.db,
-			log:      st.log,
-			logLevel: st.logLevel,
-		}, logCache, st.logStore, snapshotStore, st.transport, raft.Configuration{
-			Servers: servers,
-		}); err != nil {
-			return fmt.Errorf("raft recovery failed: %w", err)
-		}
+	// 	// FSM passed to RecoverCluster has to be temporary one
+	// 	// because it will be left in state shouldn't be used by the application.
+	// 	if err := raft.RecoverCluster(st.raftConfig(), &Store{
+	// 		nodeID:   st.nodeID,
+	// 		host:     st.host,
+	// 		db:       st.db,
+	// 		log:      st.log,
+	// 		logLevel: st.logLevel,
+	// 	}, logCache, st.logStore, snapshotStore, st.transport, raft.Configuration{
+	// 		Servers: servers,
+	// 	}); err != nil {
+	// 		return fmt.Errorf("raft recovery failed: %w", err)
+	// 	}
 
-		// load the database if <= because RecoverCluster() will implicitly
-		// commits all entries in the previous Raft log before starting
-		if st.initialLastAppliedIndex <= snapshotIndex(snapshotStore) {
-			st.loadDatabase(ctx)
-		}
+	// 	// load the database if <= because RecoverCluster() will implicitly
+	// 	// commits all entries in the previous Raft log before starting
+	// 	if st.initialLastAppliedIndex <= snapshotIndex(snapshotStore) {
+	// 		st.loadDatabase(ctx)
+	// 	}
 
-		st.log.Info("recovery: succeeded from previous configuration with new",
-			"peers", servers,
-			"snapshot_index", snapshotIndex(snapshotStore),
-			"last_applied_log_index", st.initialLastAppliedIndex)
-	}
+	// 	st.log.Info("recovery: succeeded from previous configuration with new",
+	// 		"peers", servers,
+	// 		"snapshot_index", snapshotIndex(snapshotStore),
+	// 		"last_applied_log_index", st.initialLastAppliedIndex)
+	// }
 
 	// raft node
 	st.raft, err = raft.NewRaft(st.raftConfig(), st, logCache, st.logStore, snapshotStore, st.transport)
