@@ -15,15 +15,18 @@ jobs:
         with:
           go-version: '1.21'      
       - uses: actions/checkout@v4
-      - name: golangci-lint-build-plugin
-        run: |
-          git clone https://github.com/moogacs/nilaway-plugin.git
-          cd nilaway-plugin
-          chmod +x build.sh
-          ./build.sh
-        working-directory: ${{ runner.temp }}
-        env:
-          CGO_ENABLED: 1
+      # - name: golangci-lint-build-plugin
+      #   run: |
+      #     which golangci-lint
+      #     git clone https://github.com/moogacs/nilaway-plugin.git
+      #     cd nilaway-plugin
+      #     go mod init github.com/nilaway-plugin
+      #     go mod tidy
+      #     go build -o '${{ github.workspace }}/.plugins/nilaway.so'  -buildmode=plugin plugin/nilaway.go          
+      #     echo ${{ github.workspace }}
+        # working-directory: ${{ runner.temp }}
+        # env:
+        #   CGO_ENABLED: 1
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v4
         with:
@@ -31,6 +34,14 @@ jobs:
           version: v1.54
           install-mode: goinstall
           args: --timeout=5m      
+          run: |
+            which golangci-lint
+            git clone https://github.com/moogacs/nilaway-plugin.git
+            cd nilaway-plugin
+            go mod init github.com/nilaway-plugin
+            go mod tidy
+            go build -o '${{ github.workspace }}/.plugins/nilaway.so'  -buildmode=plugin plugin/nilaway.go          
+            echo ${{ github.workspace }}
   protolint:
     name: protolint
     runs-on: ubuntu-latest
