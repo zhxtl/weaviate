@@ -16,8 +16,12 @@ jobs:
           go-version: '1.21'      
       - uses: actions/checkout@v4
       - name: golangci-lint-build-plugin
-        run: ./ci/nilaway.sh
-        # working-directory: ${{ runner.temp }}
+        run: |          
+          git clone https://github.com/moogacs/nilaway-plugin.git
+          cd nilaway-plugin
+          chmod +x build.sh
+          ./build.sh
+        working-directory: ${{ runner.temp }}
         env:
           CGO_ENABLED: 1
       - name: golangci-lint
