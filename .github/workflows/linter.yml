@@ -21,9 +21,9 @@ jobs:
           cd nilaway-plugin
           chmod +x build.sh
           ./build.sh
-        working-directory: ${{ runner.temp }}
-        env:
-          CGO_ENABLED: 1
+        # working-directory: ${{ runner.temp }}
+        # env:
+        #   CGO_ENABLED: 1
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v4
         with:
