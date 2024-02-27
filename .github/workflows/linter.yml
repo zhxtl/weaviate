@@ -21,7 +21,6 @@ jobs:
           cd nilaway-plugin
           go mod init github.com/nilaway-plugin
           go mod tidy
-          which golangci-lint
           go version -m $(which golangci-lint)
           go build -o '${{ github.workspace }}/.plugins/nilaway.so'  -buildmode=plugin plugin/nilaway.go          
           echo ${{ github.workspace }}
