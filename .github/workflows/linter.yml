@@ -20,7 +20,7 @@ jobs:
           git clone https://github.com/moogacs/nilaway-plugin.git
           cd nilaway-plugin
           chmod +x build.sh
-          ./build.sh
+          ./build.sh v1.54
         # working-directory: ${{ runner.temp }}
         # env:
         #   CGO_ENABLED: 1
